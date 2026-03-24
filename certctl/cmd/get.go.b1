@@ -1,0 +1,247 @@
+package cmd
+
+import (
+	"context"
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"fmt"
+	"strings"
+	"time"
+
+	mdns "github.com/miekg/dns"
+
+	"github.com/go-acme/lego/v4/certificate"
+	"github.com/go-acme/lego/v4/certcrypto"
+	"github.com/go-acme/lego/v4/challenge"
+	"github.com/go-acme/lego/v4/challenge/dns01"
+	"github.com/go-acme/lego/v4/lego"
+	"github.com/go-acme/lego/v4/providers/dns/godaddy"
+	"github.com/go-acme/lego/v4/providers/dns/namecheap"
+	"github.com/go-acme/lego/v4/registration"
+	"github.com/spf13/cobra"
+)
+
+type acmeUser struct {
+	Email        string
+	Registration *registration.Resource
+	key          crypto.PrivateKey
+}
+
+func (u *acmeUser) GetEmail() string { return u.Email }
+
+func (u *acmeUser) GetRegistration() *registration.Resource { return u.Registration }
+
+func (u *acmeUser) GetPrivateKey() crypto.PrivateKey { return u.key }
+
+func newGetCmd() *cobra.Command {
+	var domain string
+	var email string
+	var provider string
+	var password string
+	var dnsResolvers string
+	var propagationCheck bool
+	var timeoutSeconds int
+
+	cmd := &cobra.Command{
+		Use:   "get",
+		Short: "Request and store a certificate",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if domain == "" || email == "" || provider == "" {
+				return fmt.Errorf("domain, email, and provider are required")
+			}
+
+			resolvers := getResolvers(dnsResolvers)
+			fmt.Printf("[info] Using resolvers: %v\n", resolvers)
+
+			privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+			if err != nil {
+				return fmt.Errorf("generate private key: %w", err)
+			}
+
+			user := &acmeUser{
+				Email: email,
+				key:   privateKey,
+			}
+
+			config := lego.NewConfig(user)
+			config.Certificate.KeyType = certcrypto.RSA2048
+
+			client, err := lego.NewClient(config)
+			if err != nil {
+				return fmt.Errorf("create lego client: %w", err)
+			}
+
+			dnsProvider, err := buildDNSProvider(provider)
+			if err != nil {
+				return err
+			}
+
+			err = client.Challenge.SetDNS01Provider(
+				dnsProvider,
+				dns01.AddRecursiveNameservers(resolvers),
+			)
+			if err != nil {
+				return fmt.Errorf("set DNS-01 provider: %w", err)
+			}
+
+			reg, err := client.Registration.Register(registration.RegisterOptions{
+				TermsOfServiceAgreed: true,
+			})
+			if err != nil {
+				return fmt.Errorf("register ACME account: %w", err)
+			}
+			user.Registration = reg
+
+			if propagationCheck {
+				if err := waitForPropagation(domain, resolvers, 90*time.Second, 5*time.Second); err != nil {
+					return fmt.Errorf("propagation check failed: %w", err)
+				}
+				fmt.Println("[ok] TXT propagation visible on recursive resolver")
+			}
+
+			request := certificate.ObtainRequest{
+				Domains: []string{domain},
+				Bundle:  true,
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+			defer cancel()
+
+			type result struct {
+				cert *certificate.Resource
+				err  error
+			}
+			ch := make(chan result, 1)
+
+			go func() {
+				certRes, err := client.Certificate.Obtain(request)
+				ch <- result{cert: certRes, err: err}
+			}()
+
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("timeout waiting for certificate")
+			case res := <-ch:
+				if res.err != nil {
+					return fmt.Errorf("certificate obtain failed: %w", res.err)
+				}
+
+				fmt.Printf("[success] Certificate obtained for %s\n", domain)
+				fmt.Println(string(res.cert.Certificate))
+
+				// hook your storage/encryption code back in here
+				_ = password
+
+				return nil
+			}
+		},
+	}
+
+	cmd.Flags().StringVar(&domain, "domain", "", "Domain name, e.g. *.example.com")
+	cmd.Flags().StringVar(&email, "email", "", "Email for the ACME account")
+	cmd.Flags().StringVar(&provider, "provider", "", "DNS provider: namecheap or godaddy")
+	cmd.Flags().StringVar(&password, "password", "", "Encryption password for storage")
+	cmd.Flags().StringVar(&dnsResolvers, "dns-resolver", "", "Comma-separated recursive resolvers, e.g. 8.8.8.8:53,1.1.1.1:53")
+	cmd.Flags().BoolVar(&propagationCheck, "propagation-check", false, "Wait until TXT is visible on the selected recursive resolver(s) before starting issuance")
+	cmd.Flags().IntVar(&timeoutSeconds, "timeout", 180, "Timeout in seconds for certificate issuance")
+
+	return cmd
+}
+
+func buildDNSProvider(provider string) (challenge.Provider, error) {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "namecheap":
+		p, err := namecheap.NewDNSProvider()
+		if err != nil {
+			return nil, fmt.Errorf("init namecheap provider: %w", err)
+		}
+		return p, nil
+
+	case "godaddy":
+		p, err := godaddy.NewDNSProvider()
+		if err != nil {
+			return nil, fmt.Errorf("init godaddy provider: %w", err)
+		}
+		return p, nil
+
+	default:
+		return nil, fmt.Errorf("unsupported provider %q", provider)
+	}
+}
+
+func getResolvers(input string) []string {
+	if strings.TrimSpace(input) != "" {
+		return splitResolvers(input)
+	}
+
+	// safest default for split-DNS environments
+	return []string{"8.8.8.8:53", "1.1.1.1:53"}
+}
+
+func splitResolvers(s string) []string {
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+
+	for _, p := range parts {
+		r := strings.TrimSpace(p)
+		if r == "" {
+			continue
+		}
+		if !strings.Contains(r, ":") {
+			r += ":53"
+		}
+		out = append(out, r)
+	}
+
+	return out
+}
+
+func waitForPropagation(domain string, resolvers []string, timeout, interval time.Duration) error {
+	fqdn := "_acme-challenge." + strings.TrimPrefix(strings.TrimSpace(domain), "*.")
+	fqdn = mdns.Fqdn(fqdn)
+
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+
+	for time.Now().Before(deadline) {
+		ok, err := txtRecordVisible(fqdn, resolvers)
+		if ok {
+			return nil
+		}
+		if err != nil {
+			lastErr = err
+		}
+		time.Sleep(interval)
+	}
+
+	if lastErr != nil {
+		return fmt.Errorf("TXT record for %s not visible before timeout: %w", fqdn, lastErr)
+	}
+	return fmt.Errorf("TXT record for %s not visible before timeout", fqdn)
+}
+
+func txtRecordVisible(fqdn string, resolvers []string) (bool, error) {
+	var lastErr error
+
+	for _, resolver := range resolvers {
+		msg := new(mdns.Msg)
+		msg.SetQuestion(fqdn, mdns.TypeTXT)
+
+		client := new(mdns.Client)
+		resp, _, err := client.Exchange(msg, resolver)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		for _, ans := range resp.Answer {
+			if txt, ok := ans.(*mdns.TXT); ok && len(txt.Txt) > 0 {
+				fmt.Printf("[debug] TXT found on %s: %v\n", resolver, txt.Txt)
+				return true, nil
+			}
+		}
+	}
+
+	return false, lastErr
+}
