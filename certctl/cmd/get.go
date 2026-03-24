@@ -8,12 +8,54 @@ import (
 	"certctl/internal/cli"
 	"certctl/internal/dns"
 	"certctl/internal/storage"
+	"strings"
 	"github.com/spf13/cobra"
 )
 
+func buildDomainSet(domains, sans []string, includeRoot bool) []string {
+	seen := map[string]bool{}
+	var out []string
+
+	add := func(v string) {
+		v = strings.TrimSpace(v)
+		if v == "" || seen[v] {
+			return
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+
+	for _, d := range domains {
+		for _, part := range strings.Split(d, ",") {
+			add(part)
+		}
+	}
+	for _, s := range sans {
+		for _, part := range strings.Split(s, ",") {
+			add(part)
+		}
+	}
+
+	if includeRoot {
+		var extra []string
+		for _, d := range out {
+			if strings.HasPrefix(d, "*.") {
+				extra = append(extra, strings.TrimPrefix(d, "*."))
+			}
+		}
+		for _, e := range extra {
+			add(e)
+		}
+	}
+
+	return out
+}
+
 func init() {
 	var flags providerFlags
-	var domain, email, password string
+	var domains, sans []string
+	var email, password string
+	var includeRoot bool
 	var timeout, propagation time.Duration
 	var skipChecks, staging bool
 
@@ -27,15 +69,20 @@ func init() {
 			if err != nil {
 				return err
 			}
-			if !skipChecks {
-				fmt.Println("Running precursor checks before issuance...")
-				if err := dns.CheckPrecursors(ctx, p, domain, flags.DNSResolver, false); err != nil {
-					return err
-				}
+			allDomains := buildDomainSet(domains, sans, includeRoot)
+			if len(allDomains) == 0 {
+				return fmt.Errorf("at least one domain is required")
 			}
+			primaryDomain := allDomains[0]
+if !skipChecks {
+	fmt.Println("Running precursor checks before issuance...")
+	if err := dns.CheckPrecursors(ctx, p, primaryDomain, flags.DNSResolver, false); err != nil {
+		return err
+	}
+}
 			certs, err := acme.Issue(ctx, acme.IssueOptions{
 				Email:       email,
-				Domain:      domain,
+                Domains:     allDomains,
 				Provider:    flags.Provider,
 				APIUser:     flags.APIUser,
 				APIKey:      flags.APIKey,
@@ -64,8 +111,9 @@ func init() {
 				return err
 			}
 			defer store.Close()
+			// primaryDomain := allDomains[0]
 			if err := store.Upsert(storage.Record{
-				Domain:    domain,
+				Domain:    primaryDomain,
 				CertPEM:   encCert,
 				KeyPEM:    encKey,
 				Provider:  flags.Provider,
@@ -76,14 +124,19 @@ func init() {
 			}); err != nil {
 				return err
 			}
-			fmt.Printf("Successfully obtained and stored certificate for %s\n", domain)
+fmt.Printf("Successfully obtained and stored certificate for %s\n", primaryDomain)
+fmt.Printf("domains: %s\n", strings.Join(allDomains, ", "))
 			printKV("issuer", issuer)
 			printKV("not before", notBefore.Format(time.RFC3339))
 			printKV("not after", notAfter.Format(time.RFC3339))
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&domain, "domain", "", "target domain or wildcard domain")
+cmd.Flags().StringSliceVar(&domains, "domain", nil, "target domain(s); can be specified multiple times or comma-separated")
+cmd.Flags().StringSliceVar(&sans, "san", nil, "additional SANs; can be specified multiple times or comma-separated")
+cmd.Flags().BoolVar(&includeRoot, "include-root", false, "if a wildcard is present, also include the apex/root domain")
+_ = cmd.MarkFlagRequired("domain")
+
 	cmd.Flags().StringVar(&email, "email", "", "ACME account email")
 	cmd.Flags().StringVar(&password, "password", "", "encryption password for stored cert material")
 	cmd.Flags().StringVar(&flags.Provider, "provider", "", "dns provider: godaddy or namecheap")

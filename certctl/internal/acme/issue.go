@@ -31,7 +31,7 @@ func (u *user) GetPrivateKey() crypto.PrivateKey { return u.key }
 
 type IssueOptions struct {
 	Email       string
-	Domain      string
+	Domains     []string
 	Provider    string
 	APIUser     string
 	APIKey      string
@@ -42,6 +42,10 @@ type IssueOptions struct {
 }
 
 func Issue(ctx context.Context, opts IssueOptions) (*certificate.Resource, error) {
+if len(opts.Domains) == 0 {
+	return nil, fmt.Errorf("at least one domain is required")
+}
+
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
@@ -77,10 +81,10 @@ func Issue(ctx context.Context, opts IssueOptions) (*certificate.Resource, error
 	}
 	u.Registration = reg
 
-	request := certificate.ObtainRequest{
-		Domains: []string{opts.Domain},
-		Bundle:  true,
-	}
+request := certificate.ObtainRequest{
+	Domains: opts.Domains,
+	Bundle:  true,
+}
 
 	_ = ctx // currently unused by lego directly
 

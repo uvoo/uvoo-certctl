@@ -16,7 +16,7 @@ import (
 type Store struct{ db *sql.DB }
 
 type Record struct {
-	Domain    string
+	Domain    string 
 	CertPEM   []byte
 	KeyPEM    []byte
 	Provider  string
@@ -26,6 +26,50 @@ type Record struct {
 	NotAfter  time.Time
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+
+func (s *Store) List(domain string) ([]Record, error) {
+	var rows *sql.Rows
+	var err error
+
+	if domain != "" {
+		rows, err = s.db.Query(`
+			SELECT domain, cert_pem, key_pem, provider, email, issuer, not_before, not_after
+			FROM certs
+			WHERE domain = ?
+			ORDER BY domain
+		`, domain)
+	} else {
+		rows, err = s.db.Query(`
+			SELECT domain, cert_pem, key_pem, provider, email, issuer, not_before, not_after
+			FROM certs
+			ORDER BY domain
+		`)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Record
+	for rows.Next() {
+		var r Record
+		if err := rows.Scan(
+			&r.Domain,
+			&r.CertPEM,
+			&r.KeyPEM,
+			&r.Provider,
+			&r.Email,
+			&r.Issuer,
+			&r.NotBefore,
+			&r.NotAfter,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 
