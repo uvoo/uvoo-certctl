@@ -4,6 +4,7 @@ go 1.23.0
 
 require (
 	github.com/go-acme/lego/v4 v4.18.0
+	github.com/google/uuid v1.6.0
 	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/net v0.40.0

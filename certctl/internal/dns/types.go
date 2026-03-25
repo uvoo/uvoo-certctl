@@ -70,9 +70,11 @@ func CheckPrecursors(ctx context.Context, p Provider, domain, resolver string, w
 	if err := p.CheckZoneAccess(ctx, domain); err != nil {
 		return fmt.Errorf("zone access check failed: %w", err)
 	}
-	if err := EnsureResolvable(ctx, domain, resolver); err != nil {
-		return fmt.Errorf("public DNS lookup failed: %w", err)
-	}
+	/*
+		if err := EnsureResolvable(ctx, domain, resolver); err != nil {
+			return fmt.Errorf("public DNS lookup failed: %w", err)
+		}
+	*/
 	if writeTest {
 		zone, err := util.RootZone(domain)
 		if err != nil {

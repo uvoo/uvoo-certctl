@@ -36,6 +36,7 @@ func init() {
 
 			for _, r := range rows {
 				fmt.Printf("domain: %s\n", r.Domain)
+				fmt.Printf("  sans:       %s\n", r.DomainsCSV)
 				fmt.Printf("  provider:   %s\n", r.Provider)
 				fmt.Printf("  email:      %s\n", r.Email)
 				fmt.Printf("  issuer:     %s\n", r.Issuer)

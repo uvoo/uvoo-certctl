@@ -1,6 +1,6 @@
 # ./certctl get \
 go run . get \
-  --db '/home/busk/certs/certs.db' \
+  --db './tmp/certs.db' \
   --provider namecheap \
   --domain 'uvoo.io' \
   --san test3.uvoo.io \
@@ -11,3 +11,4 @@ go run . get \
   --api-user "$NAMECHEAP_API_USER" \
   --api-key "$NAMECHEAP_API_KEY" 
 
+  # --db '/home/busk/certs/certs.db' \

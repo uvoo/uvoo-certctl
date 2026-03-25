@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"certctl/internal/acme"
@@ -36,10 +37,11 @@ func init() {
 				fmt.Printf("Skipping renewal for %s (expires %s)\n", domain, rec.NotAfter.Format(time.RFC3339))
 				return nil
 			}
-
+			domains := strings.Split(rec.DomainsCSV, ",")
 			certs, err := acme.Issue(cmd.Context(), acme.IssueOptions{
-				Email:       rec.Email,
-				Domains:     []string{domain},
+				Email: rec.Email,
+				// Domains:     []string{domain},
+				Domains:     domains,
 				Provider:    rec.Provider,
 				Timeout:     10 * time.Minute,
 				Propagation: 30 * time.Minute,

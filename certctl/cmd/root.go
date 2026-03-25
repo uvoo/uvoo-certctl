@@ -15,8 +15,8 @@ var rootCfg struct {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "certctl",
-	Short: "Issue and manage ACME certificates with DNS providers",
+	Use:           "certctl",
+	Short:         "Issue and manage ACME certificates with DNS providers",
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }

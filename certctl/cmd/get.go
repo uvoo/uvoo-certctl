@@ -8,9 +8,14 @@ import (
 	"certctl/internal/cli"
 	"certctl/internal/dns"
 	"certctl/internal/storage"
-	"strings"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
+	"strings"
 )
+
+func newID() string {
+	return uuid.NewString()
+}
 
 func buildDomainSet(domains, sans []string, includeRoot bool) []string {
 	seen := map[string]bool{}
@@ -73,16 +78,24 @@ func init() {
 			if len(allDomains) == 0 {
 				return fmt.Errorf("at least one domain is required")
 			}
-			primaryDomain := allDomains[0]
-if !skipChecks {
-	fmt.Println("Running precursor checks before issuance...")
-	if err := dns.CheckPrecursors(ctx, p, primaryDomain, flags.DNSResolver, false); err != nil {
-		return err
-	}
-}
+			// primaryDomain := allDomains[0]
+			normalized, csv, hash := storage.NormalizeDomains(allDomains)
+			primaryDomain := storage.PickPrimary(normalized)
+
+			if existing, err := store.FindByHash(primary, hash); err == nil {
+				fmt.Println("[info] identical cert already exists, skipping issuance")
+				return nil
+			}
+
+			if !skipChecks {
+				fmt.Println("Running precursor checks before issuance...")
+				if err := dns.CheckPrecursors(ctx, p, primaryDomain, flags.DNSResolver, false); err != nil {
+					return err
+				}
+			}
 			certs, err := acme.Issue(ctx, acme.IssueOptions{
 				Email:       email,
-                Domains:     allDomains,
+				Domains:     allDomains,
 				Provider:    flags.Provider,
 				APIUser:     flags.APIUser,
 				APIKey:      flags.APIKey,
@@ -113,29 +126,32 @@ if !skipChecks {
 			defer store.Close()
 			// primaryDomain := allDomains[0]
 			if err := store.Upsert(storage.Record{
-				Domain:    primaryDomain,
-				CertPEM:   encCert,
-				KeyPEM:    encKey,
-				Provider:  flags.Provider,
-				Email:     email,
-				Issuer:    issuer,
-				NotBefore: notBefore,
-				NotAfter:  notAfter,
+				ID:          newID(),
+				Domain:      primaryDomain,
+				DomainsCSV:  csv,
+				DomainsHash: hash,
+				CertPEM:     encCert,
+				KeyPEM:      encKey,
+				Provider:    flags.Provider,
+				Email:       email,
+				Issuer:      issuer,
+				NotBefore:   notBefore,
+				NotAfter:    notAfter,
 			}); err != nil {
 				return err
 			}
-fmt.Printf("Successfully obtained and stored certificate for %s\n", primaryDomain)
-fmt.Printf("domains: %s\n", strings.Join(allDomains, ", "))
+			fmt.Printf("Successfully obtained and stored certificate for %s\n", primaryDomain)
+			fmt.Printf("domains: %s\n", strings.Join(allDomains, ", "))
 			printKV("issuer", issuer)
 			printKV("not before", notBefore.Format(time.RFC3339))
 			printKV("not after", notAfter.Format(time.RFC3339))
 			return nil
 		},
 	}
-cmd.Flags().StringSliceVar(&domains, "domain", nil, "target domain(s); can be specified multiple times or comma-separated")
-cmd.Flags().StringSliceVar(&sans, "san", nil, "additional SANs; can be specified multiple times or comma-separated")
-cmd.Flags().BoolVar(&includeRoot, "include-root", false, "if a wildcard is present, also include the apex/root domain")
-_ = cmd.MarkFlagRequired("domain")
+	cmd.Flags().StringSliceVar(&domains, "domain", nil, "target domain(s); can be specified multiple times or comma-separated")
+	cmd.Flags().StringSliceVar(&sans, "san", nil, "additional SANs; can be specified multiple times or comma-separated")
+	cmd.Flags().BoolVar(&includeRoot, "include-root", false, "if a wildcard is present, also include the apex/root domain")
+	_ = cmd.MarkFlagRequired("domain")
 
 	cmd.Flags().StringVar(&email, "email", "", "ACME account email")
 	cmd.Flags().StringVar(&password, "password", "", "encryption password for stored cert material")

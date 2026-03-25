@@ -2,7 +2,8 @@
 go run . get \
   --db '/home/busk/certs/certs.db' \
   --provider namecheap \
-  --domain 'udrawdb.uvoo.io' \
+  --domain 'test5.uvoo.io' \
+  --san 'test5.uvoo.io' \
   --email jeremybusk@gmail.com \
   --password 'changeit' \
   --client-ip "$NAMECHEAP_CLIENT_IP" \
