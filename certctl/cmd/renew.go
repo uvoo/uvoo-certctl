@@ -27,7 +27,8 @@ func init() {
 			}
 			defer store.Close()
 
-			rec, err := store.Get(domain)
+			// rec, err := store.Get(domain)
+			rec, err := store.GetByDomain(domain)
 			if err != nil {
 				return err
 			}

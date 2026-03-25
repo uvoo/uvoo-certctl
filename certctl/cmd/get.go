@@ -8,6 +8,7 @@ import (
 	"certctl/internal/cli"
 	"certctl/internal/dns"
 	"certctl/internal/storage"
+	"certctl/internal/util"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"strings"
@@ -63,6 +64,9 @@ func init() {
 	var includeRoot bool
 	var timeout, propagation time.Duration
 	var skipChecks, staging bool
+	var skipIfExpiresWithin time.Duration
+	var force bool
+	var skipIfExpiresWithinRaw string
 
 	cmd := &cobra.Command{
 		Use:   "get",
@@ -82,9 +86,9 @@ func init() {
 			normalized, csv, hash := storage.NormalizeDomains(allDomains)
 			primaryDomain := storage.PickPrimary(normalized)
 
-			if existing, err := store.FindByHash(primary, hash); err == nil {
-				fmt.Println("[info] identical cert already exists, skipping issuance")
-				return nil
+			skipIfExpiresWithin, err := util.ParseFlexibleDuration(skipIfExpiresWithinRaw)
+			if err != nil {
+				return fmt.Errorf("invalid --skip-if-expires-within: %w", err)
 			}
 
 			if !skipChecks {
@@ -124,6 +128,29 @@ func init() {
 				return err
 			}
 			defer store.Close()
+
+			if !force {
+				if existing, err := store.FindByHash(primaryDomain, hash); err == nil {
+					remaining := time.Until(existing.NotAfter)
+					if remaining > skipIfExpiresWithin {
+						fmt.Printf("[info] identical cert already exists for %s\n", primaryDomain)
+						fmt.Printf("[info] SANs: %s\n", existing.DomainsCSV)
+						fmt.Printf("[info] expires: %s\n", existing.NotAfter.Format(time.RFC3339))
+						fmt.Printf("[info] remaining: %s\n", remaining.Round(time.Second))
+						fmt.Printf("[info] skipping issuance because remaining lifetime exceeds %s\n", skipIfExpiresWithin)
+						return nil
+					}
+
+					fmt.Printf("[info] identical cert exists but expires within %s; continuing issuance\n", skipIfExpiresWithin)
+				}
+			}
+
+			if _, err := store.FindByHash(primaryDomain, hash); err == nil {
+				fmt.Println("[info] identical cert already exists, skipping issuance")
+				return nil
+			}
+			/*
+			 */
 			// primaryDomain := allDomains[0]
 			if err := store.Upsert(storage.Record{
 				ID:          newID(),
@@ -142,6 +169,7 @@ func init() {
 			}
 			fmt.Printf("Successfully obtained and stored certificate for %s\n", primaryDomain)
 			fmt.Printf("domains: %s\n", strings.Join(allDomains, ", "))
+			fmt.Printf("[info] SAN set: %s\n", csv)
 			printKV("issuer", issuer)
 			printKV("not before", notBefore.Format(time.RFC3339))
 			printKV("not after", notAfter.Format(time.RFC3339))
@@ -164,6 +192,26 @@ func init() {
 	cmd.Flags().DurationVar(&propagation, "propagation-timeout", 30*time.Minute, "DNS propagation timeout for provider checks")
 	cmd.Flags().BoolVar(&skipChecks, "skip-checks", false, "skip precursor checks")
 	cmd.Flags().BoolVar(&staging, "staging", false, "use Let's Encrypt staging")
+
+	cmd.Flags().DurationVar(
+		&skipIfExpiresWithin,
+		"skip-if-expires-within",
+		14*24*time.Hour,
+		"skip issuance if an identical cert already exists and expires later than this duration (e.g. 240h, 14d if your parser supports it)",
+	)
+	cmd.Flags().StringVar(
+		&skipIfExpiresWithinRaw,
+		"skip-if-expires-within",
+		"14d",
+		"skip issuance if an identical cert already exists and expires later than this duration",
+	)
+
+	cmd.Flags().BoolVar(
+		&force,
+		"force",
+		false,
+		"force issuance even if an identical cert already exists",
+	)
 	_ = cmd.MarkFlagRequired("domain")
 	_ = cmd.MarkFlagRequired("email")
 	_ = cmd.MarkFlagRequired("password")

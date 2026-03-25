@@ -345,3 +345,86 @@ func PickPrimary(domains []string) string {
 	}
 	return ""
 }
+
+func (s *Store) GetByDomain(domain string) (Record, error) {
+	var rec Record
+	var nb, na, ca, ua sql.NullString
+
+	err := s.db.QueryRow(`
+		SELECT id, domain, domains_csv, domains_hash, cert, privkey, provider, email, issuer, not_before, not_after, created_at, updated_at
+		FROM certs
+		WHERE domain = ?
+		   OR domains_csv = ?
+		   OR domains_csv LIKE ?
+		   OR domains_csv LIKE ?
+		   OR domains_csv LIKE ?
+		ORDER BY updated_at DESC
+		LIMIT 1
+	`,
+		domain,
+		domain,
+		domain+",%",
+		"%,"+domain+",%",
+		"%,"+domain,
+	).Scan(
+		&rec.ID,
+		&rec.Domain,
+		&rec.DomainsCSV,
+		&rec.DomainsHash,
+		&rec.CertPEM,
+		&rec.KeyPEM,
+		&rec.Provider,
+		&rec.Email,
+		&rec.Issuer,
+		&nb,
+		&na,
+		&ca,
+		&ua,
+	)
+	if err != nil {
+		return rec, err
+	}
+
+	rec.NotBefore = parseRFC3339Null(nb)
+	rec.NotAfter = parseRFC3339Null(na)
+	rec.CreatedAt = parseRFC3339Null(ca)
+	rec.UpdatedAt = parseRFC3339Null(ua)
+
+	return rec, nil
+}
+
+func (s *Store) FindByHash(domain, hash string) (Record, error) {
+	var rec Record
+	var nb, na, ca, ua sql.NullString
+
+	err := s.db.QueryRow(`
+		SELECT id, domain, domains_csv, domains_hash, cert, privkey, provider, email, issuer, not_before, not_after, created_at, updated_at
+		FROM certs
+		WHERE domain = ? AND domains_hash = ?
+		LIMIT 1
+	`, domain, hash).Scan(
+		&rec.ID,
+		&rec.Domain,
+		&rec.DomainsCSV,
+		&rec.DomainsHash,
+		&rec.CertPEM,
+		&rec.KeyPEM,
+		&rec.Provider,
+		&rec.Email,
+		&rec.Issuer,
+		&nb,
+		&na,
+		&ca,
+		&ua,
+	)
+	if err != nil {
+		return rec, err
+	}
+
+	rec.NotBefore = parseRFC3339Null(nb)
+	rec.NotAfter = parseRFC3339Null(na)
+	rec.CreatedAt = parseRFC3339Null(ca)
+	rec.UpdatedAt = parseRFC3339Null(ua)
+
+	return rec, nil
+}

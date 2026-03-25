@@ -23,7 +23,8 @@ func init() {
 				return err
 			}
 			defer store.Close()
-			rec, err := store.Get(domain)
+			// rec, err := store.Get(domain)
+			rec, err := store.GetByDomain(domain)
 			if err != nil {
 				if err == sql.ErrNoRows {
 					return fmt.Errorf("no certificate found for domain: %s", domain)
