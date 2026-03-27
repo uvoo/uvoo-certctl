@@ -64,7 +64,7 @@ func init() {
 	var includeRoot bool
 	var timeout, propagation time.Duration
 	var skipChecks, staging bool
-	var skipIfExpiresWithin time.Duration
+	// var skipIfExpiresWithin time.Duration
 	var force bool
 	var skipIfExpiresWithinRaw string
 
@@ -192,13 +192,14 @@ func init() {
 	cmd.Flags().DurationVar(&propagation, "propagation-timeout", 30*time.Minute, "DNS propagation timeout for provider checks")
 	cmd.Flags().BoolVar(&skipChecks, "skip-checks", false, "skip precursor checks")
 	cmd.Flags().BoolVar(&staging, "staging", false, "use Let's Encrypt staging")
-
+/*
 	cmd.Flags().DurationVar(
 		&skipIfExpiresWithin,
 		"skip-if-expires-within",
 		14*24*time.Hour,
 		"skip issuance if an identical cert already exists and expires later than this duration (e.g. 240h, 14d if your parser supports it)",
 	)
+*/
 	cmd.Flags().StringVar(
 		&skipIfExpiresWithinRaw,
 		"skip-if-expires-within",
