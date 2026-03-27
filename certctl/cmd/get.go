@@ -9,14 +9,16 @@ import (
 	"certctl/internal/dns"
 	"certctl/internal/storage"
 	"certctl/internal/util"
-	"github.com/google/uuid"
+	// "github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"strings"
 )
 
+/*
 func newID() string {
 	return uuid.NewString()
 }
+*/
 
 func buildDomainSet(domains, sans []string, includeRoot bool) []string {
 	seen := map[string]bool{}
@@ -153,7 +155,7 @@ func init() {
 			 */
 			// primaryDomain := allDomains[0]
 			if err := store.Upsert(storage.Record{
-				ID:          newID(),
+				ID:          util.NewID(),
 				Domain:      primaryDomain,
 				DomainsCSV:  csv,
 				DomainsHash: hash,

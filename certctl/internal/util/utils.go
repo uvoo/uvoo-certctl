@@ -4,7 +4,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"github.com/google/uuid"
 )
+
+func NewID() string {
+    return uuid.NewString()
+}
 
 func ParseFlexibleDuration(s string) (time.Duration, error) {
 	s = strings.TrimSpace(strings.ToLower(s))

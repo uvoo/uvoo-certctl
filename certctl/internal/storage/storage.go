@@ -37,6 +37,22 @@ type Record struct {
 	UpdatedAt time.Time
 }
 
+type CertShare struct {
+	ID                string
+	CertID            string
+	ShareToken        string
+	Mode              string
+	SharePasswordHash string
+	KeyPasswordHash   string
+	ExpiresAt         time.Time
+	MaxViews          sql.NullInt64
+	ViewCount         int
+	CreatedAt         time.Time
+	LastViewedAt      time.Time
+	RevokedAt         time.Time
+	Note              string
+}
+
 func Open(path string) (*Store, error) {
 	dir := filepath.Dir(path)
 	if dir != "." {
@@ -54,6 +70,7 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+
 
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS certs (
@@ -89,6 +106,22 @@ func Open(path string) (*Store, error) {
 			updated_at TEXT,
 			archived_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
+`CREATE TABLE IF NOT EXISTS cert_shares (
+    id TEXT PRIMARY KEY,
+    cert_id TEXT NOT NULL,
+    share_token TEXT NOT NULL UNIQUE,
+    mode TEXT NOT NULL,
+    share_password_hash TEXT NOT NULL,
+    key_password_hash TEXT,
+    expires_at TEXT,
+    max_views INTEGER,
+    view_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_viewed_at TEXT,
+    revoked_at TEXT,
+    note TEXT,
+    FOREIGN KEY(cert_id) REFERENCES certs(id)
+)`,
 
 		// Best-effort migrations for older DBs.
 		`ALTER TABLE certs ADD COLUMN id TEXT`,
@@ -427,4 +460,194 @@ func (s *Store) FindByHash(domain, hash string) (Record, error) {
 	rec.UpdatedAt = parseRFC3339Null(ua)
 
 	return rec, nil
+}
+
+func (s *Store) CreateShare(sh CertShare) error {
+	_, err := s.db.Exec(`
+		INSERT INTO cert_shares
+		(id, cert_id, share_token, mode, share_password_hash, key_password_hash, expires_at, max_views, view_count, created_at, note)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, ?)
+	`,
+		sh.ID,
+		sh.CertID,
+		sh.ShareToken,
+		sh.Mode,
+		sh.SharePasswordHash,
+		nullIfEmpty(sh.KeyPasswordHash),
+		timeOrEmpty(sh.ExpiresAt),
+		nullInt64(sh.MaxViews),
+		sh.Note,
+	)
+	return err
+}
+
+func (s *Store) ListShares(certID string) ([]CertShare, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+
+	if certID != "" {
+		rows, err = s.db.Query(`
+			SELECT id, cert_id, share_token, mode, share_password_hash, COALESCE(key_password_hash, ''),
+			       expires_at, max_views, view_count, created_at, last_viewed_at, revoked_at, COALESCE(note, '')
+			FROM cert_shares
+			WHERE cert_id = ?
+			ORDER BY created_at DESC
+		`, certID)
+	} else {
+		rows, err = s.db.Query(`
+			SELECT id, cert_id, share_token, mode, share_password_hash, COALESCE(key_password_hash, ''),
+			       expires_at, max_views, view_count, created_at, last_viewed_at, revoked_at, COALESCE(note, '')
+			FROM cert_shares
+			ORDER BY created_at DESC
+		`)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []CertShare
+	for rows.Next() {
+		var sh CertShare
+		var expiresAt, createdAt, lastViewedAt, revokedAt sql.NullString
+		var maxViews sql.NullInt64
+
+		if err := rows.Scan(
+			&sh.ID,
+			&sh.CertID,
+			&sh.ShareToken,
+			&sh.Mode,
+			&sh.SharePasswordHash,
+			&sh.KeyPasswordHash,
+			&expiresAt,
+			&maxViews,
+			&sh.ViewCount,
+			&createdAt,
+			&lastViewedAt,
+			&revokedAt,
+			&sh.Note,
+		); err != nil {
+			return nil, err
+		}
+
+		sh.ExpiresAt = parseRFC3339Null(expiresAt)
+		sh.CreatedAt = parseRFC3339Null(createdAt)
+		sh.LastViewedAt = parseRFC3339Null(lastViewedAt)
+		sh.RevokedAt = parseRFC3339Null(revokedAt)
+		sh.MaxViews = maxViews
+
+		out = append(out, sh)
+	}
+
+	return out, rows.Err()
+}
+
+func (s *Store) GetShareByToken(token string) (CertShare, error) {
+	var sh CertShare
+	var expiresAt, createdAt, lastViewedAt, revokedAt sql.NullString
+	var maxViews sql.NullInt64
+
+	err := s.db.QueryRow(`
+		SELECT id, cert_id, share_token, mode, share_password_hash, COALESCE(key_password_hash, ''),
+		       expires_at, max_views, view_count, created_at, last_viewed_at, revoked_at, COALESCE(note, '')
+		FROM cert_shares
+		WHERE share_token = ?
+		LIMIT 1
+	`, token).Scan(
+		&sh.ID,
+		&sh.CertID,
+		&sh.ShareToken,
+		&sh.Mode,
+		&sh.SharePasswordHash,
+		&sh.KeyPasswordHash,
+		&expiresAt,
+		&maxViews,
+		&sh.ViewCount,
+		&createdAt,
+		&lastViewedAt,
+		&revokedAt,
+		&sh.Note,
+	)
+	if err != nil {
+		return sh, err
+	}
+
+	sh.ExpiresAt = parseRFC3339Null(expiresAt)
+	sh.CreatedAt = parseRFC3339Null(createdAt)
+	sh.LastViewedAt = parseRFC3339Null(lastViewedAt)
+	sh.RevokedAt = parseRFC3339Null(revokedAt)
+	sh.MaxViews = maxViews
+
+	return sh, nil
+}
+
+func (s *Store) RevokeShare(id string) error {
+	_, err := s.db.Exec(`
+		UPDATE cert_shares
+		SET revoked_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, id)
+	return err
+}
+
+func (s *Store) IncrementShareView(id string) error {
+	_, err := s.db.Exec(`
+		UPDATE cert_shares
+		SET view_count = view_count + 1,
+		    last_viewed_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, id)
+	return err
+}
+
+func (s *Store) GetByID(id string) (Record, error) {
+	var rec Record
+	var nb, na, ca, ua sql.NullString
+
+	err := s.db.QueryRow(`
+		SELECT id, domain, domains_csv, domains_hash, cert, privkey, provider, email, issuer, not_before, not_after, created_at, updated_at
+		FROM certs
+		WHERE id = ?
+		LIMIT 1
+	`, id).Scan(
+		&rec.ID,
+		&rec.Domain,
+		&rec.DomainsCSV,
+		&rec.DomainsHash,
+		&rec.CertPEM,
+		&rec.KeyPEM,
+		&rec.Provider,
+		&rec.Email,
+		&rec.Issuer,
+		&nb,
+		&na,
+		&ca,
+		&ua,
+	)
+	if err != nil {
+		return rec, err
+	}
+
+	rec.NotBefore = parseRFC3339Null(nb)
+	rec.NotAfter = parseRFC3339Null(na)
+	rec.CreatedAt = parseRFC3339Null(ca)
+	rec.UpdatedAt = parseRFC3339Null(ua)
+
+	return rec, nil
+}
+
+func nullIfEmpty(s string) any {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	return s
+}
+
+func nullInt64(v sql.NullInt64) any {
+	if !v.Valid {
+		return nil
+	}
+	return v.Int64
 }
