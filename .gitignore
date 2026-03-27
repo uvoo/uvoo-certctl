@@ -4,3 +4,4 @@ tmp/
 bkp/
 certs.db
 extract
+.env

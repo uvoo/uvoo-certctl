@@ -62,7 +62,7 @@ func buildDomainSet(domains, sans []string, includeRoot bool) []string {
 func init() {
 	var flags providerFlags
 	var domains, sans []string
-	var email, password string
+	var email, keyPassword, storagePassword, keyType string
 	var includeRoot bool
 	var timeout, propagation time.Duration
 	var skipChecks, staging bool
@@ -99,25 +99,30 @@ func init() {
 					return err
 				}
 			}
-			certs, err := acme.Issue(ctx, acme.IssueOptions{
-				Email:       email,
-				Domains:     allDomains,
-				Provider:    flags.Provider,
-				APIUser:     flags.APIUser,
-				APIKey:      flags.APIKey,
-				ClientIP:    flags.ClientIP,
-				Timeout:     timeout,
-				UseStaging:  staging,
-				Propagation: propagation,
-			})
+certs, err := acme.Issue(ctx, acme.IssueOptions{
+	Email:       email,
+	Domains:     allDomains,
+	Provider:    flags.Provider,
+	APIUser:     flags.APIUser,
+	APIKey:      flags.APIKey,
+	ClientIP:    flags.ClientIP,
+	Timeout:     timeout,
+	UseStaging:  staging,
+	Propagation: propagation,
+	KeyType:     keyType,
+})
 			if err != nil {
 				return err
 			}
-			encCert, err := cli.Encrypt(certs.Certificate, password)
+cryptoPassword, err := util.ResolveCryptoPassword(keyPassword, storagePassword)
+if err != nil {
+	return err
+}
+            encCert, err := cli.Encrypt(certs.Certificate, cryptoPassword)
 			if err != nil {
 				return err
 			}
-			encKey, err := cli.Encrypt(certs.PrivateKey, password)
+            encKey, err := cli.Encrypt(certs.PrivateKey, cryptoPassword)
 			if err != nil {
 				return err
 			}
@@ -184,7 +189,9 @@ func init() {
 	_ = cmd.MarkFlagRequired("domain")
 
 	cmd.Flags().StringVar(&email, "email", "", "ACME account email")
-	cmd.Flags().StringVar(&password, "password", "", "encryption password for stored cert material")
+cmd.Flags().StringVar(&keyPassword, "key-password", "", "per-certificate encryption password for stored cert material")
+cmd.Flags().StringVar(&storagePassword, "storage-password", "", "fallback encryption password used when --key-password is not provided")
+cmd.Flags().StringVar(&keyType, "key-type", "ec256", "certificate key type: ec256, ec384, rsa2048, rsa4096")
 	cmd.Flags().StringVar(&flags.Provider, "provider", "", "dns provider: godaddy or namecheap")
 	cmd.Flags().StringVar(&flags.APIUser, "api-user", "", "provider API user/key id")
 	cmd.Flags().StringVar(&flags.APIKey, "api-key", "", "provider API secret/key")
@@ -217,7 +224,6 @@ func init() {
 	)
 	_ = cmd.MarkFlagRequired("domain")
 	_ = cmd.MarkFlagRequired("email")
-	_ = cmd.MarkFlagRequired("password")
 	_ = cmd.MarkFlagRequired("provider")
 	rootCmd.AddCommand(cmd)
 }
