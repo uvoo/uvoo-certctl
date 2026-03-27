@@ -108,20 +108,20 @@ func (s *Server) handleShareMetadata(w http.ResponseWriter, r *http.Request, sto
 	}
 
 	resp := map[string]any{
-		"share_id":        share.ID,
-		"mode":            share.Mode,
-		"primary_domain":  rec.Domain,
-		"domains_csv":     rec.DomainsCSV,
-		"provider":        rec.Provider,
-		"issuer":          rec.Issuer,
-		"not_before":      formatTime(rec.NotBefore),
-		"not_after":       formatTime(rec.NotAfter),
-		"expires_at":      formatTime(share.ExpiresAt),
-		"requires_access": true,
+		"share_id":              share.ID,
+		"mode":                  share.Mode,
+		"primary_domain":        rec.Domain,
+		"domains_csv":           rec.DomainsCSV,
+		"provider":              rec.Provider,
+		"issuer":                rec.Issuer,
+		"not_before":            formatTime(rec.NotBefore),
+		"not_after":             formatTime(rec.NotAfter),
+		"expires_at":            formatTime(share.ExpiresAt),
+		"requires_access":       true,
 		"requires_key_password": share.Mode == "cert_key",
-		"view_count":      share.ViewCount,
-		"max_views":       nullableInt64(share.MaxViews),
-		"note":            share.Note,
+		"view_count":            share.ViewCount,
+		"max_views":             nullableInt64(share.MaxViews),
+		"note":                  share.Note,
 	}
 
 	writeJSON(w, http.StatusOK, resp)

@@ -33,8 +33,8 @@ func RelativeRecordName(zone, fqdnOrLabel string) string {
 	if name == zone || name == "@" || name == "" {
 		return "@"
 	}
-	if strings.HasSuffix(name, "."+zone) {
-		trimmed := strings.TrimSuffix(name, "."+zone)
+	if before, ok := strings.CutSuffix(name, "."+zone); ok {
+		trimmed := before
 		if trimmed == "" {
 			return "@"
 		}

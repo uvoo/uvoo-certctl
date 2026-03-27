@@ -3,7 +3,7 @@ package cmd
 import (
 	"database/sql"
 	"fmt"
-    "strings"
+	"strings"
 	"time"
 
 	"certctl/internal/storage"

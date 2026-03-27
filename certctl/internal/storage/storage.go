@@ -71,7 +71,6 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 
-
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS certs (
 			id TEXT PRIMARY KEY,
@@ -106,7 +105,7 @@ func Open(path string) (*Store, error) {
 			updated_at TEXT,
 			archived_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
-`CREATE TABLE IF NOT EXISTS cert_shares (
+		`CREATE TABLE IF NOT EXISTS cert_shares (
     id TEXT PRIMARY KEY,
     cert_id TEXT NOT NULL,
     share_token TEXT NOT NULL UNIQUE,

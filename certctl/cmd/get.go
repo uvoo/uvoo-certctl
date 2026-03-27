@@ -34,12 +34,12 @@ func buildDomainSet(domains, sans []string, includeRoot bool) []string {
 	}
 
 	for _, d := range domains {
-		for _, part := range strings.Split(d, ",") {
+		for part := range strings.SplitSeq(d, ",") {
 			add(part)
 		}
 	}
 	for _, s := range sans {
-		for _, part := range strings.Split(s, ",") {
+		for part := range strings.SplitSeq(s, ",") {
 			add(part)
 		}
 	}
@@ -47,8 +47,8 @@ func buildDomainSet(domains, sans []string, includeRoot bool) []string {
 	if includeRoot {
 		var extra []string
 		for _, d := range out {
-			if strings.HasPrefix(d, "*.") {
-				extra = append(extra, strings.TrimPrefix(d, "*."))
+			if after, ok := strings.CutPrefix(d, "*."); ok {
+				extra = append(extra, after)
 			}
 		}
 		for _, e := range extra {
@@ -99,30 +99,30 @@ func init() {
 					return err
 				}
 			}
-certs, err := acme.Issue(ctx, acme.IssueOptions{
-	Email:       email,
-	Domains:     allDomains,
-	Provider:    flags.Provider,
-	APIUser:     flags.APIUser,
-	APIKey:      flags.APIKey,
-	ClientIP:    flags.ClientIP,
-	Timeout:     timeout,
-	UseStaging:  staging,
-	Propagation: propagation,
-	KeyType:     keyType,
-})
+			certs, err := acme.Issue(ctx, acme.IssueOptions{
+				Email:       email,
+				Domains:     allDomains,
+				Provider:    flags.Provider,
+				APIUser:     flags.APIUser,
+				APIKey:      flags.APIKey,
+				ClientIP:    flags.ClientIP,
+				Timeout:     timeout,
+				UseStaging:  staging,
+				Propagation: propagation,
+				KeyType:     keyType,
+			})
 			if err != nil {
 				return err
 			}
-cryptoPassword, err := util.ResolveCryptoPassword(keyPassword, storagePassword)
-if err != nil {
-	return err
-}
-            encCert, err := cli.Encrypt(certs.Certificate, cryptoPassword)
+			cryptoPassword, err := util.ResolveCryptoPassword(keyPassword, storagePassword)
 			if err != nil {
 				return err
 			}
-            encKey, err := cli.Encrypt(certs.PrivateKey, cryptoPassword)
+			encCert, err := cli.Encrypt(certs.Certificate, cryptoPassword)
+			if err != nil {
+				return err
+			}
+			encKey, err := cli.Encrypt(certs.PrivateKey, cryptoPassword)
 			if err != nil {
 				return err
 			}
@@ -189,9 +189,9 @@ if err != nil {
 	_ = cmd.MarkFlagRequired("domain")
 
 	cmd.Flags().StringVar(&email, "email", "", "ACME account email")
-cmd.Flags().StringVar(&keyPassword, "key-password", "", "per-certificate encryption password for stored cert material")
-cmd.Flags().StringVar(&storagePassword, "storage-password", "", "fallback encryption password used when --key-password is not provided")
-cmd.Flags().StringVar(&keyType, "key-type", "ec256", "certificate key type: ec256, ec384, rsa2048, rsa4096")
+	cmd.Flags().StringVar(&keyPassword, "key-password", "", "per-certificate encryption password for stored cert material")
+	cmd.Flags().StringVar(&storagePassword, "storage-password", "", "fallback encryption password used when --key-password is not provided")
+	cmd.Flags().StringVar(&keyType, "key-type", "ec256", "certificate key type: ec256, ec384, rsa2048, rsa4096")
 	cmd.Flags().StringVar(&flags.Provider, "provider", "", "dns provider: godaddy or namecheap")
 	cmd.Flags().StringVar(&flags.APIUser, "api-user", "", "provider API user/key id")
 	cmd.Flags().StringVar(&flags.APIKey, "api-key", "", "provider API secret/key")
@@ -201,14 +201,14 @@ cmd.Flags().StringVar(&keyType, "key-type", "ec256", "certificate key type: ec25
 	cmd.Flags().DurationVar(&propagation, "propagation-timeout", 30*time.Minute, "DNS propagation timeout for provider checks")
 	cmd.Flags().BoolVar(&skipChecks, "skip-checks", false, "skip precursor checks")
 	cmd.Flags().BoolVar(&staging, "staging", false, "use Let's Encrypt staging")
-/*
-	cmd.Flags().DurationVar(
-		&skipIfExpiresWithin,
-		"skip-if-expires-within",
-		14*24*time.Hour,
-		"skip issuance if an identical cert already exists and expires later than this duration (e.g. 240h, 14d if your parser supports it)",
-	)
-*/
+	/*
+		cmd.Flags().DurationVar(
+			&skipIfExpiresWithin,
+			"skip-if-expires-within",
+			14*24*time.Hour,
+			"skip issuance if an identical cert already exists and expires later than this duration (e.g. 240h, 14d if your parser supports it)",
+		)
+	*/
 	cmd.Flags().StringVar(
 		&skipIfExpiresWithinRaw,
 		"skip-if-expires-within",
