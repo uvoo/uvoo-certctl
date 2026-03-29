@@ -5,8 +5,10 @@ bkp/
 certs.db
 extract
 .env
-out/
 docs/
 tests/
+out/
 out-*/
 trash1/
+certs.db-shm
+certs.db-wal

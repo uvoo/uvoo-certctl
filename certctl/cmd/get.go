@@ -151,7 +151,7 @@ func init() {
 				return nil
 			}
 
-			if err := store.Upsert(storage.Record{
+			if err := store.Upsert(storage.PublicCert{
 				ID:         util.NewID(),
 				CommonName: commonName,
 				SANsCSV:    sansCSV,

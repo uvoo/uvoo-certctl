@@ -19,7 +19,7 @@ import (
 
 type Store struct{ db *sql.DB }
 
-type Record struct {
+type PublicCert struct {
 	ID         string
 	CommonName string
 	SANsCSV    string
@@ -270,7 +270,7 @@ func NormalizeSANs(sans []string) ([]string, string, string) {
 	return out, csv, hash
 }
 
-func (s *Store) Upsert(rec Record) error {
+func (s *Store) Upsert(rec PublicCert) error {
 	if strings.TrimSpace(rec.CommonName) == "" {
 		return fmt.Errorf("record common_name is required")
 	}
@@ -322,8 +322,8 @@ func (s *Store) Upsert(rec Record) error {
 	return err
 }
 
-func (s *Store) Get(commonName string) (Record, error) {
-	var rec Record
+func (s *Store) Get(commonName string) (PublicCert, error) {
+	var rec PublicCert
 	var nb, na, ca, ua sql.NullString
 
 	err := s.db.QueryRow(`
@@ -359,7 +359,7 @@ func (s *Store) Get(commonName string) (Record, error) {
 	return rec, nil
 }
 
-func (s *Store) List(name string) ([]Record, error) {
+func (s *Store) List(name string) ([]PublicCert, error) {
 	var (
 		rows *sql.Rows
 		err  error
@@ -384,9 +384,9 @@ func (s *Store) List(name string) ([]Record, error) {
 	}
 	defer rows.Close()
 
-	var out []Record
+	var out []PublicCert
 	for rows.Next() {
-		var rec Record
+		var rec PublicCert
 		var nb, na, ca, ua sql.NullString
 
 		if err := rows.Scan(
@@ -418,12 +418,12 @@ func (s *Store) List(name string) ([]Record, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) GetByCommonName(name string) (Record, error) {
+func (s *Store) GetByCommonName(name string) (PublicCert, error) {
 	return s.Get(name)
 }
 
-func (s *Store) GetBySAN(name string) (Record, error) {
-	var rec Record
+func (s *Store) GetBySAN(name string) (PublicCert, error) {
+	var rec PublicCert
 	var nb, na, ca, ua sql.NullString
 
 	err := s.db.QueryRow(`
@@ -469,8 +469,8 @@ func (s *Store) GetBySAN(name string) (Record, error) {
 	return rec, nil
 }
 
-func (s *Store) FindByHash(commonName, hash string) (Record, error) {
-	var rec Record
+func (s *Store) FindByHash(commonName, hash string) (PublicCert, error) {
+	var rec PublicCert
 	var nb, na, ca, ua sql.NullString
 
 	err := s.db.QueryRow(`
@@ -541,8 +541,8 @@ func nullInt64(v sql.NullInt64) any {
 	return v.Int64
 }
 
-func (s *Store) GetByID(id string) (Record, error) {
-	var rec Record
+func (s *Store) GetByID(id string) (PublicCert, error) {
+	var rec PublicCert
 	var nb, na, ca, ua sql.NullString
 
 	err := s.db.QueryRow(`
