@@ -53,10 +53,7 @@ func init() {
 				return fmt.Errorf("failed to load root CA %q: %w", rootID, err)
 			}
 
-			rootCertPEM, err := cli.Decrypt(rootRec.CertPEM, issuerPassword)
-			if err != nil {
-				return fmt.Errorf("failed to decrypt root CA certificate: %w", err)
-			}
+			rootCertPEM := rootRec.CertPEM
 
 			rootKeyPEM, err := cli.Decrypt(rootRec.KeyPEM, issuerPassword)
 			if err != nil {
@@ -87,10 +84,13 @@ func init() {
 				return err
 			}
 
-			encCert, err := cli.Encrypt(res.CertPEM, childPassword)
-			if err != nil {
-				return err
-			}
+			/*
+				encCert, err := cli.Encrypt(res.CertPEM, childPassword)
+				if err != nil {
+					return err
+				}
+			*/
+			plainCert := res.CertPEM
 			encKey, err := cli.Encrypt(res.KeyPEM, childPassword)
 			if err != nil {
 				return err
@@ -102,7 +102,7 @@ func init() {
 				Name:       name,
 				CommonName: commonName,
 				KeyType:    keyType,
-				CertPEM:    encCert,
+				CertPEM:    plainCert,
 				KeyPEM:     encKey,
 				Issuer:     res.Issuer,
 				NotBefore:  res.NotBefore,

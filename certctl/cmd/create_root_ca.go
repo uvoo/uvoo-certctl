@@ -41,10 +41,7 @@ func init() {
 				return err
 			}
 
-			encCert, err := cli.Encrypt(res.CertPEM, cryptoPassword)
-			if err != nil {
-				return err
-			}
+			plainCert := res.CertPEM
 			encKey, err := cli.Encrypt(res.KeyPEM, cryptoPassword)
 			if err != nil {
 				return err
@@ -61,7 +58,7 @@ func init() {
 				Name:       name,
 				CommonName: commonName,
 				KeyType:    keyType,
-				CertPEM:    encCert,
+				CertPEM:    plainCert,
 				KeyPEM:     encKey,
 				Issuer:     res.Issuer,
 				NotBefore:  res.NotBefore,

@@ -66,10 +66,16 @@ func init() {
 				return fmt.Errorf("failed to load intermediate CA %q: %w", intermediateID, err)
 			}
 
-			icaCertPEM, err := cli.Decrypt(icaRec.CertPEM, issuerPassword)
-			if err != nil {
-				return fmt.Errorf("failed to decrypt intermediate CA certificate: %w", err)
-			}
+			icaCertPEM := icaRec.CertPEM
+			// fmt.Printf(icaCertPEM)
+			fmt.Printf("Certificate: %s\n", string(icaCertPEM))
+			/*
+				xx
+				icaCertPEM, err := cli.Decrypt(icaRec.CertPEM, issuerPassword)
+				if err != nil {
+					return fmt.Errorf("failed to decrypt intermediate CA certificate: %w", err)
+				}
+			*/
 
 			icaKeyPEM, err := cli.Decrypt(icaRec.KeyPEM, issuerPassword)
 			if err != nil {
@@ -102,10 +108,7 @@ func init() {
 				return err
 			}
 
-			encCert, err := cli.Encrypt(res.CertPEM, childPassword)
-			if err != nil {
-				return err
-			}
+			plainCert := res.CertPEM
 			encKey, err := cli.Encrypt(res.KeyPEM, childPassword)
 			if err != nil {
 				return err
@@ -118,7 +121,7 @@ func init() {
 				DomainsCSV:       strings.Join(allDomains, ","),
 				CertType:         certType,
 				KeyType:          keyType,
-				CertPEM:          encCert,
+				CertPEM:          plainCert,
 				KeyPEM:           encKey,
 				Issuer:           res.Issuer,
 				NotBefore:        res.NotBefore,

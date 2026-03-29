@@ -51,10 +51,12 @@ func init() {
 				return err
 			}
 
-			encCert, err := cli.Encrypt(certs.Certificate, password)
-			if err != nil {
-				return err
-			}
+			/*
+				encCert, err := cli.Encrypt(certs.Certificate, password)
+				if err != nil {
+					return err
+				}
+			*/
 			encKey, err := cli.Encrypt(certs.PrivateKey, password)
 			if err != nil {
 				return err
@@ -65,7 +67,7 @@ func init() {
 				return err
 			}
 
-			rec.CertPEM = encCert
+			rec.CertPEM = certs.Certificate
 			rec.KeyPEM = encKey
 			rec.Issuer = issuer
 			rec.NotBefore = notBefore

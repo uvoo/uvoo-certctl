@@ -6,3 +6,5 @@ certs.db
 extract
 .env
 out/
+docs/
+tests/

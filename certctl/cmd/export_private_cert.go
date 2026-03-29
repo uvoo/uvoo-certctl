@@ -31,11 +31,6 @@ func init() {
 		Use:   "export-private-cert",
 		Short: "Decrypt and export a stored private certificate and key",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cryptoPassword, err := util.ResolveCryptoPassword(keyPassword, storagePassword)
-			if err != nil {
-				return err
-			}
-
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {
 				return err
@@ -47,43 +42,54 @@ func init() {
 				return fmt.Errorf("no private certificate found for common name: %s", commonName)
 			}
 
-			certPEM, err := cli.Decrypt(rec.CertPEM, cryptoPassword)
-			if err != nil {
-				return err
-			}
-			keyPEM, err := cli.Decrypt(rec.KeyPEM, cryptoPassword)
-			if err != nil {
-				return err
-			}
-
 			if outDir == "" {
 				outDir = "."
 			}
-			if err := os.MkdirAll(outDir, 0755); err != nil {
+			if err := os.MkdirAll(outDir, 0o755); err != nil {
 				return err
 			}
 
 			base := sanitizeFileBase(rec.CommonName)
+			format = strings.ToLower(strings.TrimSpace(format))
 
-			switch strings.ToLower(strings.TrimSpace(format)) {
-			case "", "pem":
-				return exportPEM(outDir, base, certPEM, keyPEM)
+			certPEM := rec.CertPEM
 
-			case "der":
-				return exportDER(outDir, base, certPEM, keyPEM)
-
-			case "pkcs12", "p12":
-				if strings.TrimSpace(exportPassword) == "" {
-					return fmt.Errorf("--export-password is required for pkcs12")
-				}
-				return exportPKCS12(outDir, base, rec.CommonName, certPEM, keyPEM, exportPassword)
-
+			switch format {
 			case "pkcs7", "p7b":
-				return exportPKCS7(store, outDir, base, rec, cryptoPassword, includeRoot)
+				// PKCS#7 export does not need the private key.
+				return exportPKCS7(store, outDir, base, rec, includeRoot)
+
+			case "", "pem", "der", "pkcs12", "p12":
+				// These formats need the private key, so only resolve/decrypt here.
+				cryptoPassword, err := util.ResolveCryptoPassword(keyPassword, storagePassword)
+				if err != nil {
+					return err
+				}
+
+				keyPEM, err := cli.Decrypt(rec.KeyPEM, cryptoPassword)
+				if err != nil {
+					return err
+				}
+
+				switch format {
+				case "", "pem":
+					return exportPEM(outDir, base, certPEM, keyPEM)
+
+				case "der":
+					return exportDER(outDir, base, certPEM, keyPEM)
+
+				case "pkcs12", "p12":
+					if strings.TrimSpace(exportPassword) == "" {
+						return fmt.Errorf("--export-password is required for pkcs12")
+					}
+					return exportPKCS12(outDir, base, rec.CommonName, certPEM, keyPEM, exportPassword)
+				}
 
 			default:
 				return fmt.Errorf("unsupported --format %q (supported: pem, der, pkcs12, pkcs7)", format)
 			}
+
+			return nil
 		},
 	}
 
@@ -176,8 +182,8 @@ func decryptAndParseCert(enc []byte, password string) (*x509.Certificate, error)
 	return privateca.ParseCertPEM(pemBytes)
 }
 
-func exportPKCS7(store *storage.Store, outDir, base string, rec storage.PrivateCert, cryptoPassword string, includeRoot bool) error {
-	leafCert, err := decryptAndParseCert(rec.CertPEM, cryptoPassword)
+func exportPKCS7(store *storage.Store, outDir, base string, rec storage.PrivateCert, includeRoot bool) error {
+	leafCert, err := privateca.ParseCertPEM(rec.CertPEM)
 	if err != nil {
 		return err
 	}
@@ -186,7 +192,7 @@ func exportPKCS7(store *storage.Store, outDir, base string, rec storage.PrivateC
 	if err != nil {
 		return err
 	}
-	icaCert, err := decryptAndParseCert(icaRec.CertPEM, cryptoPassword)
+	icaCert, err := privateca.ParseCertPEM(icaRec.CertPEM)
 	if err != nil {
 		return err
 	}
@@ -204,7 +210,7 @@ func exportPKCS7(store *storage.Store, outDir, base string, rec storage.PrivateC
 		if err != nil {
 			return err
 		}
-		rootCert, err := decryptAndParseCert(rootRec.CertPEM, cryptoPassword)
+		rootCert, err := privateca.ParseCertPEM(rootRec.CertPEM)
 		if err != nil {
 			return err
 		}

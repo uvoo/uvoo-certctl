@@ -31,10 +31,7 @@ func init() {
 				}
 				return err
 			}
-			certPEM, err := cli.Decrypt(rec.CertPEM, password)
-			if err != nil {
-				return fmt.Errorf("failed to decrypt certificate: %w", err)
-			}
+			certPEM := rec.CertPEM
 			printKV("domain", rec.Domain)
 			printKV("provider", rec.Provider)
 			printKV("email", rec.Email)

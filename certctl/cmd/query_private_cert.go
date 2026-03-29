@@ -34,10 +34,7 @@ func init() {
 				return fmt.Errorf("no private certificate found for common name: %s", commonName)
 			}
 
-			certPEM, err := cli.Decrypt(rec.CertPEM, cryptoPassword)
-			if err != nil {
-				return err
-			}
+			certPEM := rec.CertPEM
 			keyPEM, err := cli.Decrypt(rec.KeyPEM, cryptoPassword)
 			if err != nil {
 				return err

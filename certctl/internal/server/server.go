@@ -160,11 +160,7 @@ func (s *Server) handleShareAccess(w http.ResponseWriter, r *http.Request, store
 		return
 	}
 
-	certPEM, err := cli.Decrypt(rec.CertPEM, req.Password)
-	if err != nil {
-		writeError(w, http.StatusForbidden, "failed to decrypt certificate with provided password")
-		return
-	}
+	certPEM := rec.CertPEM
 
 	resp := accessResponse{
 		ShareID:        share.ID,

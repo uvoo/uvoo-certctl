@@ -118,10 +118,14 @@ func init() {
 			if err != nil {
 				return err
 			}
-			encCert, err := cli.Encrypt(certs.Certificate, cryptoPassword)
-			if err != nil {
-				return err
-			}
+			plainCert := certs.Certificate
+			/*
+				xx
+				encCert, err := cli.Encrypt(certs.Certificate, cryptoPassword)
+				if err != nil {
+					return err
+				}
+			*/
 			encKey, err := cli.Encrypt(certs.PrivateKey, cryptoPassword)
 			if err != nil {
 				return err
@@ -164,7 +168,7 @@ func init() {
 				Domain:      primaryDomain,
 				DomainsCSV:  csv,
 				DomainsHash: hash,
-				CertPEM:     encCert,
+				CertPEM:     plainCert,
 				KeyPEM:      encKey,
 				Provider:    flags.Provider,
 				Email:       email,
