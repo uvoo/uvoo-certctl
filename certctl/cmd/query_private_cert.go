@@ -42,7 +42,7 @@ func init() {
 
 			fmt.Printf("id: %s\n", rec.ID)
 			fmt.Printf("commonName: %s\n", rec.CommonName)
-			fmt.Printf("domains: %s\n", rec.DomainsCSV)
+			fmt.Printf("sans: %s\n", rec.SANsCSV)
 			fmt.Printf("certType: %s\n", rec.CertType)
 			fmt.Printf("keyType: %s\n", rec.KeyType)
 			fmt.Printf("issuer: %s\n", rec.Issuer)

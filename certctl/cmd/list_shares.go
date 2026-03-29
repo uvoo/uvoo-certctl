@@ -9,7 +9,7 @@ import (
 )
 
 func init() {
-	var domain string
+	var san string
 
 	cmd := &cobra.Command{
 		Use:   "list-shares",
@@ -22,8 +22,8 @@ func init() {
 			defer store.Close()
 
 			var certID string
-			if domain != "" {
-				rec, err := store.GetByDomain(domain)
+			if san != "" {
+				rec, err := store.GetBySAN(san)
 				if err != nil {
 					return err
 				}
@@ -62,6 +62,6 @@ func init() {
 		},
 	}
 
-	cmd.Flags().StringVar(&domain, "domain", "", "filter shares by certificate domain")
+	cmd.Flags().StringVar(&san, "san", "", "filter shares by certificate san")
 	rootCmd.AddCommand(cmd)
 }

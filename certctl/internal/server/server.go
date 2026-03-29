@@ -110,8 +110,8 @@ func (s *Server) handleShareMetadata(w http.ResponseWriter, r *http.Request, sto
 	resp := map[string]any{
 		"share_id":              share.ID,
 		"mode":                  share.Mode,
-		"primary_domain":        rec.Domain,
-		"domains_csv":           rec.DomainsCSV,
+		"common_name":           rec.CommonName,
+		"sans_csv":              rec.SANsCSV,
 		"provider":              rec.Provider,
 		"issuer":                rec.Issuer,
 		"not_before":            formatTime(rec.NotBefore),
@@ -136,8 +136,8 @@ type accessRequest struct {
 type accessResponse struct {
 	ShareID        string `json:"share_id"`
 	CertID         string `json:"cert_id"`
-	PrimaryDomain  string `json:"primary_domain"`
-	DomainsCSV     string `json:"domains_csv"`
+	CommonName     string `json:"common_name"`
+	SANsCSV        string `json:"sans_csv"`
 	CertificatePEM string `json:"certificate_pem"`
 	PrivateKeyPEM  string `json:"private_key_pem,omitempty"`
 }
@@ -165,8 +165,8 @@ func (s *Server) handleShareAccess(w http.ResponseWriter, r *http.Request, store
 	resp := accessResponse{
 		ShareID:        share.ID,
 		CertID:         rec.ID,
-		PrimaryDomain:  rec.Domain,
-		DomainsCSV:     rec.DomainsCSV,
+		CommonName:     rec.CommonName,
+		SANsCSV:        rec.SANsCSV,
 		CertificatePEM: string(certPEM),
 	}
 

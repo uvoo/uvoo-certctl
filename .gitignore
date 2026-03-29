@@ -8,3 +8,5 @@ extract
 out/
 docs/
 tests/
+out-*/
+trash1/

@@ -51,7 +51,7 @@ type CreateIntermediateOptions struct {
 
 type IssueLeafOptions struct {
 	CommonName string
-	Domains    []string
+	SANs       []string
 	CertType   string
 	KeyType    string
 	Days       int
@@ -226,7 +226,7 @@ func IssueLeaf(parentCert *x509.Certificate, parentKey crypto.PrivateKey, opts I
 	}
 
 	var dnsNames []string
-	for _, d := range opts.Domains {
+	for _, d := range opts.SANs {
 		d = strings.TrimSpace(d)
 		if d == "" {
 			continue

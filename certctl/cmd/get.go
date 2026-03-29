@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"certctl/internal/acme"
@@ -9,18 +10,10 @@ import (
 	"certctl/internal/dns"
 	"certctl/internal/storage"
 	"certctl/internal/util"
-	// "github.com/google/uuid"
 	"github.com/spf13/cobra"
-	"strings"
 )
 
-/*
-func newID() string {
-	return uuid.NewString()
-}
-*/
-
-func buildDomainSet(domains, sans []string, includeRoot bool) []string {
+func buildSANSet(commonName string, sans []string, includeRoot bool) []string {
 	seen := map[string]bool{}
 	var out []string
 
@@ -33,11 +26,8 @@ func buildDomainSet(domains, sans []string, includeRoot bool) []string {
 		out = append(out, v)
 	}
 
-	for _, d := range domains {
-		for part := range strings.SplitSeq(d, ",") {
-			add(part)
-		}
-	}
+	add(commonName)
+
 	for _, s := range sans {
 		for part := range strings.SplitSeq(s, ",") {
 			add(part)
@@ -61,12 +51,12 @@ func buildDomainSet(domains, sans []string, includeRoot bool) []string {
 
 func init() {
 	var flags providerFlags
-	var domains, sans []string
+	var commonName string
+	var sans []string
 	var email, keyPassword, storagePassword, keyType string
 	var includeRoot bool
 	var timeout, propagation time.Duration
 	var skipChecks, staging bool
-	// var skipIfExpiresWithin time.Duration
 	var force bool
 	var skipIfExpiresWithinRaw string
 
@@ -76,17 +66,19 @@ func init() {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := withTimeout(timeout)
 			defer cancel()
+
 			p, err := providerFromFlags(ctx, flags)
 			if err != nil {
 				return err
 			}
-			allDomains := buildDomainSet(domains, sans, includeRoot)
-			if len(allDomains) == 0 {
-				return fmt.Errorf("at least one domain is required")
+
+			commonName = strings.TrimSpace(commonName)
+			if commonName == "" {
+				return fmt.Errorf("--common-name is required")
 			}
-			// primaryDomain := allDomains[0]
-			normalized, csv, hash := storage.NormalizeDomains(allDomains)
-			primaryDomain := storage.PickPrimary(normalized)
+
+			allSANs := buildSANSet(commonName, sans, includeRoot)
+			_, sansCSV, sansHash := storage.NormalizeSANs(allSANs)
 
 			skipIfExpiresWithin, err := util.ParseFlexibleDuration(skipIfExpiresWithinRaw)
 			if err != nil {
@@ -95,13 +87,14 @@ func init() {
 
 			if !skipChecks {
 				fmt.Println("Running precursor checks before issuance...")
-				if err := dns.CheckPrecursors(ctx, p, primaryDomain, flags.DNSResolver, false); err != nil {
+				if err := dns.CheckPrecursors(ctx, p, commonName, flags.DNSResolver, false); err != nil {
 					return err
 				}
 			}
+
 			certs, err := acme.Issue(ctx, acme.IssueOptions{
 				Email:       email,
-				Domains:     allDomains,
+				Domains:     allSANs,
 				Provider:    flags.Provider,
 				APIUser:     flags.APIUser,
 				APIKey:      flags.APIKey,
@@ -114,26 +107,23 @@ func init() {
 			if err != nil {
 				return err
 			}
+
 			cryptoPassword, err := util.ResolveCryptoPassword(keyPassword, storagePassword)
 			if err != nil {
 				return err
 			}
+
 			plainCert := certs.Certificate
-			/*
-				xx
-				encCert, err := cli.Encrypt(certs.Certificate, cryptoPassword)
-				if err != nil {
-					return err
-				}
-			*/
 			encKey, err := cli.Encrypt(certs.PrivateKey, cryptoPassword)
 			if err != nil {
 				return err
 			}
+
 			issuer, notBefore, notAfter, err := storage.ParseCertMetadata(certs.Certificate)
 			if err != nil {
 				return err
 			}
+
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {
 				return err
@@ -141,11 +131,11 @@ func init() {
 			defer store.Close()
 
 			if !force {
-				if existing, err := store.FindByHash(primaryDomain, hash); err == nil {
+				if existing, err := store.FindByHash(commonName, sansHash); err == nil {
 					remaining := time.Until(existing.NotAfter)
 					if remaining > skipIfExpiresWithin {
-						fmt.Printf("[info] identical cert already exists for %s\n", primaryDomain)
-						fmt.Printf("[info] SANs: %s\n", existing.DomainsCSV)
+						fmt.Printf("[info] identical cert already exists for %s\n", commonName)
+						fmt.Printf("[info] SANs: %s\n", existing.SANsCSV)
 						fmt.Printf("[info] expires: %s\n", existing.NotAfter.Format(time.RFC3339))
 						fmt.Printf("[info] remaining: %s\n", remaining.Round(time.Second))
 						fmt.Printf("[info] skipping issuance because remaining lifetime exceeds %s\n", skipIfExpiresWithin)
@@ -156,41 +146,40 @@ func init() {
 				}
 			}
 
-			if _, err := store.FindByHash(primaryDomain, hash); err == nil {
+			if _, err := store.FindByHash(commonName, sansHash); err == nil {
 				fmt.Println("[info] identical cert already exists, skipping issuance")
 				return nil
 			}
-			/*
-			 */
-			// primaryDomain := allDomains[0]
+
 			if err := store.Upsert(storage.Record{
-				ID:          util.NewID(),
-				Domain:      primaryDomain,
-				DomainsCSV:  csv,
-				DomainsHash: hash,
-				CertPEM:     plainCert,
-				KeyPEM:      encKey,
-				Provider:    flags.Provider,
-				Email:       email,
-				Issuer:      issuer,
-				NotBefore:   notBefore,
-				NotAfter:    notAfter,
+				ID:         util.NewID(),
+				CommonName: commonName,
+				SANsCSV:    sansCSV,
+				SANsHash:   sansHash,
+				CertPEM:    plainCert,
+				KeyPEM:     encKey,
+				Provider:   flags.Provider,
+				Email:      email,
+				Issuer:     issuer,
+				NotBefore:  notBefore,
+				NotAfter:   notAfter,
 			}); err != nil {
 				return err
 			}
-			fmt.Printf("Successfully obtained and stored certificate for %s\n", primaryDomain)
-			fmt.Printf("domains: %s\n", strings.Join(allDomains, ", "))
-			fmt.Printf("[info] SAN set: %s\n", csv)
+
+			fmt.Printf("Successfully obtained and stored certificate for %s\n", commonName)
+			fmt.Printf("names: %s\n", strings.Join(allSANs, ", "))
+			fmt.Printf("[info] SAN set: %s\n", sansCSV)
 			printKV("issuer", issuer)
 			printKV("not before", notBefore.Format(time.RFC3339))
 			printKV("not after", notAfter.Format(time.RFC3339))
 			return nil
 		},
 	}
-	cmd.Flags().StringSliceVar(&domains, "domain", nil, "target domain(s); can be specified multiple times or comma-separated")
-	cmd.Flags().StringSliceVar(&sans, "san", nil, "additional SANs; can be specified multiple times or comma-separated")
+
+	cmd.Flags().StringVar(&commonName, "common-name", "", "certificate common name (CN)")
+	cmd.Flags().StringSliceVar(&sans, "sans", nil, "subject alternative names (SANs); can be specified multiple times or comma-separated")
 	cmd.Flags().BoolVar(&includeRoot, "include-root", false, "if a wildcard is present, also include the apex/root domain")
-	_ = cmd.MarkFlagRequired("domain")
 
 	cmd.Flags().StringVar(&email, "email", "", "ACME account email")
 	cmd.Flags().StringVar(&keyPassword, "key-password", "", "per-certificate encryption password for stored cert material")
@@ -205,28 +194,20 @@ func init() {
 	cmd.Flags().DurationVar(&propagation, "propagation-timeout", 30*time.Minute, "DNS propagation timeout for provider checks")
 	cmd.Flags().BoolVar(&skipChecks, "skip-checks", false, "skip precursor checks")
 	cmd.Flags().BoolVar(&staging, "staging", false, "use Let's Encrypt staging")
-	/*
-		cmd.Flags().DurationVar(
-			&skipIfExpiresWithin,
-			"skip-if-expires-within",
-			14*24*time.Hour,
-			"skip issuance if an identical cert already exists and expires later than this duration (e.g. 240h, 14d if your parser supports it)",
-		)
-	*/
 	cmd.Flags().StringVar(
 		&skipIfExpiresWithinRaw,
 		"skip-if-expires-within",
 		"14d",
 		"skip issuance if an identical cert already exists and expires later than this duration",
 	)
-
 	cmd.Flags().BoolVar(
 		&force,
 		"force",
 		false,
 		"force issuance even if an identical cert already exists",
 	)
-	_ = cmd.MarkFlagRequired("domain")
+
+	_ = cmd.MarkFlagRequired("common-name")
 	_ = cmd.MarkFlagRequired("email")
 	_ = cmd.MarkFlagRequired("provider")
 	rootCmd.AddCommand(cmd)

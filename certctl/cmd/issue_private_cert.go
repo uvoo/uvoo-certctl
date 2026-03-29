@@ -50,8 +50,8 @@ func init() {
 				return fmt.Errorf("leaf certificate password required: %w", err)
 			}
 
-			allDomains := normalizePrivateCertDomains(commonName, domains, sans)
-			if len(allDomains) == 0 {
+			allSANs := normalizePrivateCertSANs(commonName, sans)
+			if len(allSANs) == 0 {
 				return fmt.Errorf("at least one domain or common name is required")
 			}
 
@@ -94,7 +94,7 @@ func init() {
 
 			res, _, err := privateca.IssueLeaf(icaCert, icaKey, privateca.IssueLeafOptions{
 				CommonName: commonName,
-				Domains:    allDomains,
+				SANs:       allSANs,
 				CertType:   certType,
 				KeyType:    keyType,
 				Days:       days,
@@ -118,7 +118,7 @@ func init() {
 				ID:               util.NewID(),
 				IntermediateCAID: icaRec.ID,
 				CommonName:       commonName,
-				DomainsCSV:       strings.Join(allDomains, ","),
+				SANsCSV:          strings.Join(allSANs, ","),
 				CertType:         certType,
 				KeyType:          keyType,
 				CertPEM:          plainCert,
@@ -136,7 +136,7 @@ func init() {
 			fmt.Printf("id:              %s\n", rec.ID)
 			fmt.Printf("intermediate id: %s\n", rec.IntermediateCAID)
 			fmt.Printf("commonName:      %s\n", rec.CommonName)
-			fmt.Printf("domains:         %s\n", rec.DomainsCSV)
+			fmt.Printf("sans:         %s\n", rec.SANsCSV)
 			fmt.Printf("certType:        %s\n", rec.CertType)
 			fmt.Printf("keyType:         %s\n", rec.KeyType)
 			fmt.Printf("notBefore:       %s\n", rec.NotBefore.Format(time.RFC3339))
@@ -171,7 +171,7 @@ func init() {
 	rootCmd.AddCommand(cmd)
 }
 
-func normalizePrivateCertDomains(commonName string, domains, sans []string) []string {
+func normalizePrivateCertSANs(commonName string, sans []string) []string {
 	seen := map[string]struct{}{}
 	var out []string
 
@@ -189,7 +189,7 @@ func normalizePrivateCertDomains(commonName string, domains, sans []string) []st
 
 	add(commonName)
 
-	for _, item := range domains {
+	for _, item := range sans {
 		for part := range strings.SplitSeq(item, ",") {
 			add(part)
 		}

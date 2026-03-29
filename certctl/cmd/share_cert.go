@@ -12,7 +12,7 @@ import (
 )
 
 func init() {
-	var domain string
+	var san string
 	var mode string
 	var sharePassword string
 	var keyPassword string
@@ -41,9 +41,9 @@ func init() {
 			}
 			defer store.Close()
 
-			rec, err := store.GetByDomain(domain)
+			rec, err := store.GetBySAN(san)
 			if err != nil {
-				return fmt.Errorf("certificate not found for domain %q: %w", domain, err)
+				return fmt.Errorf("certificate not found for san %q: %w", san, err)
 			}
 
 			shareHash, err := util.HashPassword(sharePassword)
@@ -104,7 +104,7 @@ func init() {
 		},
 	}
 
-	cmd.Flags().StringVar(&domain, "domain", "", "primary or SAN domain to find the certificate")
+	cmd.Flags().StringVar(&san, "san", "", "primary or SAN domain to find the certificate")
 	cmd.Flags().StringVar(&mode, "mode", "cert", "share mode: cert or cert_key")
 	cmd.Flags().StringVar(&sharePassword, "share-password", "", "password required to access the share")
 	cmd.Flags().StringVar(&keyPassword, "key-password", "", "second password required to reveal the private key when mode=cert_key")
@@ -112,7 +112,7 @@ func init() {
 	cmd.Flags().Int64Var(&maxViews, "max-views", 0, "optional maximum number of views")
 	cmd.Flags().StringVar(&note, "note", "", "optional note")
 	cmd.Flags().StringVar(&baseURL, "base-url", "", "optional base URL used to print a full share URL")
-	_ = cmd.MarkFlagRequired("domain")
+	_ = cmd.MarkFlagRequired("san")
 
 	rootCmd.AddCommand(cmd)
 }

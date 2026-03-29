@@ -38,7 +38,7 @@ func init() {
 			for _, r := range rows {
 				fmt.Printf("id:              %s\n", r.ID)
 				fmt.Printf("commonName:      %s\n", r.CommonName)
-				fmt.Printf("domains:         %s\n", r.DomainsCSV)
+				fmt.Printf("sans:         %s\n", r.SANsCSV)
 				fmt.Printf("certType:        %s\n", r.CertType)
 				fmt.Printf("keyType:         %s\n", r.KeyType)
 				fmt.Printf("intermediate id: %s\n", r.IntermediateCAID)

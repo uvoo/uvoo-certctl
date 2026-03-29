@@ -12,7 +12,7 @@ import (
 )
 
 func init() {
-	var domain string
+	var common_name string
 	var password string
 	var force bool
 	var days int
@@ -28,21 +28,23 @@ func init() {
 			defer store.Close()
 
 			// rec, err := store.Get(domain)
-			rec, err := store.GetByDomain(domain)
+			rec, err := store.GetByCommonName(common_name)
 			if err != nil {
 				return err
 			}
 
 			remaining := time.Until(rec.NotAfter)
 			if !force && remaining > time.Duration(days)*24*time.Hour {
-				fmt.Printf("Skipping renewal for %s (expires %s)\n", domain, rec.NotAfter.Format(time.RFC3339))
+				fmt.Printf("Skipping renewal for %s (expires %s)\n", common_name, rec.NotAfter.Format(time.RFC3339))
 				return nil
 			}
-			domains := strings.Split(rec.DomainsCSV, ",")
+			sans := strings.Split(rec.SANsCSV, ",")
 			certs, err := acme.Issue(cmd.Context(), acme.IssueOptions{
 				Email: rec.Email,
 				// Domains:     []string{domain},
-				Domains:     domains,
+				// Domains:     []string{sans},
+				// SANs:     sans,
+				Domains:     sans,
 				Provider:    rec.Provider,
 				Timeout:     10 * time.Minute,
 				Propagation: 30 * time.Minute,
@@ -77,16 +79,16 @@ func init() {
 				return err
 			}
 
-			fmt.Printf("Renewed certificate for %s\n", domain)
+			fmt.Printf("Renewed certificate for %s\n", common_name)
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&domain, "domain", "", "domain to renew")
+	cmd.Flags().StringVar(&common_name, "common_name", "", "common_name to renew")
 	cmd.Flags().StringVar(&password, "password", "", "encryption password")
 	cmd.Flags().BoolVar(&force, "force", false, "renew even if not near expiry")
 	cmd.Flags().IntVar(&days, "days", 30, "renew if expires within this many days")
-	_ = cmd.MarkFlagRequired("domain")
+	_ = cmd.MarkFlagRequired("common_name")
 	_ = cmd.MarkFlagRequired("password")
 
 	rootCmd.AddCommand(cmd)
