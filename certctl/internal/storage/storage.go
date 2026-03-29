@@ -167,8 +167,6 @@ func Open(path string) (*Store, error) {
     FOREIGN KEY(cert_id) REFERENCES certs(id)
 )`,
 
-
-
 		// Best-effort migrations for older DBs.
 		`ALTER TABLE certs ADD COLUMN id TEXT`,
 		`ALTER TABLE certs ADD COLUMN domains_csv TEXT`,
@@ -181,7 +179,7 @@ func Open(path string) (*Store, error) {
 		`ALTER TABLE certs ADD COLUMN created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`,
 		`ALTER TABLE certs ADD COLUMN updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`,
 
-`CREATE TABLE IF NOT EXISTS private_root_cas (
+		`CREATE TABLE IF NOT EXISTS private_root_cas (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     common_name TEXT NOT NULL,
@@ -195,7 +193,7 @@ func Open(path string) (*Store, error) {
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`,
 
-`CREATE TABLE IF NOT EXISTS private_intermediate_cas (
+		`CREATE TABLE IF NOT EXISTS private_intermediate_cas (
     id TEXT PRIMARY KEY,
     root_ca_id TEXT NOT NULL,
     name TEXT NOT NULL UNIQUE,
@@ -211,7 +209,7 @@ func Open(path string) (*Store, error) {
     FOREIGN KEY(root_ca_id) REFERENCES private_root_cas(id)
 )`,
 
-`CREATE TABLE IF NOT EXISTS private_certs (
+		`CREATE TABLE IF NOT EXISTS private_certs (
     id TEXT PRIMARY KEY,
     intermediate_ca_id TEXT NOT NULL,
     common_name TEXT NOT NULL,
@@ -745,7 +743,6 @@ func nullInt64(v sql.NullInt64) any {
 	return v.Int64
 }
 
-
 func (s *Store) UpsertPrivateRootCA(rec PrivateRootCA) error {
 	_, err := s.db.Exec(`
 		INSERT INTO private_root_cas
@@ -955,7 +952,6 @@ func (s *Store) ListPrivateCerts(commonName string) ([]PrivateCert, error) {
 
 	return out, rows.Err()
 }
-
 
 func (s *Store) GetPrivateCertByName(name string) (PrivateCert, error) {
 	var rec PrivateCert

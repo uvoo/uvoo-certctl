@@ -187,12 +187,12 @@ func normalizePrivateCertDomains(commonName string, domains, sans []string) []st
 	add(commonName)
 
 	for _, item := range domains {
-		for _, part := range strings.Split(item, ",") {
+		for part := range strings.SplitSeq(item, ",") {
 			add(part)
 		}
 	}
 	for _, item := range sans {
-		for _, part := range strings.Split(item, ",") {
+		for part := range strings.SplitSeq(item, ",") {
 			add(part)
 		}
 	}

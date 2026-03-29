@@ -25,6 +25,7 @@ func init() {
 	var storagePassword string
 	var format string
 	var exportPassword string
+	var includeRoot bool
 
 	cmd := &cobra.Command{
 		Use:   "export-private-cert",
@@ -78,7 +79,7 @@ func init() {
 				return exportPKCS12(outDir, base, rec.CommonName, certPEM, keyPEM, exportPassword)
 
 			case "pkcs7", "p7b":
-				return exportPKCS7(outDir, base, certPEM)
+				return exportPKCS7(store, outDir, base, rec, cryptoPassword, includeRoot)
 
 			default:
 				return fmt.Errorf("unsupported --format %q (supported: pem, der, pkcs12, pkcs7)", format)
@@ -92,6 +93,7 @@ func init() {
 	cmd.Flags().StringVar(&storagePassword, "storage-password", "", "fallback encryption password")
 	cmd.Flags().StringVar(&format, "format", "pem", "export format: pem, der, pkcs12, pkcs7")
 	cmd.Flags().StringVar(&exportPassword, "export-password", "", "password for pkcs12 export")
+	cmd.Flags().BoolVar(&includeRoot, "include-root", false, "include root CA in pkcs7 export")
 
 	_ = cmd.MarkFlagRequired("common-name")
 
@@ -166,8 +168,25 @@ func exportPKCS12(outDir, base, friendlyName string, certPEM, keyPEM []byte, exp
 	return nil
 }
 
-func exportPKCS7(outDir, base string, certPEM []byte) error {
-	cert, err := privateca.ParseCertPEM(certPEM)
+func decryptAndParseCert(enc []byte, password string) (*x509.Certificate, error) {
+	pemBytes, err := cli.Decrypt(enc, password)
+	if err != nil {
+		return nil, err
+	}
+	return privateca.ParseCertPEM(pemBytes)
+}
+
+func exportPKCS7(store *storage.Store, outDir, base string, rec storage.PrivateCert, cryptoPassword string, includeRoot bool) error {
+	leafCert, err := decryptAndParseCert(rec.CertPEM, cryptoPassword)
+	if err != nil {
+		return err
+	}
+
+	icaRec, err := store.GetPrivateIntermediateCAByID(rec.IntermediateCAID)
+	if err != nil {
+		return err
+	}
+	icaCert, err := decryptAndParseCert(icaRec.CertPEM, cryptoPassword)
 	if err != nil {
 		return err
 	}
@@ -177,7 +196,20 @@ func exportPKCS7(outDir, base string, certPEM []byte) error {
 		return err
 	}
 
-	sd.AddCertificate(cert)
+	sd.AddCertificate(leafCert)
+	sd.AddCertificate(icaCert)
+
+	if includeRoot && icaRec.RootCAID != "" {
+		rootRec, err := store.GetPrivateRootCAByID(icaRec.RootCAID)
+		if err != nil {
+			return err
+		}
+		rootCert, err := decryptAndParseCert(rootRec.CertPEM, cryptoPassword)
+		if err != nil {
+			return err
+		}
+		sd.AddCertificate(rootCert)
+	}
 
 	p7Bytes, err := sd.Finish()
 	if err != nil {
