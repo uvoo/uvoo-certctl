@@ -53,6 +53,51 @@ type CertShare struct {
 	Note              string
 }
 
+type PrivateRootCA struct {
+	ID         string
+	Name       string
+	CommonName string
+	KeyType    string
+	CertPEM    []byte
+	KeyPEM     []byte
+	Issuer     string
+	NotBefore  time.Time
+	NotAfter   time.Time
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
+type PrivateIntermediateCA struct {
+	ID         string
+	RootCAID   string
+	Name       string
+	CommonName string
+	KeyType    string
+	CertPEM    []byte
+	KeyPEM     []byte
+	Issuer     string
+	NotBefore  time.Time
+	NotAfter   time.Time
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
+type PrivateCert struct {
+	ID               string
+	IntermediateCAID string
+	CommonName       string
+	DomainsCSV       string
+	CertType         string
+	KeyType          string
+	CertPEM          []byte
+	KeyPEM           []byte
+	Issuer           string
+	NotBefore        time.Time
+	NotAfter         time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
 func Open(path string) (*Store, error) {
 	dir := filepath.Dir(path)
 	if dir != "." {
@@ -122,6 +167,8 @@ func Open(path string) (*Store, error) {
     FOREIGN KEY(cert_id) REFERENCES certs(id)
 )`,
 
+
+
 		// Best-effort migrations for older DBs.
 		`ALTER TABLE certs ADD COLUMN id TEXT`,
 		`ALTER TABLE certs ADD COLUMN domains_csv TEXT`,
@@ -133,6 +180,53 @@ func Open(path string) (*Store, error) {
 		`ALTER TABLE certs ADD COLUMN not_after TEXT`,
 		`ALTER TABLE certs ADD COLUMN created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`,
 		`ALTER TABLE certs ADD COLUMN updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`,
+
+`CREATE TABLE IF NOT EXISTS private_root_cas (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    common_name TEXT NOT NULL,
+    key_type TEXT NOT NULL,
+    cert_pem BLOB NOT NULL,
+    key_pem BLOB NOT NULL,
+    issuer TEXT,
+    not_before TEXT,
+    not_after TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+)`,
+
+`CREATE TABLE IF NOT EXISTS private_intermediate_cas (
+    id TEXT PRIMARY KEY,
+    root_ca_id TEXT NOT NULL,
+    name TEXT NOT NULL UNIQUE,
+    common_name TEXT NOT NULL,
+    key_type TEXT NOT NULL,
+    cert_pem BLOB NOT NULL,
+    key_pem BLOB NOT NULL,
+    issuer TEXT,
+    not_before TEXT,
+    not_after TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(root_ca_id) REFERENCES private_root_cas(id)
+)`,
+
+`CREATE TABLE IF NOT EXISTS private_certs (
+    id TEXT PRIMARY KEY,
+    intermediate_ca_id TEXT NOT NULL,
+    common_name TEXT NOT NULL,
+    domains_csv TEXT,
+    cert_type TEXT NOT NULL,
+    key_type TEXT NOT NULL,
+    cert_pem BLOB NOT NULL,
+    key_pem BLOB NOT NULL,
+    issuer TEXT,
+    not_before TEXT,
+    not_after TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(intermediate_ca_id) REFERENCES private_intermediate_cas(id)
+)`,
 	}
 
 	for i, stmt := range stmts {
@@ -649,4 +743,264 @@ func nullInt64(v sql.NullInt64) any {
 		return nil
 	}
 	return v.Int64
+}
+
+
+func (s *Store) UpsertPrivateRootCA(rec PrivateRootCA) error {
+	_, err := s.db.Exec(`
+		INSERT INTO private_root_cas
+		(id, name, common_name, key_type, cert_pem, key_pem, issuer, not_before, not_after, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), CURRENT_TIMESTAMP)
+		ON CONFLICT(name) DO UPDATE SET
+			id=excluded.id,
+			common_name=excluded.common_name,
+			key_type=excluded.key_type,
+			cert_pem=excluded.cert_pem,
+			key_pem=excluded.key_pem,
+			issuer=excluded.issuer,
+			not_before=excluded.not_before,
+			not_after=excluded.not_after,
+			updated_at=CURRENT_TIMESTAMP
+	`,
+		rec.ID,
+		rec.Name,
+		rec.CommonName,
+		rec.KeyType,
+		rec.CertPEM,
+		rec.KeyPEM,
+		rec.Issuer,
+		timeOrEmpty(rec.NotBefore),
+		timeOrEmpty(rec.NotAfter),
+		timeOrNil(rec.CreatedAt),
+	)
+	return err
+}
+
+func (s *Store) GetPrivateRootCAByID(id string) (PrivateRootCA, error) {
+	var rec PrivateRootCA
+	var nb, na, ca, ua sql.NullString
+
+	err := s.db.QueryRow(`
+		SELECT id, name, common_name, key_type, cert_pem, key_pem, issuer, not_before, not_after, created_at, updated_at
+		FROM private_root_cas
+		WHERE id = ?
+		LIMIT 1
+	`, id).Scan(
+		&rec.ID,
+		&rec.Name,
+		&rec.CommonName,
+		&rec.KeyType,
+		&rec.CertPEM,
+		&rec.KeyPEM,
+		&rec.Issuer,
+		&nb,
+		&na,
+		&ca,
+		&ua,
+	)
+	if err != nil {
+		return rec, err
+	}
+	rec.NotBefore = parseRFC3339Null(nb)
+	rec.NotAfter = parseRFC3339Null(na)
+	rec.CreatedAt = parseRFC3339Null(ca)
+	rec.UpdatedAt = parseRFC3339Null(ua)
+	return rec, nil
+}
+
+func (s *Store) UpsertPrivateIntermediateCA(rec PrivateIntermediateCA) error {
+	_, err := s.db.Exec(`
+		INSERT INTO private_intermediate_cas
+		(id, root_ca_id, name, common_name, key_type, cert_pem, key_pem, issuer, not_before, not_after, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), CURRENT_TIMESTAMP)
+		ON CONFLICT(name) DO UPDATE SET
+			id=excluded.id,
+			root_ca_id=excluded.root_ca_id,
+			common_name=excluded.common_name,
+			key_type=excluded.key_type,
+			cert_pem=excluded.cert_pem,
+			key_pem=excluded.key_pem,
+			issuer=excluded.issuer,
+			not_before=excluded.not_before,
+			not_after=excluded.not_after,
+			updated_at=CURRENT_TIMESTAMP
+	`,
+		rec.ID,
+		rec.RootCAID,
+		rec.Name,
+		rec.CommonName,
+		rec.KeyType,
+		rec.CertPEM,
+		rec.KeyPEM,
+		rec.Issuer,
+		timeOrEmpty(rec.NotBefore),
+		timeOrEmpty(rec.NotAfter),
+		timeOrNil(rec.CreatedAt),
+	)
+	return err
+}
+
+func (s *Store) GetPrivateIntermediateCAByID(id string) (PrivateIntermediateCA, error) {
+	var rec PrivateIntermediateCA
+	var nb, na, ca, ua sql.NullString
+
+	err := s.db.QueryRow(`
+		SELECT id, root_ca_id, name, common_name, key_type, cert_pem, key_pem, issuer, not_before, not_after, created_at, updated_at
+		FROM private_intermediate_cas
+		WHERE id = ?
+		LIMIT 1
+	`, id).Scan(
+		&rec.ID,
+		&rec.RootCAID,
+		&rec.Name,
+		&rec.CommonName,
+		&rec.KeyType,
+		&rec.CertPEM,
+		&rec.KeyPEM,
+		&rec.Issuer,
+		&nb,
+		&na,
+		&ca,
+		&ua,
+	)
+	if err != nil {
+		return rec, err
+	}
+	rec.NotBefore = parseRFC3339Null(nb)
+	rec.NotAfter = parseRFC3339Null(na)
+	rec.CreatedAt = parseRFC3339Null(ca)
+	rec.UpdatedAt = parseRFC3339Null(ua)
+	return rec, nil
+}
+
+func (s *Store) UpsertPrivateCert(rec PrivateCert) error {
+	_, err := s.db.Exec(`
+		INSERT INTO private_certs
+		(id, intermediate_ca_id, common_name, domains_csv, cert_type, key_type, cert_pem, key_pem, issuer, not_before, not_after, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), CURRENT_TIMESTAMP)
+	`,
+		rec.ID,
+		rec.IntermediateCAID,
+		rec.CommonName,
+		rec.DomainsCSV,
+		rec.CertType,
+		rec.KeyType,
+		rec.CertPEM,
+		rec.KeyPEM,
+		rec.Issuer,
+		timeOrEmpty(rec.NotBefore),
+		timeOrEmpty(rec.NotAfter),
+		timeOrNil(rec.CreatedAt),
+	)
+	return err
+}
+
+func (s *Store) ListPrivateCerts(commonName string) ([]PrivateCert, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+
+	if commonName != "" {
+		rows, err = s.db.Query(`
+			SELECT id, intermediate_ca_id, common_name, COALESCE(domains_csv, ''), cert_type, key_type,
+			       cert_pem, key_pem, issuer, not_before, not_after, created_at, updated_at
+			FROM private_certs
+			WHERE common_name = ? OR domains_csv LIKE ?
+			ORDER BY common_name, updated_at DESC
+		`, commonName, "%"+commonName+"%")
+	} else {
+		rows, err = s.db.Query(`
+			SELECT id, intermediate_ca_id, common_name, COALESCE(domains_csv, ''), cert_type, key_type,
+			       cert_pem, key_pem, issuer, not_before, not_after, created_at, updated_at
+			FROM private_certs
+			ORDER BY common_name, updated_at DESC
+		`)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []PrivateCert
+	for rows.Next() {
+		var rec PrivateCert
+		var nb, na, ca, ua sql.NullString
+
+		if err := rows.Scan(
+			&rec.ID,
+			&rec.IntermediateCAID,
+			&rec.CommonName,
+			&rec.DomainsCSV,
+			&rec.CertType,
+			&rec.KeyType,
+			&rec.CertPEM,
+			&rec.KeyPEM,
+			&rec.Issuer,
+			&nb,
+			&na,
+			&ca,
+			&ua,
+		); err != nil {
+			return nil, err
+		}
+
+		rec.NotBefore = parseRFC3339Null(nb)
+		rec.NotAfter = parseRFC3339Null(na)
+		rec.CreatedAt = parseRFC3339Null(ca)
+		rec.UpdatedAt = parseRFC3339Null(ua)
+
+		out = append(out, rec)
+	}
+
+	return out, rows.Err()
+}
+
+
+func (s *Store) GetPrivateCertByName(name string) (PrivateCert, error) {
+	var rec PrivateCert
+	var nb, na, ca, ua sql.NullString
+
+	err := s.db.QueryRow(`
+		SELECT id, intermediate_ca_id, common_name, COALESCE(domains_csv, ''), cert_type, key_type,
+		       cert_pem, key_pem, issuer, not_before, not_after, created_at, updated_at
+		FROM private_certs
+		WHERE common_name = ?
+		   OR domains_csv = ?
+		   OR domains_csv LIKE ?
+		   OR domains_csv LIKE ?
+		   OR domains_csv LIKE ?
+		ORDER BY updated_at DESC
+		LIMIT 1
+	`,
+		name,
+		name,
+		name+",%",
+		"%,"+name+",%",
+		"%,"+name,
+	).Scan(
+		&rec.ID,
+		&rec.IntermediateCAID,
+		&rec.CommonName,
+		&rec.DomainsCSV,
+		&rec.CertType,
+		&rec.KeyType,
+		&rec.CertPEM,
+		&rec.KeyPEM,
+		&rec.Issuer,
+		&nb,
+		&na,
+		&ca,
+		&ua,
+	)
+	if err != nil {
+		return rec, err
+	}
+
+	rec.NotBefore = parseRFC3339Null(nb)
+	rec.NotAfter = parseRFC3339Null(na)
+	rec.CreatedAt = parseRFC3339Null(ca)
+	rec.UpdatedAt = parseRFC3339Null(ua)
+
+	return rec, nil
 }

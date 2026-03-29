@@ -5,3 +5,4 @@ bkp/
 certs.db
 extract
 .env
+out/
