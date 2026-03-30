@@ -9,7 +9,7 @@ import (
 )
 
 func init() {
-	var domain string
+	var san string
 
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -21,13 +21,13 @@ func init() {
 			}
 			defer store.Close()
 
-			rows, err := store.List(domain)
+			rows, err := store.List(san)
 			if err != nil {
 				return err
 			}
 			if len(rows) == 0 {
-				if domain != "" {
-					fmt.Printf("No certificates found for domain: %s\n", domain)
+				if san != "" {
+					fmt.Printf("No certificates found for common_name or san: %s\n", san)
 				} else {
 					fmt.Println("No certificates found")
 				}
@@ -35,8 +35,8 @@ func init() {
 			}
 
 			for _, r := range rows {
-				fmt.Printf("domain: %s\n", r.Domain)
-				fmt.Printf("  sans:       %s\n", r.DomainsCSV)
+				fmt.Printf("common_name: %s\n", r.CommonName)
+				fmt.Printf("  sans:       %s\n", r.SANsCSV)
 				fmt.Printf("  provider:   %s\n", r.Provider)
 				fmt.Printf("  email:      %s\n", r.Email)
 				fmt.Printf("  issuer:     %s\n", r.Issuer)
@@ -47,6 +47,6 @@ func init() {
 		},
 	}
 
-	cmd.Flags().StringVar(&domain, "domain", "", "filter by domain")
+	cmd.Flags().StringVar(&san, "san", "", "filter by san")
 	rootCmd.AddCommand(cmd)
 }

@@ -39,6 +39,7 @@ type IssueOptions struct {
 	Timeout     time.Duration
 	UseStaging  bool
 	Propagation time.Duration
+	KeyType     string
 }
 
 func Issue(ctx context.Context, opts IssueOptions) (*certificate.Resource, error) {
@@ -62,7 +63,19 @@ func Issue(ctx context.Context, opts IssueOptions) (*certificate.Resource, error
 	} else {
 		config.CADirURL = lego.LEDirectoryProduction
 	}
-	config.Certificate.KeyType = certcrypto.RSA2048
+
+	switch strings.ToLower(strings.TrimSpace(opts.KeyType)) {
+	case "", "ec256":
+		config.Certificate.KeyType = certcrypto.EC256
+	case "ec384":
+		config.Certificate.KeyType = certcrypto.EC384
+	case "rsa2048":
+		config.Certificate.KeyType = certcrypto.RSA2048
+	case "rsa4096":
+		config.Certificate.KeyType = certcrypto.RSA4096
+	default:
+		return nil, fmt.Errorf("unsupported key type: %s (supported: ec256, ec384, rsa2048, rsa4096)", opts.KeyType)
+	}
 
 	client, err := lego.NewClient(config)
 	if err != nil {
@@ -86,7 +99,7 @@ func Issue(ctx context.Context, opts IssueOptions) (*certificate.Resource, error
 		Bundle:  true,
 	}
 
-	_ = ctx // currently unused by lego directly
+	_ = ctx
 
 	certs, err := client.Certificate.Obtain(request)
 	if err != nil {

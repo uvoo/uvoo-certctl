@@ -2,3 +2,13 @@
 trash/
 tmp/
 bkp/
+certs.db
+extract
+.env
+docs/
+tests/
+out/
+out-*/
+trash1/
+certs.db-shm
+certs.db-wal

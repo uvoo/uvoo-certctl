@@ -11,7 +11,7 @@ import (
 )
 
 func init() {
-	var domain, password string
+	var san, password string
 	var showKey bool
 
 	cmd := &cobra.Command{
@@ -23,19 +23,15 @@ func init() {
 				return err
 			}
 			defer store.Close()
-			// rec, err := store.Get(domain)
-			rec, err := store.GetByDomain(domain)
+			rec, err := store.GetBySAN(san)
 			if err != nil {
 				if err == sql.ErrNoRows {
-					return fmt.Errorf("no certificate found for domain: %s", domain)
+					return fmt.Errorf("no certificate found for san or common_name: %s", san)
 				}
 				return err
 			}
-			certPEM, err := cli.Decrypt(rec.CertPEM, password)
-			if err != nil {
-				return fmt.Errorf("failed to decrypt certificate: %w", err)
-			}
-			printKV("domain", rec.Domain)
+			certPEM := rec.CertPEM
+			printKV("common_name", rec.CommonName)
 			printKV("provider", rec.Provider)
 			printKV("email", rec.Email)
 			printKV("issuer", rec.Issuer)
@@ -58,10 +54,10 @@ func init() {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&domain, "domain", "", "target domain")
+	cmd.Flags().StringVar(&san, "san", "", "target san")
 	cmd.Flags().StringVar(&password, "password", "", "encryption password")
 	cmd.Flags().BoolVar(&showKey, "show-key", false, "also print the private key")
-	_ = cmd.MarkFlagRequired("domain")
+	_ = cmd.MarkFlagRequired("san")
 	_ = cmd.MarkFlagRequired("password")
 	rootCmd.AddCommand(cmd)
 }
