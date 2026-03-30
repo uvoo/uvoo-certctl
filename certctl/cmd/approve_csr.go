@@ -160,6 +160,8 @@ func init() {
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 
 	_ = cmd.MarkFlagRequired("id")
+	_ = cmd.MarkFlagRequired("parent-key-password")
+	_ = cmd.MarkFlagRequired("intermediate-name")
 	rootCmd.AddCommand(cmd)
 }
 
