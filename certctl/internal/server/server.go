@@ -2,9 +2,11 @@ package server
 
 import (
 	"bytes"
+	"crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -19,6 +21,9 @@ import (
 type Config struct {
 	DBPath            string
 	Listen            string
+	TLSCertFile       string
+	TLSKeyFile        string
+	AllowCIDRs        []string
 	CSRSubmitPassword string
 	CSRMaxBodyBytes   int64
 	CSRMinInterval    time.Duration
@@ -29,6 +34,8 @@ type Server struct {
 	mux           *http.ServeMux
 	mu            sync.Mutex
 	csrLastSubmit map[string]time.Time
+	allowNets     []*net.IPNet
+	configErr     error
 }
 
 func New(cfg Config) *Server {
@@ -43,6 +50,7 @@ func New(cfg Config) *Server {
 	if s.cfg.CSRMinInterval <= 0 {
 		s.cfg.CSRMinInterval = 2 * time.Second
 	}
+	s.allowNets, s.configErr = parseAllowCIDRs(s.cfg.AllowCIDRs)
 
 	s.mux.HandleFunc("/healthz", s.handleHealth)
 	s.mux.HandleFunc("/share/", s.handleShare)
@@ -53,15 +61,40 @@ func New(cfg Config) *Server {
 }
 
 func (s *Server) Run() error {
+	if s.configErr != nil {
+		return s.configErr
+	}
+	if err := validateTLSFiles(s.cfg.TLSCertFile, s.cfg.TLSKeyFile); err != nil {
+		return err
+	}
+
 	httpSrv := &http.Server{
 		Addr:              s.cfg.Listen,
-		Handler:           s.mux,
+		Handler:           s,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		ReadHeaderTimeout: 10 * time.Second,
+		TLSConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		},
+	}
+	if strings.TrimSpace(s.cfg.TLSCertFile) != "" {
+		return httpSrv.ListenAndServeTLS(s.cfg.TLSCertFile, s.cfg.TLSKeyFile)
 	}
 	return httpSrv.ListenAndServe()
+}
+
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if s.configErr != nil {
+		writeError(w, http.StatusInternalServerError, "server configuration error")
+		return
+	}
+	if !s.allowRemote(r.RemoteAddr) {
+		writeError(w, http.StatusForbidden, "remote address is not allowed by nacl")
+		return
+	}
+	s.mux.ServeHTTP(w, r)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -333,6 +366,60 @@ func remoteKey(remoteAddr string) string {
 		return host
 	}
 	return remoteAddr
+}
+
+func (s *Server) allowRemote(remoteAddr string) bool {
+	if len(s.allowNets) == 0 {
+		return true
+	}
+
+	ip := remoteIP(remoteAddr)
+	if ip == nil {
+		return false
+	}
+	for _, network := range s.allowNets {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func remoteIP(remoteAddr string) net.IP {
+	host := remoteKey(remoteAddr)
+	if host == "" || host == "unknown" {
+		return nil
+	}
+	return net.ParseIP(host)
+}
+
+func parseAllowCIDRs(values []string) ([]*net.IPNet, error) {
+	nets := make([]*net.IPNet, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		_, network, err := net.ParseCIDR(value)
+		if err != nil {
+			return nil, fmt.Errorf("invalid nacl cidr %q: %w", value, err)
+		}
+		nets = append(nets, network)
+	}
+	return nets, nil
+}
+
+func validateTLSFiles(certFile, keyFile string) error {
+	certFile = strings.TrimSpace(certFile)
+	keyFile = strings.TrimSpace(keyFile)
+	switch {
+	case certFile == "" && keyFile == "":
+		return nil
+	case certFile == "" || keyFile == "":
+		return errors.New("both --tls-cert-file and --tls-key-file are required to enable https")
+	default:
+		return nil
+	}
 }
 
 func privateKeyStored(keyPEM []byte) bool {

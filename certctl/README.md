@@ -124,6 +124,7 @@ go run . issue-private-cert \
 - The ACME flow still uses lego for DNS-01 challenge presentation.
 - Password-like flags accept raw values, `env:VARNAME`, or `file:/path/to/secret`.
 - `--default-root-ca` and `--default-intermediate-ca` can be set once to avoid repeating issuer names on every command.
+- `serve-certs` defaults its `--nacl` allowlist to private IPv4 and IPv6 client networks. Add loopback or public ranges explicitly when needed.
 
 ## Operations
 
@@ -150,6 +151,14 @@ Queue and approve CSRs:
 go run . submit-csr --kind private --csr-file server.csr --requester-name 'Jane Doe'
 go run . list-csr-requests
 go run . approve-csr --id <request-id> --intermediate-name internal-ica --parent-key-password env:CERTCTL_PARENT_KEY_PASSWORD
+```
+
+Serve certificate shares and CSR pickup/submission:
+
+```bash
+go run . serve-certs --listen :8080
+go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt --tls-key-file /etc/certctl/tls/server.key
+go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt --tls-key-file /etc/certctl/tls/server.key --nacl 127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
 ```
 
 Export safe metadata or a DB backup:

@@ -30,7 +30,7 @@ func TestCSRSubmitAndPickupFlow(t *testing.T) {
 
 	req := newCSRSubmitRequest(t, storage.CertKindPublic, "submit-secret", mustCreateServerTestCSR(t, "api.example.com", []string{"api.example.com"}))
 	rec := httptest.NewRecorder()
-	srv.mux.ServeHTTP(rec, req)
+	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -49,7 +49,7 @@ func TestCSRSubmitAndPickupFlow(t *testing.T) {
 
 	statusReq := httptest.NewRequest(http.MethodGet, "/csr-requests/"+submitResp.ID+"?pickup_token="+submitResp.PickupToken, nil)
 	statusRec := httptest.NewRecorder()
-	srv.mux.ServeHTTP(statusRec, statusReq)
+	srv.ServeHTTP(statusRec, statusReq)
 	if statusRec.Code != http.StatusOK || !strings.Contains(statusRec.Body.String(), `"status":"pending"`) {
 		t.Fatalf("expected pending status response, got %d: %s", statusRec.Code, statusRec.Body.String())
 	}
@@ -81,7 +81,7 @@ func TestCSRSubmitAndPickupFlow(t *testing.T) {
 	issuedReq := httptest.NewRequest(http.MethodGet, "/csr-requests/"+submitResp.ID, nil)
 	issuedReq.Header.Set("X-Pickup-Token", submitResp.PickupToken)
 	issuedRec := httptest.NewRecorder()
-	srv.mux.ServeHTTP(issuedRec, issuedReq)
+	srv.ServeHTTP(issuedRec, issuedReq)
 	if issuedRec.Code != http.StatusOK || !strings.Contains(issuedRec.Body.String(), `"certificate_pem":"issued-cert"`) {
 		t.Fatalf("expected issued certificate response, got %d: %s", issuedRec.Code, issuedRec.Body.String())
 	}
@@ -97,7 +97,7 @@ func TestCSRRejectAndPickupFlow(t *testing.T) {
 
 	req := newCSRSubmitRequest(t, storage.CertKindPrivate, "submit-secret", mustCreateServerTestCSR(t, "api.internal", []string{"api.internal"}))
 	rec := httptest.NewRecorder()
-	srv.mux.ServeHTTP(rec, req)
+	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -123,7 +123,7 @@ func TestCSRRejectAndPickupFlow(t *testing.T) {
 
 	statusReq := httptest.NewRequest(http.MethodGet, "/csr-requests/"+submitResp.ID+"?pickup_token="+submitResp.PickupToken, nil)
 	statusRec := httptest.NewRecorder()
-	srv.mux.ServeHTTP(statusRec, statusReq)
+	srv.ServeHTTP(statusRec, statusReq)
 	if statusRec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", statusRec.Code, statusRec.Body.String())
 	}
@@ -145,7 +145,7 @@ func TestCSRSubmitRateLimited(t *testing.T) {
 	req1 := newCSRSubmitRequest(t, storage.CertKindPublic, "submit-secret", mustCreateServerTestCSR(t, "api.example.com", []string{"api.example.com"}))
 	req1.RemoteAddr = "203.0.113.10:1234"
 	rec1 := httptest.NewRecorder()
-	srv.mux.ServeHTTP(rec1, req1)
+	srv.ServeHTTP(rec1, req1)
 	if rec1.Code != http.StatusCreated {
 		t.Fatalf("expected first submit to succeed, got %d: %s", rec1.Code, rec1.Body.String())
 	}
@@ -153,7 +153,7 @@ func TestCSRSubmitRateLimited(t *testing.T) {
 	req2 := newCSRSubmitRequest(t, storage.CertKindPublic, "submit-secret", mustCreateServerTestCSR(t, "api2.example.com", []string{"api2.example.com"}))
 	req2.RemoteAddr = "203.0.113.10:5678"
 	rec2 := httptest.NewRecorder()
-	srv.mux.ServeHTTP(rec2, req2)
+	srv.ServeHTTP(rec2, req2)
 	if rec2.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected 429, got %d: %s", rec2.Code, rec2.Body.String())
 	}
@@ -179,7 +179,7 @@ func TestCSRSubmitBodyTooLarge(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/csr-requests", strings.NewReader(`{"kind":"public","submit_password":"submit-secret","csr_pem":"`+large.String()+`"}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	srv.mux.ServeHTTP(rec, req)
+	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("expected 413, got %d: %s", rec.Code, rec.Body.String())
 	}
