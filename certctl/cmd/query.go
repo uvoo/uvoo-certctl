@@ -8,12 +8,14 @@ import (
 
 	"certctl/internal/cli"
 	"certctl/internal/storage"
+	"certctl/internal/util"
 	"github.com/spf13/cobra"
 )
 
 func init() {
 	var san, password string
 	var showKey bool
+	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "query",
@@ -34,7 +36,35 @@ func init() {
 			if showKey && strings.TrimSpace(password) == "" {
 				return fmt.Errorf("--password is required when --show-key is set")
 			}
+			password, err = util.ResolveSecretValue(password, "CERTCTL_KEY_PASSWORD", "CERTCTL_STORAGE_PASSWORD")
+			if err != nil {
+				return err
+			}
 			certPEM := rec.CertPEM
+			if jsonOut {
+				payload := map[string]any{
+					"id":                 rec.ID,
+					"common_name":        rec.CommonName,
+					"sans_csv":           rec.SANsCSV,
+					"provider":           rec.Provider,
+					"email":              rec.Email,
+					"issuer":             rec.Issuer,
+					"status":             rec.Status,
+					"supersedes_cert_id": rec.SupersedesCertID,
+					"revoked_at":         formatTimeValue(rec.RevokedAt),
+					"not_before":         formatTimeValue(rec.NotBefore),
+					"not_after":          formatTimeValue(rec.NotAfter),
+					"certificate_pem":    string(certPEM),
+				}
+				if showKey {
+					keyPEM, err := cli.Decrypt(rec.KeyPEM, password)
+					if err != nil {
+						return fmt.Errorf("failed to decrypt private key: %w", err)
+					}
+					payload["private_key_pem"] = string(keyPEM)
+				}
+				return printJSON(payload)
+			}
 			printKV("id", rec.ID)
 			printKV("common_name", rec.CommonName)
 			printKV("status", rec.Status)
@@ -63,6 +93,7 @@ func init() {
 	cmd.Flags().StringVar(&san, "san", "", "target san")
 	cmd.Flags().StringVar(&password, "password", "", "encryption password")
 	cmd.Flags().BoolVar(&showKey, "show-key", false, "also print the private key")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 	_ = cmd.MarkFlagRequired("san")
 	rootCmd.AddCommand(cmd)
 }

@@ -45,6 +45,14 @@ func init() {
 			if kind == storage.CertKindPublic && mode == "cert_key" {
 				return fmt.Errorf("--mode=cert_key is only valid for private certificates")
 			}
+			sharePassword, err := util.ResolveSecretValue(sharePassword, "CERTCTL_SHARE_PASSWORD")
+			if err != nil {
+				return err
+			}
+			keyPassword, err = util.ResolveSecretValue(keyPassword, "CERTCTL_SHARE_KEY_PASSWORD")
+			if err != nil {
+				return err
+			}
 			if mode == "cert_key" && keyPassword == "" {
 				return fmt.Errorf("--key-password is required when --mode=cert_key")
 			}

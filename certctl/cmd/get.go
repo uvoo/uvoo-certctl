@@ -141,6 +141,10 @@ func init() {
 			}
 			defer store.Close()
 
+			if err := warnPublicSANConflicts(store, commonName, allSANs); err != nil {
+				return err
+			}
+
 			if !force {
 				if existing, err := store.FindByHash(commonName, sansHash); err == nil {
 					remaining := time.Until(existing.NotAfter)

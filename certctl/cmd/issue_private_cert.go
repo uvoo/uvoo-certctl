@@ -85,11 +85,20 @@ func init() {
 				if err != nil {
 					return fmt.Errorf("failed to load issuing intermediate CA %q: %w", intermediateName, err)
 				}
+			case strings.TrimSpace(rootCfg.DefaultIntermediateName) != "":
+				icaRec, err = store.GetIssuingPrivateIntermediateCAByName(rootCfg.DefaultIntermediateName)
+				if err != nil {
+					return fmt.Errorf("failed to load issuing intermediate CA %q: %w", rootCfg.DefaultIntermediateName, err)
+				}
 			default:
-				return fmt.Errorf("one of --intermediate-id or --intermediate-name is required")
+				return fmt.Errorf("one of --intermediate-id, --intermediate-name, or --default-intermediate-ca is required")
 			}
 			if icaRec.Status != storage.StatusActive || !icaRec.IsIssuing {
 				return fmt.Errorf("intermediate CA %q is not active for issuance", icaRec.ID)
+			}
+
+			if err := warnPrivateSANConflicts(store, commonName, allSANs); err != nil {
+				return err
 			}
 
 			icaCertPEM := icaRec.CertPEM

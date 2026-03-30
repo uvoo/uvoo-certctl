@@ -140,9 +140,17 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 
-	if _, err := db.Exec(`PRAGMA journal_mode=WAL;`); err != nil {
-		_ = db.Close()
-		return nil, err
+	pragmas := []string{
+		`PRAGMA journal_mode=WAL;`,
+		`PRAGMA foreign_keys=ON;`,
+		`PRAGMA busy_timeout=5000;`,
+		`PRAGMA synchronous=NORMAL;`,
+	}
+	for _, pragma := range pragmas {
+		if _, err := db.Exec(pragma); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
 	}
 
 	if err := ensureSchema(db); err != nil {
@@ -1299,7 +1307,7 @@ func ensurePrivateCertsSchema(db *sql.DB) error {
 			KeyType          string
 			CertPEM          []byte
 			KeyPEM           []byte
-			Issuer           string
+			Issuer           sql.NullString
 			NotBefore        sql.NullString
 			NotAfter         sql.NullString
 			CreatedAt        sql.NullString
@@ -1365,7 +1373,7 @@ func ensurePrivateCertsSchema(db *sql.DB) error {
 					rec.KeyType,
 					rec.CertPEM,
 					rec.KeyPEM,
-					nullIfEmpty(rec.Issuer),
+					nullStringValue(rec.Issuer),
 					status,
 					nullIfEmpty(prevID),
 					nullStringValue(rec.NotBefore),
@@ -1437,6 +1445,7 @@ func syncDerivedStatusesTx(tx *sql.Tx) error {
 }
 
 func scanPublicCert(row scanner, rec *PublicCert) error {
+	var provider, email, issuer sql.NullString
 	var revokedAt, notBefore, notAfter, createdAt, updatedAt sql.NullString
 	if err := row.Scan(
 		&rec.ID,
@@ -1445,9 +1454,9 @@ func scanPublicCert(row scanner, rec *PublicCert) error {
 		&rec.SANsHash,
 		&rec.CertPEM,
 		&rec.KeyPEM,
-		&rec.Provider,
-		&rec.Email,
-		&rec.Issuer,
+		&provider,
+		&email,
+		&issuer,
 		&rec.Status,
 		&rec.SupersedesCertID,
 		&revokedAt,
@@ -1458,6 +1467,9 @@ func scanPublicCert(row scanner, rec *PublicCert) error {
 	); err != nil {
 		return err
 	}
+	rec.Provider = provider.String
+	rec.Email = email.String
+	rec.Issuer = issuer.String
 	rec.RevokedAt = parseRFC3339Null(revokedAt)
 	rec.NotBefore = parseRFC3339Null(notBefore)
 	rec.NotAfter = parseRFC3339Null(notAfter)
@@ -1468,6 +1480,7 @@ func scanPublicCert(row scanner, rec *PublicCert) error {
 
 func scanPrivateRootCA(row scanner, rec *PrivateRootCA) error {
 	var isTrusted, isIssuing int
+	var issuer sql.NullString
 	var notBefore, notAfter, createdAt, updatedAt sql.NullString
 	if err := row.Scan(
 		&rec.ID,
@@ -1481,7 +1494,7 @@ func scanPrivateRootCA(row scanner, rec *PrivateRootCA) error {
 		&rec.KeyType,
 		&rec.CertPEM,
 		&rec.KeyPEM,
-		&rec.Issuer,
+		&issuer,
 		&notBefore,
 		&notAfter,
 		&createdAt,
@@ -1491,6 +1504,7 @@ func scanPrivateRootCA(row scanner, rec *PrivateRootCA) error {
 	}
 	rec.IsTrusted = isTrusted != 0
 	rec.IsIssuing = isIssuing != 0
+	rec.Issuer = issuer.String
 	rec.NotBefore = parseRFC3339Null(notBefore)
 	rec.NotAfter = parseRFC3339Null(notAfter)
 	rec.CreatedAt = parseRFC3339Null(createdAt)
@@ -1500,6 +1514,7 @@ func scanPrivateRootCA(row scanner, rec *PrivateRootCA) error {
 
 func scanPrivateIntermediateCA(row scanner, rec *PrivateIntermediateCA) error {
 	var isTrusted, isIssuing int
+	var issuer sql.NullString
 	var notBefore, notAfter, createdAt, updatedAt sql.NullString
 	if err := row.Scan(
 		&rec.ID,
@@ -1514,7 +1529,7 @@ func scanPrivateIntermediateCA(row scanner, rec *PrivateIntermediateCA) error {
 		&rec.KeyType,
 		&rec.CertPEM,
 		&rec.KeyPEM,
-		&rec.Issuer,
+		&issuer,
 		&notBefore,
 		&notAfter,
 		&createdAt,
@@ -1524,6 +1539,7 @@ func scanPrivateIntermediateCA(row scanner, rec *PrivateIntermediateCA) error {
 	}
 	rec.IsTrusted = isTrusted != 0
 	rec.IsIssuing = isIssuing != 0
+	rec.Issuer = issuer.String
 	rec.NotBefore = parseRFC3339Null(notBefore)
 	rec.NotAfter = parseRFC3339Null(notAfter)
 	rec.CreatedAt = parseRFC3339Null(createdAt)
@@ -1532,6 +1548,7 @@ func scanPrivateIntermediateCA(row scanner, rec *PrivateIntermediateCA) error {
 }
 
 func scanPrivateCert(row scanner, rec *PrivateCert) error {
+	var issuer sql.NullString
 	var revokedAt, notBefore, notAfter, createdAt, updatedAt sql.NullString
 	if err := row.Scan(
 		&rec.ID,
@@ -1542,7 +1559,7 @@ func scanPrivateCert(row scanner, rec *PrivateCert) error {
 		&rec.KeyType,
 		&rec.CertPEM,
 		&rec.KeyPEM,
-		&rec.Issuer,
+		&issuer,
 		&rec.Status,
 		&rec.SupersedesCertID,
 		&revokedAt,
@@ -1553,6 +1570,7 @@ func scanPrivateCert(row scanner, rec *PrivateCert) error {
 	); err != nil {
 		return err
 	}
+	rec.Issuer = issuer.String
 	rec.RevokedAt = parseRFC3339Null(revokedAt)
 	rec.NotBefore = parseRFC3339Null(notBefore)
 	rec.NotAfter = parseRFC3339Null(notAfter)
@@ -1782,4 +1800,269 @@ func withTx(db *sql.DB, fn func(tx *sql.Tx) error) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+func (s *Store) ListPublicCertHistory(commonName string) ([]PublicCert, error) {
+	rows, err := s.db.Query(`
+		SELECT id, common_name, sans_csv, sans_hash, cert, privkey, provider, email, issuer, status,
+		       COALESCE(supersedes_cert_id, ''), revoked_at, not_before, not_after, created_at, updated_at
+		FROM public_certs
+		WHERE common_name = ?
+		ORDER BY created_at DESC, updated_at DESC, id DESC
+	`, commonName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []PublicCert
+	for rows.Next() {
+		var rec PublicCert
+		if err := scanPublicCert(rows, &rec); err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) ListPrivateCertHistory(commonName string) ([]PrivateCert, error) {
+	rows, err := s.db.Query(`
+		SELECT id, intermediate_ca_id, common_name, COALESCE(sans_csv, ''), cert_type, key_type,
+		       cert_pem, key_pem, issuer, status, COALESCE(supersedes_cert_id, ''), revoked_at,
+		       not_before, not_after, created_at, updated_at
+		FROM private_certs
+		WHERE common_name = ?
+		ORDER BY created_at DESC, updated_at DESC, id DESC
+	`, commonName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []PrivateCert
+	for rows.Next() {
+		var rec PrivateCert
+		if err := scanPrivateCert(rows, &rec); err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) ListPrivateRootCAs(name string, includeInactive bool) ([]PrivateRootCA, error) {
+	args := []any{}
+	var where []string
+	if strings.TrimSpace(name) != "" {
+		where = append(where, "name = ?")
+		args = append(args, name)
+	}
+	if !includeInactive {
+		where = append(where, "status = ?")
+		args = append(args, StatusActive)
+	}
+
+	query := `
+		SELECT id, name, common_name, generation, status, is_trusted, is_issuing, COALESCE(supersedes_ca_id, ''),
+		       key_type, cert_pem, key_pem, issuer, not_before, not_after, created_at, updated_at
+		FROM private_root_cas
+	`
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
+	query += " ORDER BY name, generation DESC"
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []PrivateRootCA
+	for rows.Next() {
+		var rec PrivateRootCA
+		if err := scanPrivateRootCA(rows, &rec); err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) ListPrivateIntermediateCAs(name string, includeInactive bool) ([]PrivateIntermediateCA, error) {
+	args := []any{}
+	var where []string
+	if strings.TrimSpace(name) != "" {
+		where = append(where, "name = ?")
+		args = append(args, name)
+	}
+	if !includeInactive {
+		where = append(where, "status = ?")
+		args = append(args, StatusActive)
+	}
+
+	query := `
+		SELECT id, root_ca_id, name, common_name, generation, status, is_trusted, is_issuing, COALESCE(supersedes_ca_id, ''),
+		       key_type, cert_pem, key_pem, issuer, not_before, not_after, created_at, updated_at
+		FROM private_intermediate_cas
+	`
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
+	query += " ORDER BY name, generation DESC"
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []PrivateIntermediateCA
+	for rows.Next() {
+		var rec PrivateIntermediateCA
+		if err := scanPrivateIntermediateCA(rows, &rec); err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) RevokePublicCert(id string) error {
+	_, err := s.db.Exec(`
+		UPDATE public_certs
+		SET status = ?, revoked_at = ?, updated_at = ?
+		WHERE id = ? AND status <> ?
+	`, StatusRevoked, nowRFC3339(), nowRFC3339(), id, StatusRevoked)
+	return err
+}
+
+func (s *Store) RevokePrivateCert(id string) error {
+	_, err := s.db.Exec(`
+		UPDATE private_certs
+		SET status = ?, revoked_at = ?, updated_at = ?
+		WHERE id = ? AND status <> ?
+	`, StatusRevoked, nowRFC3339(), nowRFC3339(), id, StatusRevoked)
+	return err
+}
+
+func (s *Store) RetirePrivateRootCA(id string) error {
+	_, err := s.db.Exec(`
+		UPDATE private_root_cas
+		SET status = ?, is_issuing = 0, updated_at = ?
+		WHERE id = ? AND status NOT IN (?, ?)
+	`, StatusRetired, nowRFC3339(), id, StatusRevoked, StatusExpired)
+	return err
+}
+
+func (s *Store) RetirePrivateIntermediateCA(id string) error {
+	_, err := s.db.Exec(`
+		UPDATE private_intermediate_cas
+		SET status = ?, is_issuing = 0, updated_at = ?
+		WHERE id = ? AND status NOT IN (?, ?)
+	`, StatusRetired, nowRFC3339(), id, StatusRevoked, StatusExpired)
+	return err
+}
+
+func (s *Store) PromotePrivateRootCA(id string) error {
+	return withTx(s.db, func(tx *sql.Tx) error {
+		if err := syncDerivedStatusesTx(tx); err != nil {
+			return err
+		}
+
+		target, err := getPrivateRootCAByIDTx(tx, id)
+		if err != nil {
+			return err
+		}
+		if target.Status == StatusRevoked || target.Status == StatusExpired {
+			return fmt.Errorf("root CA %s cannot be promoted from status %s", id, target.Status)
+		}
+
+		if _, err := tx.Exec(`
+			UPDATE private_root_cas
+			SET status = ?, is_issuing = 0, updated_at = ?
+			WHERE name = ? AND status = ? AND id <> ?
+		`, StatusRetired, nowRFC3339(), target.Name, StatusActive, target.ID); err != nil {
+			return err
+		}
+
+		_, err = tx.Exec(`
+			UPDATE private_root_cas
+			SET status = ?, is_trusted = 1, is_issuing = 1, updated_at = ?
+			WHERE id = ?
+		`, StatusActive, nowRFC3339(), target.ID)
+		return err
+	})
+}
+
+func (s *Store) PromotePrivateIntermediateCA(id string) error {
+	return withTx(s.db, func(tx *sql.Tx) error {
+		if err := syncDerivedStatusesTx(tx); err != nil {
+			return err
+		}
+
+		target, err := getPrivateIntermediateCAByIDTx(tx, id)
+		if err != nil {
+			return err
+		}
+		if target.Status == StatusRevoked || target.Status == StatusExpired {
+			return fmt.Errorf("intermediate CA %s cannot be promoted from status %s", id, target.Status)
+		}
+
+		if _, err := tx.Exec(`
+			UPDATE private_intermediate_cas
+			SET status = ?, is_issuing = 0, updated_at = ?
+			WHERE name = ? AND status = ? AND id <> ?
+		`, StatusRetired, nowRFC3339(), target.Name, StatusActive, target.ID); err != nil {
+			return err
+		}
+
+		_, err = tx.Exec(`
+			UPDATE private_intermediate_cas
+			SET status = ?, is_trusted = 1, is_issuing = 1, updated_at = ?
+			WHERE id = ?
+		`, StatusActive, nowRFC3339(), target.ID)
+		return err
+	})
+}
+
+func (s *Store) BackupTo(path string) error {
+	dir := filepath.Dir(path)
+	if dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
+	stmt := "VACUUM INTO " + quoteSQLiteString(path)
+	_, err := s.db.Exec(stmt)
+	return err
+}
+
+func getPrivateRootCAByIDTx(tx *sql.Tx, id string) (PrivateRootCA, error) {
+	var rec PrivateRootCA
+	err := scanPrivateRootCA(tx.QueryRow(`
+		SELECT id, name, common_name, generation, status, is_trusted, is_issuing, COALESCE(supersedes_ca_id, ''),
+		       key_type, cert_pem, key_pem, issuer, not_before, not_after, created_at, updated_at
+		FROM private_root_cas
+		WHERE id = ?
+		LIMIT 1
+	`, id), &rec)
+	return rec, err
+}
+
+func getPrivateIntermediateCAByIDTx(tx *sql.Tx, id string) (PrivateIntermediateCA, error) {
+	var rec PrivateIntermediateCA
+	err := scanPrivateIntermediateCA(tx.QueryRow(`
+		SELECT id, root_ca_id, name, common_name, generation, status, is_trusted, is_issuing, COALESCE(supersedes_ca_id, ''),
+		       key_type, cert_pem, key_pem, issuer, not_before, not_after, created_at, updated_at
+		FROM private_intermediate_cas
+		WHERE id = ?
+		LIMIT 1
+	`, id), &rec)
+	return rec, err
+}
+
+func quoteSQLiteString(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }

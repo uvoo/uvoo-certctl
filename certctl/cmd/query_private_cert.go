@@ -13,6 +13,7 @@ func init() {
 	var commonName string
 	var keyPassword string
 	var storagePassword string
+	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "query-private-cert",
@@ -39,6 +40,24 @@ func init() {
 			if err != nil {
 				return err
 			}
+			if jsonOut {
+				return printJSON(map[string]any{
+					"id":                 rec.ID,
+					"intermediate_ca_id": rec.IntermediateCAID,
+					"common_name":        rec.CommonName,
+					"sans_csv":           rec.SANsCSV,
+					"cert_type":          rec.CertType,
+					"key_type":           rec.KeyType,
+					"issuer":             rec.Issuer,
+					"status":             rec.Status,
+					"supersedes_cert_id": rec.SupersedesCertID,
+					"revoked_at":         formatTimeValue(rec.RevokedAt),
+					"not_before":         formatTimeValue(rec.NotBefore),
+					"not_after":          formatTimeValue(rec.NotAfter),
+					"certificate_pem":    string(certPEM),
+					"private_key_pem":    string(keyPEM),
+				})
+			}
 
 			fmt.Printf("id: %s\n", rec.ID)
 			fmt.Printf("commonName: %s\n", rec.CommonName)
@@ -57,6 +76,7 @@ func init() {
 	cmd.Flags().StringVar(&commonName, "common-name", "", "common name or SAN to find the private certificate")
 	cmd.Flags().StringVar(&keyPassword, "key-password", "", "per-certificate encryption password")
 	cmd.Flags().StringVar(&storagePassword, "storage-password", "", "fallback encryption password")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 	_ = cmd.MarkFlagRequired("common-name")
 
 	rootCmd.AddCommand(cmd)

@@ -11,6 +11,7 @@ import (
 func init() {
 	var san string
 	var all bool
+	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -34,6 +35,27 @@ func init() {
 				}
 				return nil
 			}
+			if jsonOut {
+				var payload []map[string]any
+				for _, r := range rows {
+					payload = append(payload, map[string]any{
+						"id":                 r.ID,
+						"common_name":        r.CommonName,
+						"sans_csv":           r.SANsCSV,
+						"provider":           r.Provider,
+						"email":              r.Email,
+						"issuer":             r.Issuer,
+						"status":             r.Status,
+						"supersedes_cert_id": r.SupersedesCertID,
+						"revoked_at":         formatTimeValue(r.RevokedAt),
+						"not_before":         formatTimeValue(r.NotBefore),
+						"not_after":          formatTimeValue(r.NotAfter),
+						"created_at":         formatTimeValue(r.CreatedAt),
+						"updated_at":         formatTimeValue(r.UpdatedAt),
+					})
+				}
+				return printJSON(payload)
+			}
 
 			for _, r := range rows {
 				fmt.Printf("id:          %s\n", r.ID)
@@ -52,5 +74,6 @@ func init() {
 
 	cmd.Flags().StringVar(&san, "san", "", "filter by san")
 	cmd.Flags().BoolVar(&all, "all", false, "include inactive and historical certificates")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 	rootCmd.AddCommand(cmd)
 }

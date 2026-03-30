@@ -118,6 +118,33 @@ go run . issue-private-cert \
 - Namecheap record updates work by reading all DNS hosts and writing the full set back.
 - `get` runs precursor checks by default. Use `--skip-checks` only when you are sure provider access and DNS are already correct.
 - The ACME flow still uses lego for DNS-01 challenge presentation.
+- Password-like flags accept raw values, `env:VARNAME`, or `file:/path/to/secret`.
+- `--default-root-ca` and `--default-intermediate-ca` can be set once to avoid repeating issuer names on every command.
+
+## Operations
+
+Inspect lifecycle state:
+
+```bash
+go run . list-root-cas --all
+go run . list-intermediate-cas --all
+go run . history --kind private --name api.internal.example
+```
+
+Manage lifecycle:
+
+```bash
+go run . revoke --kind private --id <cert-id>
+go run . retire --kind intermediate --id <ica-id>
+go run . promote --kind intermediate --id <ica-id>
+```
+
+Export safe metadata or a DB backup:
+
+```bash
+go run . export-metadata --out certctl-metadata.json
+go run . backup-db --out certctl-backup.db
+```
 
 ## Build
 

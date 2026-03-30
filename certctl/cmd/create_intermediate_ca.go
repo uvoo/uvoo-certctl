@@ -62,8 +62,13 @@ func init() {
 				if err != nil {
 					return fmt.Errorf("failed to load issuing root CA %q: %w", rootName, err)
 				}
+			case strings.TrimSpace(rootCfg.DefaultRootCAName) != "":
+				rootRec, err = store.GetIssuingPrivateRootCAByName(rootCfg.DefaultRootCAName)
+				if err != nil {
+					return fmt.Errorf("failed to load issuing root CA %q: %w", rootCfg.DefaultRootCAName, err)
+				}
 			default:
-				return fmt.Errorf("one of --root-id or --root-name is required")
+				return fmt.Errorf("one of --root-id, --root-name, or --default-root-ca is required")
 			}
 			if rootRec.Status != storage.StatusActive || !rootRec.IsIssuing {
 				return fmt.Errorf("root CA %q is not active for issuance", rootRec.ID)
