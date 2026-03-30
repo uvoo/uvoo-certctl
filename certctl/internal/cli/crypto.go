@@ -7,9 +7,14 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+
+	"certctl/internal/util"
 )
 
 func Encrypt(data []byte, pass string) ([]byte, error) {
+    if err := util.IsPasswordComplex(pass); err != nil {
+	    return nil, fmt.Errorf("password does not meet complexity requirements: %w", err)
+	}
 	key := sha256.Sum256([]byte(pass))
 	block, err := aes.NewCipher(key[:])
 	if err != nil {

@@ -1,7 +1,7 @@
   ./certctl get \
   --provider namecheap \
-  --common-name 'test11.uvoo.io' \
-  --san test11.uvoo.io \
+  --common-name 'test13.uvoo.io' \
+  --sans test13.uvoo.io \
   --email jeremybusk@gmail.com \
   --key-password 'changeit' \
   --client-ip "$NAMECHEAP_CLIENT_IP" \

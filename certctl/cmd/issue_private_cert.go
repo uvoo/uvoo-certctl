@@ -50,6 +50,17 @@ func init() {
 				return fmt.Errorf("leaf certificate password required: %w", err)
 			}
 
+            if issuerPassword != "" {
+                if err := util.IsPasswordComplex(issuerPassword); err != nil {
+                    return fmt.Errorf("invalid issuer-password: %w", err)
+                }
+            }
+            if childPassword != "" {
+                if err := util.IsPasswordComplex(childPassword); err != nil {
+                    return fmt.Errorf("invalid child-password: %w", err)
+                }
+            }
+
 			allSANs := normalizePrivateCertSANs(commonName, sans)
 			if len(allSANs) == 0 {
 				return fmt.Errorf("at least one domain or common name is required")

@@ -72,6 +72,17 @@ func init() {
 				return err
 			}
 
+			if keyPassword != "" {
+				if err := util.IsPasswordComplex(keyPassword); err != nil {
+					return fmt.Errorf("invalid key-password: %w", err)
+				}
+			}
+			if storagePassword != "" {
+				if err := util.IsPasswordComplex(storagePassword); err != nil {
+					return fmt.Errorf("invalid storage-password: %w", err)
+				}
+			}
+
 			commonName = strings.TrimSpace(commonName)
 			if commonName == "" {
 				return fmt.Errorf("--common-name is required")
