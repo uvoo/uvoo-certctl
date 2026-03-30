@@ -54,6 +54,7 @@ func init() {
 						"not_after":          formatTimeValue(r.NotAfter),
 						"created_at":         formatTimeValue(r.CreatedAt),
 						"updated_at":         formatTimeValue(r.UpdatedAt),
+						"private_key_stored": privateKeyStored(r.KeyPEM),
 					})
 				}
 				return printJSON(payload)
@@ -66,6 +67,7 @@ func init() {
 				fmt.Printf("sans:         %s\n", r.SANsCSV)
 				fmt.Printf("certType:        %s\n", r.CertType)
 				fmt.Printf("keyType:         %s\n", r.KeyType)
+				fmt.Printf("keyStored:       %t\n", privateKeyStored(r.KeyPEM))
 				fmt.Printf("intermediate id: %s\n", r.IntermediateCAID)
 				fmt.Printf("issuer:          %s\n", r.Issuer)
 				fmt.Printf("notBefore:       %s\n", r.NotBefore.Format(time.RFC3339))

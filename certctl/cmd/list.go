@@ -52,6 +52,7 @@ func init() {
 						"not_after":          formatTimeValue(r.NotAfter),
 						"created_at":         formatTimeValue(r.CreatedAt),
 						"updated_at":         formatTimeValue(r.UpdatedAt),
+						"private_key_stored": privateKeyStored(r.KeyPEM),
 					})
 				}
 				return printJSON(payload)
@@ -65,6 +66,7 @@ func init() {
 				fmt.Printf("  provider:   %s\n", r.Provider)
 				fmt.Printf("  email:      %s\n", r.Email)
 				fmt.Printf("  issuer:     %s\n", r.Issuer)
+				fmt.Printf("  key stored: %t\n", privateKeyStored(r.KeyPEM))
 				fmt.Printf("  not before: %s\n", r.NotBefore.Format(time.RFC3339))
 				fmt.Printf("  not after:  %s\n", r.NotAfter.Format(time.RFC3339))
 			}

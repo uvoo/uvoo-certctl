@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -14,8 +15,9 @@ import (
 )
 
 type Config struct {
-	DBPath string
-	Listen string
+	DBPath            string
+	Listen            string
+	CSRSubmitPassword string
 }
 
 type Server struct {
@@ -31,6 +33,8 @@ func New(cfg Config) *Server {
 
 	s.mux.HandleFunc("/healthz", s.handleHealth)
 	s.mux.HandleFunc("/share/", s.handleShare)
+	s.mux.HandleFunc("/csr-requests", s.handleCSRRequests)
+	s.mux.HandleFunc("/csr-requests/", s.handleCSRRequests)
 
 	return s
 }
@@ -208,6 +212,10 @@ func (s *Server) handleShareAccess(w http.ResponseWriter, r *http.Request, store
 		resp.CertificatePEM = string(rec.CertPEM)
 
 		if share.Mode == "cert_key" {
+			if !privateKeyStored(rec.KeyPEM) {
+				writeError(w, http.StatusForbidden, "private key is not stored for csr-based private certificate")
+				return
+			}
 			if strings.TrimSpace(req.KeyPassword) == "" {
 				writeError(w, http.StatusForbidden, "key password required")
 				return
@@ -276,6 +284,10 @@ func nullableInt64(v sql.NullInt64) any {
 		return nil
 	}
 	return v.Int64
+}
+
+func privateKeyStored(keyPEM []byte) bool {
+	return len(bytes.TrimSpace(keyPEM)) > 0
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

@@ -1,7 +1,13 @@
 package storage
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"database/sql"
+	"encoding/pem"
 	"path/filepath"
 	"testing"
 	"time"
@@ -263,4 +269,88 @@ func TestAuditEventRoundTrip(t *testing.T) {
 	if rows[0].Action != "test_action" || rows[0].Summary != "hello" {
 		t.Fatalf("unexpected audit row: %+v", rows[0])
 	}
+}
+
+func TestCSRRequestLifecycle(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "csr.db")
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	req := CSRRequest{
+		ID:                "csr-1",
+		Kind:              CertKindPrivate,
+		CSRPEM:            mustCreateTestCSR(t, "api.internal", []string{"api.internal"}),
+		FingerprintSHA256: "fingerprint-1",
+		CommonName:        "api.internal",
+		SANsCSV:           "api.internal",
+		RequesterName:     "Jane Doe",
+		PickupTokenHash:   "hash-1",
+	}
+	if err := store.CreateCSRRequest(req); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := store.ListCSRRequests("", CSRStatusPending)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 pending csr request, got %d", len(rows))
+	}
+	if rows[0].Status != CSRStatusPending {
+		t.Fatalf("expected pending status, got %s", rows[0].Status)
+	}
+
+	if err := store.MarkCSRRequestIssued("csr-1", "leaf-1", "approved"); err != nil {
+		t.Fatal(err)
+	}
+	issued, err := store.GetCSRRequestByID("csr-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if issued.Status != CSRStatusIssued || issued.IssuedCertID != "leaf-1" {
+		t.Fatalf("expected issued csr request, got %+v", issued)
+	}
+
+	req2 := CSRRequest{
+		ID:              "csr-2",
+		Kind:            CertKindPublic,
+		CSRPEM:          mustCreateTestCSR(t, "api.example.com", []string{"api.example.com"}),
+		CommonName:      "api.example.com",
+		SANsCSV:         "api.example.com",
+		PickupTokenHash: "hash-2",
+	}
+	if err := store.CreateCSRRequest(req2); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RejectCSRRequest("csr-2", "verification failed"); err != nil {
+		t.Fatal(err)
+	}
+	rejected, err := store.GetCSRRequestByID("csr-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rejected.Status != CSRStatusRejected {
+		t.Fatalf("expected rejected status, got %s", rejected.Status)
+	}
+}
+
+func mustCreateTestCSR(t *testing.T, commonName string, dnsNames []string) []byte {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		Subject:  pkix.Name{CommonName: commonName},
+		DNSNames: dnsNames,
+	}, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der})
 }

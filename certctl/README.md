@@ -4,6 +4,7 @@ A Cobra-based refactor of the original single-file ACME utility.
 
 - Release notes: [`docs/RELEASE_NOTES_v0.1.0.md`](docs/RELEASE_NOTES_v0.1.0.md)
 - Install guide: [`docs/INSTALL.md`](docs/INSTALL.md)
+- CSR guide: [`docs/CSR_REQUESTS.md`](docs/CSR_REQUESTS.md)
 
 ## What changed
 
@@ -143,6 +144,14 @@ go run . promote --kind intermediate --id <ica-id>
 go run . list-audit --limit 50
 ```
 
+Queue and approve CSRs:
+
+```bash
+go run . submit-csr --kind private --csr-file server.csr --requester-name 'Jane Doe'
+go run . list-csr-requests
+go run . approve-csr --id <request-id> --intermediate-name internal-ica --parent-key-password env:CERTCTL_PARENT_KEY_PASSWORD
+```
+
 Export safe metadata or a DB backup:
 
 ```bash
@@ -221,6 +230,8 @@ Build only specific targets:
 ```
 
 For binary install and checksum verification steps, see [`docs/INSTALL.md`](docs/INSTALL.md).
+
+For end-user CSR submission with `openssl` and `curl`, see [`docs/CSR_REQUESTS.md`](docs/CSR_REQUESTS.md).
 
 ## Release checklist
 

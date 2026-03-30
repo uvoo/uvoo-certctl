@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,6 +26,10 @@ const (
 	StatusRevoked    = "revoked"
 	StatusExpired    = "expired"
 	StatusRetired    = "retired"
+
+	CSRStatusPending  = "pending"
+	CSRStatusIssued   = "issued"
+	CSRStatusRejected = "rejected"
 )
 
 type Store struct{ db *sql.DB }
@@ -72,6 +77,31 @@ type AuditEvent struct {
 	TargetID   string
 	Summary    string
 	CreatedAt  time.Time
+}
+
+type CSRRequest struct {
+	ID                string
+	Kind              string
+	Status            string
+	CSRPEM            []byte
+	FingerprintSHA256 string
+	CommonName        string
+	SANsCSV           string
+	RequesterName     string
+	RequesterEmail    string
+	PhoneNumber       string
+	Organization      string
+	Department        string
+	Note              string
+	RequestedCAName   string
+	CertType          string
+	RequestedDays     int
+	PickupTokenHash   string
+	IssuedCertID      string
+	DecisionNote      string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	ReviewedAt        time.Time
 }
 
 type PrivateRootCA struct {
@@ -221,6 +251,9 @@ func (s *Store) Upsert(rec PublicCert) error {
 	}
 	if rec.ID == "" {
 		return fmt.Errorf("record id is required")
+	}
+	if rec.KeyPEM == nil {
+		rec.KeyPEM = []byte{}
 	}
 
 	return withTx(s.db, func(tx *sql.Tx) error {
@@ -757,6 +790,9 @@ func (s *Store) UpsertPrivateCert(rec PrivateCert) error {
 	if strings.TrimSpace(rec.CommonName) == "" {
 		return fmt.Errorf("private certificate common_name is required")
 	}
+	if rec.KeyPEM == nil {
+		rec.KeyPEM = []byte{}
+	}
 
 	return withTx(s.db, func(tx *sql.Tx) error {
 		if err := syncDerivedStatusesTx(tx); err != nil {
@@ -932,6 +968,142 @@ func (s *Store) ResolveShareTarget(kind, name string) (id string, resolvedName s
 	}
 }
 
+func (s *Store) CreateCSRRequest(req CSRRequest) error {
+	if strings.TrimSpace(req.ID) == "" {
+		return fmt.Errorf("csr request id is required")
+	}
+	req.Kind = strings.ToLower(strings.TrimSpace(req.Kind))
+	if req.Kind != CertKindPublic && req.Kind != CertKindPrivate {
+		return fmt.Errorf("unsupported csr request kind: %s", req.Kind)
+	}
+	if strings.TrimSpace(req.CommonName) == "" {
+		return fmt.Errorf("csr request common_name is required")
+	}
+	if len(req.CSRPEM) == 0 {
+		return fmt.Errorf("csr request pem is required")
+	}
+	if strings.TrimSpace(req.PickupTokenHash) == "" {
+		return fmt.Errorf("csr request pickup token hash is required")
+	}
+
+	req.Status = defaultCSRStatus(req.Status)
+	req.CreatedAt = defaultCreatedAt(req.CreatedAt)
+	req.UpdatedAt = time.Now().UTC()
+
+	_, err := s.db.Exec(`
+		INSERT INTO csr_requests
+		(id, kind, status, csr_pem, fingerprint_sha256, common_name, sans_csv, requester_name, requester_email,
+		 phone_number, organization, department, note, requested_ca_name, cert_type, requested_days,
+		 pickup_token_hash, issued_cert_id, decision_note, created_at, updated_at, reviewed_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		req.ID,
+		req.Kind,
+		req.Status,
+		req.CSRPEM,
+		nullIfEmpty(req.FingerprintSHA256),
+		req.CommonName,
+		nullIfEmpty(req.SANsCSV),
+		nullIfEmpty(req.RequesterName),
+		nullIfEmpty(req.RequesterEmail),
+		nullIfEmpty(req.PhoneNumber),
+		nullIfEmpty(req.Organization),
+		nullIfEmpty(req.Department),
+		nullIfEmpty(req.Note),
+		nullIfEmpty(req.RequestedCAName),
+		nullIfEmpty(req.CertType),
+		nullIntValue(req.RequestedDays),
+		req.PickupTokenHash,
+		nullIfEmpty(req.IssuedCertID),
+		nullIfEmpty(req.DecisionNote),
+		timeOrNil(req.CreatedAt),
+		timeOrNil(req.UpdatedAt),
+		timeOrEmpty(req.ReviewedAt),
+	)
+	return err
+}
+
+func (s *Store) GetCSRRequestByID(id string) (CSRRequest, error) {
+	var req CSRRequest
+	err := scanCSRRequest(s.db.QueryRow(`
+		SELECT id, kind, status, csr_pem, COALESCE(fingerprint_sha256, ''), common_name, COALESCE(sans_csv, ''),
+		       COALESCE(requester_name, ''), COALESCE(requester_email, ''), COALESCE(phone_number, ''),
+		       COALESCE(organization, ''), COALESCE(department, ''), COALESCE(note, ''), COALESCE(requested_ca_name, ''),
+		       COALESCE(cert_type, ''), requested_days, pickup_token_hash, COALESCE(issued_cert_id, ''),
+		       COALESCE(decision_note, ''), created_at, updated_at, reviewed_at
+		FROM csr_requests
+		WHERE id = ?
+		LIMIT 1
+	`, id), &req)
+	return req, err
+}
+
+func (s *Store) ListCSRRequests(kind, status string) ([]CSRRequest, error) {
+	args := []any{}
+	var where []string
+	if strings.TrimSpace(kind) != "" {
+		where = append(where, "kind = ?")
+		args = append(args, strings.ToLower(strings.TrimSpace(kind)))
+	}
+	if strings.TrimSpace(status) != "" {
+		where = append(where, "status = ?")
+		args = append(args, strings.ToLower(strings.TrimSpace(status)))
+	}
+
+	query := `
+		SELECT id, kind, status, csr_pem, COALESCE(fingerprint_sha256, ''), common_name, COALESCE(sans_csv, ''),
+		       COALESCE(requester_name, ''), COALESCE(requester_email, ''), COALESCE(phone_number, ''),
+		       COALESCE(organization, ''), COALESCE(department, ''), COALESCE(note, ''), COALESCE(requested_ca_name, ''),
+		       COALESCE(cert_type, ''), requested_days, pickup_token_hash, COALESCE(issued_cert_id, ''),
+		       COALESCE(decision_note, ''), created_at, updated_at, reviewed_at
+		FROM csr_requests
+	`
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
+	query += " ORDER BY created_at DESC, id DESC"
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []CSRRequest
+	for rows.Next() {
+		var req CSRRequest
+		if err := scanCSRRequest(rows, &req); err != nil {
+			return nil, err
+		}
+		out = append(out, req)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) MarkCSRRequestIssued(id, issuedCertID, note string) error {
+	res, err := s.db.Exec(`
+		UPDATE csr_requests
+		SET status = ?, issued_cert_id = ?, decision_note = ?, reviewed_at = ?, updated_at = ?
+		WHERE id = ? AND status = ?
+	`, CSRStatusIssued, issuedCertID, nullIfEmpty(note), nowRFC3339(), nowRFC3339(), id, CSRStatusPending)
+	if err != nil {
+		return err
+	}
+	return ensureRowsAffected(res, "csr request not found or no longer pending")
+}
+
+func (s *Store) RejectCSRRequest(id, note string) error {
+	res, err := s.db.Exec(`
+		UPDATE csr_requests
+		SET status = ?, decision_note = ?, reviewed_at = ?, updated_at = ?
+		WHERE id = ? AND status = ?
+	`, CSRStatusRejected, nullIfEmpty(note), nowRFC3339(), nowRFC3339(), id, CSRStatusPending)
+	if err != nil {
+		return err
+	}
+	return ensureRowsAffected(res, "csr request not found or no longer pending")
+}
+
 func ensureSchema(db *sql.DB) error {
 	if err := ensurePublicCertsSchema(db); err != nil {
 		return err
@@ -946,6 +1118,9 @@ func ensureSchema(db *sql.DB) error {
 		return err
 	}
 	if err := ensurePrivateCertsSchema(db); err != nil {
+		return err
+	}
+	if err := ensureCSRRequestsSchema(db); err != nil {
 		return err
 	}
 	if err := ensureAuditEventsSchema(db); err != nil {
@@ -1435,6 +1610,114 @@ func ensurePrivateCertIndexes(db *sql.DB) error {
 	return nil
 }
 
+func ensureCSRRequestsSchema(db *sql.DB) error {
+	create := `
+		CREATE TABLE IF NOT EXISTS csr_requests (
+			id TEXT PRIMARY KEY,
+			kind TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'pending',
+			csr_pem BLOB NOT NULL,
+			fingerprint_sha256 TEXT,
+			common_name TEXT NOT NULL,
+			sans_csv TEXT,
+			requester_name TEXT,
+			requester_email TEXT,
+			phone_number TEXT,
+			organization TEXT,
+			department TEXT,
+			note TEXT,
+			requested_ca_name TEXT,
+			cert_type TEXT,
+			requested_days INTEGER,
+			pickup_token_hash TEXT NOT NULL,
+			issued_cert_id TEXT,
+			decision_note TEXT,
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+			updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+			reviewed_at TEXT,
+			CHECK (kind IN ('public', 'private')),
+			CHECK (status IN ('pending', 'issued', 'rejected'))
+		)
+	`
+
+	exists, err := tableExists(db, "csr_requests")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := db.Exec(create); err != nil {
+			return err
+		}
+		return ensureCSRRequestIndexes(db)
+	}
+
+	cols, err := tableColumns(db, "csr_requests")
+	if err != nil {
+		return err
+	}
+	if hasColumns(cols,
+		"fingerprint_sha256",
+		"requester_name",
+		"requester_email",
+		"phone_number",
+		"organization",
+		"department",
+		"requested_ca_name",
+		"cert_type",
+		"requested_days",
+		"pickup_token_hash",
+		"issued_cert_id",
+		"decision_note",
+		"reviewed_at",
+	) {
+		return ensureCSRRequestIndexes(db)
+	}
+
+	if err := withTx(db, func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`ALTER TABLE csr_requests RENAME TO csr_requests_old`); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(create); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`
+			INSERT INTO csr_requests
+			(id, kind, status, csr_pem, fingerprint_sha256, common_name, sans_csv, requester_name, requester_email,
+			 phone_number, organization, department, note, requested_ca_name, cert_type, requested_days,
+			 pickup_token_hash, issued_cert_id, decision_note, created_at, updated_at, reviewed_at)
+			SELECT id, kind, COALESCE(status, ?), csr_pem, COALESCE(fingerprint_sha256, ''), common_name, COALESCE(sans_csv, ''),
+			       COALESCE(requester_name, ''), COALESCE(requester_email, ''), COALESCE(phone_number, ''),
+			       COALESCE(organization, ''), COALESCE(department, ''), COALESCE(note, ''), COALESCE(requested_ca_name, ''),
+			       COALESCE(cert_type, ''), requested_days, pickup_token_hash, COALESCE(issued_cert_id, ''),
+			       COALESCE(decision_note, ''), created_at, updated_at, reviewed_at
+			FROM csr_requests_old
+		`, CSRStatusPending)
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(`DROP TABLE csr_requests_old`)
+		return err
+	}); err != nil {
+		return err
+	}
+
+	return ensureCSRRequestIndexes(db)
+}
+
+func ensureCSRRequestIndexes(db *sql.DB) error {
+	stmts := []string{
+		`CREATE INDEX IF NOT EXISTS idx_csr_requests_status_created ON csr_requests(status, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_csr_requests_kind_status_created ON csr_requests(kind, status, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_csr_requests_common_name_created ON csr_requests(common_name, created_at DESC)`,
+	}
+	for _, stmt := range stmts {
+		if _, err := db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func syncDerivedStatuses(db *sql.DB) error {
 	return withTx(db, syncDerivedStatusesTx)
 }
@@ -1605,6 +1888,44 @@ func scanPrivateCert(row scanner, rec *PrivateCert) error {
 	return nil
 }
 
+func scanCSRRequest(row scanner, req *CSRRequest) error {
+	var requestedDays sql.NullInt64
+	var createdAt, updatedAt, reviewedAt sql.NullString
+	if err := row.Scan(
+		&req.ID,
+		&req.Kind,
+		&req.Status,
+		&req.CSRPEM,
+		&req.FingerprintSHA256,
+		&req.CommonName,
+		&req.SANsCSV,
+		&req.RequesterName,
+		&req.RequesterEmail,
+		&req.PhoneNumber,
+		&req.Organization,
+		&req.Department,
+		&req.Note,
+		&req.RequestedCAName,
+		&req.CertType,
+		&requestedDays,
+		&req.PickupTokenHash,
+		&req.IssuedCertID,
+		&req.DecisionNote,
+		&createdAt,
+		&updatedAt,
+		&reviewedAt,
+	); err != nil {
+		return err
+	}
+	if requestedDays.Valid {
+		req.RequestedDays = int(requestedDays.Int64)
+	}
+	req.CreatedAt = parseRFC3339Null(createdAt)
+	req.UpdatedAt = parseRFC3339Null(updatedAt)
+	req.ReviewedAt = parseRFC3339Null(reviewedAt)
+	return nil
+}
+
 func getActivePublicCertTx(tx *sql.Tx, commonName string) (PublicCert, error) {
 	var rec PublicCert
 	err := scanPublicCert(tx.QueryRow(`
@@ -1712,6 +2033,13 @@ func nullInt64(v sql.NullInt64) any {
 	return v.Int64
 }
 
+func nullIntValue(v int) any {
+	if v <= 0 {
+		return nil
+	}
+	return v
+}
+
 func nullInt64Value(v sql.NullInt64) any {
 	if !v.Valid {
 		return nil
@@ -1745,6 +2073,14 @@ func defaultCAStatus(status string) string {
 	status = strings.TrimSpace(strings.ToLower(status))
 	if status == "" {
 		return StatusActive
+	}
+	return status
+}
+
+func defaultCSRStatus(status string) string {
+	status = strings.TrimSpace(strings.ToLower(status))
+	if status == "" {
+		return CSRStatusPending
 	}
 	return status
 }
@@ -1826,6 +2162,17 @@ func withTx(db *sql.DB, fn func(tx *sql.Tx) error) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+func ensureRowsAffected(res sql.Result, msg string) error {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return errors.New(msg)
+	}
+	return nil
 }
 
 func (s *Store) LogAuditEvent(event AuditEvent) error {

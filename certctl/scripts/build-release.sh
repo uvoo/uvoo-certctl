@@ -112,6 +112,9 @@ for target in "${TARGETS[@]}"; do
   if [[ -f "$ROOT_DIR/docs/INSTALL.md" ]]; then
     cp "$ROOT_DIR/docs/INSTALL.md" "$artifact_dir/INSTALL.md"
   fi
+  if [[ -f "$ROOT_DIR/docs/CSR_REQUESTS.md" ]]; then
+    cp "$ROOT_DIR/docs/CSR_REQUESTS.md" "$artifact_dir/CSR_REQUESTS.md"
+  fi
 
   if [[ "$goos" == "windows" ]]; then
     if [[ "$ZIP_CMD" == "zip" ]]; then
