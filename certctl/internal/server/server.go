@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"certctl/internal/cli"
@@ -18,17 +20,28 @@ type Config struct {
 	DBPath            string
 	Listen            string
 	CSRSubmitPassword string
+	CSRMaxBodyBytes   int64
+	CSRMinInterval    time.Duration
 }
 
 type Server struct {
-	cfg Config
-	mux *http.ServeMux
+	cfg           Config
+	mux           *http.ServeMux
+	mu            sync.Mutex
+	csrLastSubmit map[string]time.Time
 }
 
 func New(cfg Config) *Server {
 	s := &Server{
-		cfg: cfg,
-		mux: http.NewServeMux(),
+		cfg:           cfg,
+		mux:           http.NewServeMux(),
+		csrLastSubmit: map[string]time.Time{},
+	}
+	if s.cfg.CSRMaxBodyBytes <= 0 {
+		s.cfg.CSRMaxBodyBytes = 1 << 20
+	}
+	if s.cfg.CSRMinInterval <= 0 {
+		s.cfg.CSRMinInterval = 2 * time.Second
 	}
 
 	s.mux.HandleFunc("/healthz", s.handleHealth)
@@ -43,6 +56,9 @@ func (s *Server) Run() error {
 	httpSrv := &http.Server{
 		Addr:              s.cfg.Listen,
 		Handler:           s.mux,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       60 * time.Second,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	return httpSrv.ListenAndServe()
@@ -284,6 +300,39 @@ func nullableInt64(v sql.NullInt64) any {
 		return nil
 	}
 	return v.Int64
+}
+
+func (s *Server) allowCSRSubmit(remoteAddr string) (time.Duration, bool) {
+	if s.cfg.CSRMinInterval <= 0 {
+		return 0, true
+	}
+
+	key := remoteKey(remoteAddr)
+	now := time.Now().UTC()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if last, ok := s.csrLastSubmit[key]; ok {
+		wait := s.cfg.CSRMinInterval - now.Sub(last)
+		if wait > 0 {
+			return wait, false
+		}
+	}
+	s.csrLastSubmit[key] = now
+	return 0, true
+}
+
+func remoteKey(remoteAddr string) string {
+	remoteAddr = strings.TrimSpace(remoteAddr)
+	if remoteAddr == "" {
+		return "unknown"
+	}
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err == nil && strings.TrimSpace(host) != "" {
+		return host
+	}
+	return remoteAddr
 }
 
 func privateKeyStored(keyPEM []byte) bool {

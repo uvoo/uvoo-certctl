@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	"certctl/internal/server"
 	"certctl/internal/util"
@@ -11,6 +12,8 @@ import (
 func init() {
 	var listen string
 	var csrSubmitPassword string
+	var csrMaxBodyBytes int64
+	var csrMinInterval time.Duration
 
 	cmd := &cobra.Command{
 		Use:   "serve-certs",
@@ -24,6 +27,8 @@ func init() {
 				DBPath:            rootCfg.DBPath,
 				Listen:            listen,
 				CSRSubmitPassword: csrSubmitPassword,
+				CSRMaxBodyBytes:   csrMaxBodyBytes,
+				CSRMinInterval:    csrMinInterval,
 			})
 			fmt.Printf("Serving cert shares on %s\n", listen)
 			if csrSubmitPassword != "" {
@@ -35,5 +40,7 @@ func init() {
 
 	cmd.Flags().StringVar(&listen, "listen", ":8080", "listen address")
 	cmd.Flags().StringVar(&csrSubmitPassword, "csr-submit-password", "", "optional password required for HTTP CSR submission")
+	cmd.Flags().Int64Var(&csrMaxBodyBytes, "csr-max-body-bytes", 1<<20, "maximum HTTP CSR submission body size in bytes")
+	cmd.Flags().DurationVar(&csrMinInterval, "csr-min-submit-interval", 2*time.Second, "minimum time between CSR submissions from the same client IP")
 	rootCmd.AddCommand(cmd)
 }

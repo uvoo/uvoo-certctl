@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"certctl/internal/csrqueue"
 	"certctl/internal/storage"
@@ -47,9 +49,20 @@ func (s *Server) handleCSRSubmit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "csr submission is not enabled")
 		return
 	}
+	if wait, ok := s.allowCSRSubmit(r.RemoteAddr); !ok {
+		w.Header().Set("Retry-After", strconv.Itoa(maxInt(1, int(wait.Round(time.Second).Seconds()))))
+		writeError(w, http.StatusTooManyRequests, "csr submission rate limit exceeded")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.CSRMaxBodyBytes)
 
 	submission, submitPassword, err := parseCSRSubmission(r)
 	if err != nil {
+		if isBodyTooLarge(err) {
+			writeError(w, http.StatusRequestEntityTooLarge, "csr submission body too large")
+			return
+		}
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -241,4 +254,18 @@ func nilIfEmpty(v string) any {
 		return nil
 	}
 	return v
+}
+
+func isBodyTooLarge(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "request body too large")
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
