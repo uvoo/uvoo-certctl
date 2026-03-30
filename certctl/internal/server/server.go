@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"certctl/internal/auth"
 	"certctl/internal/cli"
 	"certctl/internal/storage"
 	"certctl/internal/util"
@@ -42,6 +43,7 @@ type Server struct {
 	csrLastSubmit map[string]time.Time
 	allowNets     []*net.IPNet
 	configErr     error
+	authVerifier  *auth.Verifier
 }
 
 func New(cfg Config) *Server {
@@ -49,6 +51,7 @@ func New(cfg Config) *Server {
 		cfg:           cfg,
 		mux:           http.NewServeMux(),
 		csrLastSubmit: map[string]time.Time{},
+		authVerifier:  auth.NewVerifier(cfg.ProviderHTTPTimeout),
 	}
 	if s.cfg.CSRMaxBodyBytes <= 0 {
 		s.cfg.CSRMaxBodyBytes = 1 << 20
@@ -62,17 +65,11 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("/share/", s.handleShare)
 	s.mux.HandleFunc("/csr-requests", s.handleCSRRequests)
 	s.mux.HandleFunc("/csr-requests/", s.handleCSRRequests)
-	if s.adminAPIEnabled() {
-		s.mux.HandleFunc("/admin/v1/doctor", s.requireAdminAuth(s.handleAdminDoctor))
-		s.mux.HandleFunc("/admin/v1/csr-requests", s.requireAdminAuth(s.handleAdminCSRRequests))
-		s.mux.HandleFunc("/admin/v1/csr-requests/", s.requireAdminAuth(s.handleAdminCSRRequests))
-	}
+	s.mux.HandleFunc("/admin/v1/doctor", s.requireAdminPermission(s.handleAdminDoctor, adminDoctorPermission))
+	s.mux.HandleFunc("/admin/v1/csr-requests", s.requireAdminPermission(s.handleAdminCSRRequests, adminCSRCollectionPermission))
+	s.mux.HandleFunc("/admin/v1/csr-requests/", s.requireAdminPermission(s.handleAdminCSRRequests, adminCSRItemPermission))
 	if s.cfg.EnableMetrics {
-		handler := http.HandlerFunc(s.handleMetrics)
-		if s.adminAPIEnabled() {
-			handler = s.requireAdminAuth(handler)
-		}
-		s.mux.Handle("/metrics", handler)
+		s.mux.Handle("/metrics", s.requireAdminPermission(s.handleMetrics, metricsPermission))
 	}
 
 	return s

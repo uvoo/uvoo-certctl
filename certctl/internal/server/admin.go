@@ -1,7 +1,6 @@
 package server
 
 import (
-	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -42,29 +41,6 @@ type adminApproveCSRRequest struct {
 
 type adminRejectCSRRequest struct {
 	Reason string `json:"reason"`
-}
-
-func (s *Server) adminAPIEnabled() bool {
-	return strings.TrimSpace(s.cfg.AdminUsername) != "" && s.cfg.AdminPassword != ""
-}
-
-func (s *Server) requireAdminAuth(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		user, pass, ok := r.BasicAuth()
-		if !ok || !secureCompare(user, s.cfg.AdminUsername) || !secureCompare(pass, s.cfg.AdminPassword) {
-			w.Header().Set("WWW-Authenticate", `Basic realm="certctl"`)
-			writeError(w, http.StatusUnauthorized, "admin authentication required")
-			return
-		}
-		next(w, r)
-	}
-}
-
-func secureCompare(a, b string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
 func (s *Server) handleAdminDoctor(w http.ResponseWriter, r *http.Request) {

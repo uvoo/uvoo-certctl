@@ -7,6 +7,7 @@ A Cobra-based refactor of the original single-file ACME utility.
 - Install guide: [`docs/INSTALL.md`](docs/INSTALL.md)
 - CSR guide: [`docs/CSR_REQUESTS.md`](docs/CSR_REQUESTS.md)
 - Admin runbook: [`docs/RUNBOOK.md`](docs/RUNBOOK.md)
+- Auth/authz design: [`docs/AUTHZ_DESIGN.md`](docs/AUTHZ_DESIGN.md)
 - Release process: [`docs/RELEASING.md`](docs/RELEASING.md)
 
 ## What changed
@@ -157,6 +158,24 @@ go run . approve-csr --id <request-id> --intermediate-name internal-ica --parent
 go run . reject-csr --id <request-id> --reason "unable to verify requester"
 ```
 
+Configure JWT/OIDC auth for the admin API:
+
+```bash
+go run . create-auth-issuer \
+  --name keycloak-local \
+  --issuer https://sso.example.com/realms/certctl \
+  --audience certctl \
+  --discovery-url https://sso.example.com/realms/certctl/.well-known/openid-configuration \
+  --roles-claim realm_access.roles
+
+go run . create-authz-binding \
+  --principal 'role:https://sso.example.com/realms/certctl:certctl_admin' \
+  --permission doctor.read
+
+go run . list-auth-issuers
+go run . list-authz-bindings
+```
+
 Serve certificate shares and CSR pickup/submission:
 
 ```bash
@@ -167,6 +186,8 @@ go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt 
 ```
 
 With `--admin-username` and `--admin-password`, the built-in server also exposes a small authenticated JSON admin API under `/admin/v1` for remote `doctor` and CSR queue actions. `--metrics` enables a Prometheus-style `/metrics` endpoint, using the same Basic auth when admin auth is enabled.
+
+The admin API can also use bearer tokens from trusted JWT/OIDC issuers configured in the local database. The auth model and claim mapping are documented in [`docs/AUTHZ_DESIGN.md`](docs/AUTHZ_DESIGN.md).
 
 Export safe metadata or a DB backup:
 

@@ -1,0 +1,142 @@
+package server
+
+import (
+	"crypto/subtle"
+	"net/http"
+	"strings"
+
+	"certctl/internal/auth"
+	"certctl/internal/storage"
+)
+
+type permissionResolver func(r *http.Request) (auth.PermissionRequest, bool)
+
+func (s *Server) requireAdminPermission(next http.HandlerFunc, resolve permissionResolver) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		req, ok := resolve(r)
+		if !ok {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+
+		identity, status, err := s.authenticateAdminRequest(r, req)
+		if err != nil {
+			if status == 0 {
+				status = http.StatusUnauthorized
+			}
+			if status == http.StatusUnauthorized {
+				w.Header().Set("WWW-Authenticate", `Basic realm="certctl", Bearer realm="certctl"`)
+			}
+			writeError(w, status, err.Error())
+			return
+		}
+
+		next(w, r.WithContext(auth.WithIdentity(r.Context(), identity)))
+	}
+}
+
+func (s *Server) authenticateAdminRequest(r *http.Request, req auth.PermissionRequest) (auth.Identity, int, error) {
+	if identity, ok := s.basicIdentityFromRequest(r); ok {
+		return identity, 0, nil
+	}
+
+	token := bearerTokenFromRequest(r)
+	if token == "" {
+		return auth.Identity{}, http.StatusUnauthorized, auth.ErrMissingBearerToken
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		return auth.Identity{}, http.StatusInternalServerError, err
+	}
+	defer store.Close()
+
+	issuers, err := store.ListAuthIssuers(true)
+	if err != nil {
+		return auth.Identity{}, http.StatusInternalServerError, err
+	}
+	identity, err := s.authVerifier.Verify(r.Context(), token, issuers)
+	if err != nil {
+		return auth.Identity{}, http.StatusUnauthorized, err
+	}
+
+	bindings, err := store.ListAuthzBindings(true)
+	if err != nil {
+		return auth.Identity{}, http.StatusInternalServerError, err
+	}
+	if !auth.Allowed(identity, bindings, req) {
+		return auth.Identity{}, http.StatusForbidden, auth.ErrForbidden
+	}
+	return identity, 0, nil
+}
+
+func (s *Server) basicIdentityFromRequest(r *http.Request) (auth.Identity, bool) {
+	user, pass, ok := r.BasicAuth()
+	if !ok {
+		return auth.Identity{}, false
+	}
+	if !secureCompare(user, s.cfg.AdminUsername) || !secureCompare(pass, s.cfg.AdminPassword) {
+		return auth.Identity{}, false
+	}
+	if strings.TrimSpace(s.cfg.AdminUsername) == "" || s.cfg.AdminPassword == "" {
+		return auth.Identity{}, false
+	}
+	return auth.SuperuserIdentity(user), true
+}
+
+func secureCompare(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+func bearerTokenFromRequest(r *http.Request) string {
+	raw := strings.TrimSpace(r.Header.Get("Authorization"))
+	if len(raw) < 7 || !strings.EqualFold(raw[:7], "Bearer ") {
+		return ""
+	}
+	return strings.TrimSpace(raw[7:])
+}
+
+func adminDoctorPermission(r *http.Request) (auth.PermissionRequest, bool) {
+	if r.Method != http.MethodGet {
+		return auth.PermissionRequest{}, false
+	}
+	return auth.PermissionRequest{Permission: "doctor.read"}, true
+}
+
+func metricsPermission(r *http.Request) (auth.PermissionRequest, bool) {
+	if r.Method != http.MethodGet {
+		return auth.PermissionRequest{}, false
+	}
+	return auth.PermissionRequest{Permission: "metrics.read"}, true
+}
+
+func adminCSRCollectionPermission(r *http.Request) (auth.PermissionRequest, bool) {
+	switch r.Method {
+	case http.MethodGet:
+		return auth.PermissionRequest{Permission: "csr.read", ResourceKind: "csr_request", ResourceRef: "*"}, true
+	case http.MethodPost:
+		return auth.PermissionRequest{Permission: "csr.submit", ResourceKind: "csr_request", ResourceRef: "*"}, true
+	default:
+		return auth.PermissionRequest{}, false
+	}
+}
+
+func adminCSRItemPermission(r *http.Request) (auth.PermissionRequest, bool) {
+	id, action := adminCSRPathParts(r.URL.Path)
+	if id == "" {
+		return auth.PermissionRequest{}, false
+	}
+	switch {
+	case action == "" && r.Method == http.MethodGet:
+		return auth.PermissionRequest{Permission: "csr.read", ResourceKind: "csr_request", ResourceRef: id}, true
+	case action == "approve" && r.Method == http.MethodPost:
+		return auth.PermissionRequest{Permission: "csr.approve", ResourceKind: "csr_request", ResourceRef: id}, true
+	case action == "reject" && r.Method == http.MethodPost:
+		return auth.PermissionRequest{Permission: "csr.reject", ResourceKind: "csr_request", ResourceRef: id}, true
+	default:
+		return auth.PermissionRequest{}, false
+	}
+}
