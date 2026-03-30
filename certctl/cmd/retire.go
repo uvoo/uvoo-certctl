@@ -10,6 +10,7 @@ import (
 func init() {
 	var kind string
 	var id string
+	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "retire",
@@ -33,6 +34,13 @@ func init() {
 				return err
 			}
 			logAuditEvent(store, "retire", "private_"+kind+"_ca", id, "")
+			if jsonOut {
+				return printJSON(map[string]any{
+					"kind":   kind,
+					"id":     id,
+					"status": "retired",
+				})
+			}
 
 			fmt.Printf("Retired %s CA %s\n", kind, id)
 			return nil
@@ -41,6 +49,7 @@ func init() {
 
 	cmd.Flags().StringVar(&kind, "kind", "", "CA kind: root or intermediate")
 	cmd.Flags().StringVar(&id, "id", "", "CA ID")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 	_ = cmd.MarkFlagRequired("kind")
 	_ = cmd.MarkFlagRequired("id")
 	rootCmd.AddCommand(cmd)

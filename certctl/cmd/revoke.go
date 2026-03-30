@@ -10,6 +10,7 @@ import (
 func init() {
 	var kind string
 	var id string
+	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "revoke",
@@ -33,6 +34,13 @@ func init() {
 				return err
 			}
 			logAuditEvent(store, "revoke", kind+"_cert", id, "")
+			if jsonOut {
+				return printJSON(map[string]any{
+					"kind":   kind,
+					"id":     id,
+					"status": "revoked",
+				})
+			}
 
 			fmt.Printf("Revoked %s certificate %s\n", kind, id)
 			return nil
@@ -41,6 +49,7 @@ func init() {
 
 	cmd.Flags().StringVar(&kind, "kind", "", "certificate kind: public or private")
 	cmd.Flags().StringVar(&id, "id", "", "certificate ID")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 	_ = cmd.MarkFlagRequired("kind")
 	_ = cmd.MarkFlagRequired("id")
 	rootCmd.AddCommand(cmd)
