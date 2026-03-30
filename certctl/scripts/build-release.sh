@@ -20,7 +20,7 @@ DEFAULT_TARGETS=(
 
 usage() {
   cat <<'EOF'
-Build certctl release binaries for common platforms.
+Build certctl release archives for common platforms.
 
 Usage:
   scripts/build-release.sh
@@ -31,7 +31,7 @@ Environment:
   VERSION   Release version label used in artifact names. Default: dev
   COMMIT    Commit label embedded into the binary. Default: current git commit
   BUILD_DATE Build timestamp embedded into the binary. Default: current UTC time
-  OUT_DIR   Output directory for built artifacts. Default: ./dist
+  OUT_DIR   Output directory for built archives. Default: ./dist
   GO_BIN    Go executable to use. Default: go
   GOCACHE   Go build cache directory. Default: $ROOT_DIR/.gocache
 EOF
@@ -50,6 +50,23 @@ fi
 mkdir -p "$OUT_DIR"
 mkdir -p "$GOCACHE"
 
+if ! command -v tar >/dev/null 2>&1; then
+  echo "tar is required to build release archives" >&2
+  exit 1
+fi
+
+if ! command -v sha256sum >/dev/null 2>&1; then
+  echo "sha256sum is required to build release checksums" >&2
+  exit 1
+fi
+
+ZIP_CMD=""
+if command -v zip >/dev/null 2>&1; then
+  ZIP_CMD="zip"
+elif command -v python3 >/dev/null 2>&1; then
+  ZIP_CMD="python3"
+fi
+
 for target in "${TARGETS[@]}"; do
   goos="${target%/*}"
   goarch="${target#*/}"
@@ -63,10 +80,20 @@ for target in "${TARGETS[@]}"; do
     ext=".exe"
   fi
 
-  artifact_dir="$OUT_DIR/certctl_${VERSION}_${goos}_${goarch}"
+  artifact_base="certctl_${VERSION}_${goos}_${goarch}"
+  artifact_dir="$OUT_DIR/$artifact_base"
   bin_name="certctl${ext}"
+  archive_name="${artifact_base}.tar.gz"
+  if [[ "$goos" == "windows" ]]; then
+    archive_name="${artifact_base}.zip"
+    if [[ -z "$ZIP_CMD" ]]; then
+      echo "zip or python3 is required to build Windows release archives" >&2
+      exit 1
+    fi
+  fi
 
   rm -rf "$artifact_dir"
+  rm -f "$OUT_DIR/$archive_name" "$OUT_DIR/${archive_name}.sha256"
   mkdir -p "$artifact_dir"
 
   echo "Building $goos/$goarch"
@@ -82,14 +109,36 @@ for target in "${TARGETS[@]}"; do
   if [[ -f "$ROOT_DIR/CHANGELOG.md" ]]; then
     cp "$ROOT_DIR/CHANGELOG.md" "$artifact_dir/CHANGELOG.md"
   fi
+  if [[ -f "$ROOT_DIR/docs/INSTALL.md" ]]; then
+    cp "$ROOT_DIR/docs/INSTALL.md" "$artifact_dir/INSTALL.md"
+  fi
 
-  if command -v sha256sum >/dev/null 2>&1; then
+  if [[ "$goos" == "windows" ]]; then
+    if [[ "$ZIP_CMD" == "zip" ]]; then
+      (
+        cd "$OUT_DIR"
+        zip -rq "$archive_name" "$artifact_base"
+      )
+    else
+      (
+        cd "$OUT_DIR"
+        python3 -m zipfile -c "$archive_name" "$artifact_base"
+      )
+    fi
+  else
     (
       cd "$OUT_DIR"
-      sha256sum "certctl_${VERSION}_${goos}_${goarch}/$bin_name" > "certctl_${VERSION}_${goos}_${goarch}.sha256"
+      tar -czf "$archive_name" "$artifact_base"
     )
   fi
+
+  (
+    cd "$OUT_DIR"
+    sha256sum "$archive_name" > "${archive_name}.sha256"
+  )
+
+  rm -rf "$artifact_dir"
 done
 
 echo
-echo "Artifacts written to: $OUT_DIR"
+echo "Release archives written to: $OUT_DIR"
