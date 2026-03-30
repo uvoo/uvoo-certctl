@@ -3,12 +3,11 @@ package cmd
 import (
 	"database/sql"
 	"encoding/json"
-	"os"
 	"time"
 )
 
 func printJSON(v any) error {
-	enc := json.NewEncoder(os.Stdout)
+	enc := json.NewEncoder(rootCmd.OutOrStdout())
 	enc.SetIndent("", "  ")
 	return enc.Encode(v)
 }

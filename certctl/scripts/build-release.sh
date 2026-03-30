@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/dist}"
 VERSION="${VERSION:-dev}"
+COMMIT="${COMMIT:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)}"
+BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 GO_BIN="${GO_BIN:-go}"
 GOCACHE="${GOCACHE:-$ROOT_DIR/.gocache}"
 
@@ -27,6 +29,8 @@ Usage:
 
 Environment:
   VERSION   Release version label used in artifact names. Default: dev
+  COMMIT    Commit label embedded into the binary. Default: current git commit
+  BUILD_DATE Build timestamp embedded into the binary. Default: current UTC time
   OUT_DIR   Output directory for built artifacts. Default: ./dist
   GO_BIN    Go executable to use. Default: go
   GOCACHE   Go build cache directory. Default: $ROOT_DIR/.gocache
@@ -69,7 +73,9 @@ for target in "${TARGETS[@]}"; do
   (
     cd "$ROOT_DIR"
     GOCACHE="$GOCACHE" GOOS="$goos" GOARCH="$goarch" \
-      "$GO_BIN" build -trimpath -ldflags="-s -w" -o "$artifact_dir/$bin_name" .
+      "$GO_BIN" build -trimpath \
+        -ldflags="-s -w -X certctl/cmd.version=$VERSION -X certctl/cmd.commit=$COMMIT -X certctl/cmd.date=$BUILD_DATE" \
+        -o "$artifact_dir/$bin_name" .
   )
 
   cp "$ROOT_DIR/README.md" "$artifact_dir/README.md"

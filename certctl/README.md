@@ -156,6 +156,14 @@ go run . issue-private-cert --intermediate-name internal-ica --common-name api.i
 go run . share-cert --kind private --name api.internal.example --mode cert --share-password env:CERTCTL_SHARE_PASSWORD --json
 ```
 
+Health and release information:
+
+```bash
+go run . doctor
+go run . version
+go run . version --json
+```
+
 ## Build
 
 Build a local binary for the current machine:
@@ -193,6 +201,8 @@ Build a versioned set of release artifacts:
 ```bash
 VERSION=v0.1.0 ./scripts/build-release.sh
 ```
+
+The release scripts also stamp `version`, `commit`, and `date` into the binary for the `version` command.
 
 Build only specific targets:
 
