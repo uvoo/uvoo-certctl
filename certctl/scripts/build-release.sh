@@ -79,6 +79,9 @@ for target in "${TARGETS[@]}"; do
   )
 
   cp "$ROOT_DIR/README.md" "$artifact_dir/README.md"
+  if [[ -f "$ROOT_DIR/CHANGELOG.md" ]]; then
+    cp "$ROOT_DIR/CHANGELOG.md" "$artifact_dir/CHANGELOG.md"
+  fi
 
   if command -v sha256sum >/dev/null 2>&1; then
     (
