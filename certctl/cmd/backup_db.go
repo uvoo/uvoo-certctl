@@ -16,6 +16,8 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "backup-db",
 		Short: "Create a SQLite backup of the certificate database",
+		Example: `  certctl backup-db --out certctl-backup.db
+  certctl backup-db --out /secure/backups/certctl.db --force --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if _, err := os.Stat(outPath); err == nil {
 				if !force {

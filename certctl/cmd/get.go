@@ -64,6 +64,14 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "get",
 		Short: "Obtain a Let's Encrypt certificate and store it encrypted in SQLite",
+		Example: `  certctl get \
+    --common-name '*.example.com' \
+    --sans '*.example.com,example.com' \
+    --provider godaddy \
+    --email admin@example.com \
+    --storage-password env:CERTCTL_STORAGE_PASSWORD \
+    --api-user "$GODADDY_API_KEY" \
+    --api-key "$GODADDY_API_SECRET"`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := withTimeout(timeout)
 			defer cancel()

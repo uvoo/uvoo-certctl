@@ -164,6 +164,13 @@ go run . version
 go run . version --json
 ```
 
+Renew a stored public certificate:
+
+```bash
+go run . renew --common-name '*.example.com'
+go run . renew --common-name '*.example.com' --force --json
+```
+
 ## Build
 
 Build a local binary for the current machine:
@@ -210,9 +217,9 @@ Build only specific targets:
 ./scripts/build-release.sh linux/amd64 darwin/arm64 windows/amd64
 ```
 
-## Suggested next improvements
+## Release checklist
 
-- Add `list` and `renew` commands.
-- Add structured JSON output.
-- Add tests with mocked provider APIs.
-- Add support for more DNS providers behind the same interface.
+- Run `go run . doctor` before shipping changes.
+- Run `go test -mod=mod ./...` to cover storage and CLI smoke paths.
+- Build stamped release artifacts with `VERSION=vX.Y.Z ./scripts/build-release.sh`.
+- Tag the same version in git so `version` output and release assets stay aligned.

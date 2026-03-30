@@ -37,6 +37,14 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "issue-private-cert",
 		Short: "Issue a private leaf certificate from an intermediate CA",
+		Example: `  certctl issue-private-cert \
+    --intermediate-name corp-issuing \
+    --common-name api.internal.example \
+    --domain api.internal.example \
+    --san api \
+    --parent-key-password env:CERTCTL_PARENT_KEY_PASSWORD \
+    --key-password env:CERTCTL_KEY_PASSWORD \
+    --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if parentKeyPassword == "" && parentPasswordAlias != "" {
 				parentKeyPassword = parentPasswordAlias

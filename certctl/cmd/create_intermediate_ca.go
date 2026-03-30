@@ -34,6 +34,12 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "create-intermediate-ca",
 		Short: "Create a private intermediate CA signed by a private root CA",
+		Example: `  certctl create-intermediate-ca \
+    --root-name corp-root \
+    --name corp-issuing \
+    --common-name "Corp Issuing CA" \
+    --parent-key-password env:CERTCTL_PARENT_KEY_PASSWORD \
+    --key-password env:CERTCTL_KEY_PASSWORD`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			parentKeyPassword, err := util.ResolveSecretValue(parentKeyPassword, "CERTCTL_PARENT_KEY_PASSWORD")
 			if err != nil {

@@ -17,8 +17,12 @@ var rootCfg struct {
 }
 
 var rootCmd = &cobra.Command{
-	Use:           "certctl",
-	Short:         "Manage public and private certificate issuance, storage, and sharing",
+	Use:   "certctl",
+	Short: "Manage public and private certificate issuance, storage, and sharing",
+	Example: `  certctl doctor
+  certctl version --json
+  certctl create-root-ca --name corp-root --common-name "Corp Root CA"
+  certctl backup-db --out certctl-backup.db`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }

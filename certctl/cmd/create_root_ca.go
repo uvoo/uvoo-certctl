@@ -22,6 +22,12 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "create-root-ca",
 		Short: "Create a private root CA and store it encrypted",
+		Example: `  certctl create-root-ca \
+    --name corp-root \
+    --common-name "Corp Root CA" \
+    --key-type ec256 \
+    --days 3650 \
+    --key-password env:CERTCTL_KEY_PASSWORD`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			keyPassword, err := util.ResolveSecretValue(keyPassword, "CERTCTL_KEY_PASSWORD")
 			if err != nil {

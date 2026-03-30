@@ -21,6 +21,8 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Run read-only validation checks against the certificate database",
+		Example: `  certctl doctor
+  certctl doctor --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {

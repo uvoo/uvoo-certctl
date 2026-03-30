@@ -19,6 +19,8 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "restore-db",
 		Short: "Restore the certificate database from a backup file",
+		Example: `  certctl restore-db --from certctl-backup.db --force
+  certctl restore-db --from /secure/backups/certctl.db --force --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fromAbs, err := filepath.Abs(fromPath)
 			if err != nil {
