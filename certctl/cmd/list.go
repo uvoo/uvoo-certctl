@@ -10,6 +10,7 @@ import (
 
 func init() {
 	var san string
+	var all bool
 
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -21,7 +22,7 @@ func init() {
 			}
 			defer store.Close()
 
-			rows, err := store.List(san)
+			rows, err := store.List(san, all)
 			if err != nil {
 				return err
 			}
@@ -35,7 +36,9 @@ func init() {
 			}
 
 			for _, r := range rows {
+				fmt.Printf("id:          %s\n", r.ID)
 				fmt.Printf("common_name: %s\n", r.CommonName)
+				fmt.Printf("  status:     %s\n", r.Status)
 				fmt.Printf("  sans:       %s\n", r.SANsCSV)
 				fmt.Printf("  provider:   %s\n", r.Provider)
 				fmt.Printf("  email:      %s\n", r.Email)
@@ -48,5 +51,6 @@ func init() {
 	}
 
 	cmd.Flags().StringVar(&san, "san", "", "filter by san")
+	cmd.Flags().BoolVar(&all, "all", false, "include inactive and historical certificates")
 	rootCmd.AddCommand(cmd)
 }

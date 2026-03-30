@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"certctl/internal/cli"
@@ -13,6 +14,7 @@ import (
 
 func init() {
 	var rootID string
+	var rootName string
 	var name string
 	var commonName string
 	var days int
@@ -48,9 +50,23 @@ func init() {
 			}
 			defer store.Close()
 
-			rootRec, err := store.GetPrivateRootCAByID(rootID)
-			if err != nil {
-				return fmt.Errorf("failed to load root CA %q: %w", rootID, err)
+			var rootRec storage.PrivateRootCA
+			switch {
+			case strings.TrimSpace(rootID) != "":
+				rootRec, err = store.GetPrivateRootCAByID(rootID)
+				if err != nil {
+					return fmt.Errorf("failed to load root CA %q: %w", rootID, err)
+				}
+			case strings.TrimSpace(rootName) != "":
+				rootRec, err = store.GetIssuingPrivateRootCAByName(rootName)
+				if err != nil {
+					return fmt.Errorf("failed to load issuing root CA %q: %w", rootName, err)
+				}
+			default:
+				return fmt.Errorf("one of --root-id or --root-name is required")
+			}
+			if rootRec.Status != storage.StatusActive || !rootRec.IsIssuing {
+				return fmt.Errorf("root CA %q is not active for issuance", rootRec.ID)
 			}
 
 			rootCertPEM := rootRec.CertPEM
@@ -101,6 +117,9 @@ func init() {
 				RootCAID:   rootRec.ID,
 				Name:       name,
 				CommonName: commonName,
+				Status:     storage.StatusActive,
+				IsTrusted:  true,
+				IsIssuing:  true,
 				KeyType:    keyType,
 				CertPEM:    plainCert,
 				KeyPEM:     encKey,
@@ -112,10 +131,16 @@ func init() {
 			if err := store.UpsertPrivateIntermediateCA(rec); err != nil {
 				return err
 			}
+			rec, err = store.GetPrivateIntermediateCAByID(rec.ID)
+			if err != nil {
+				return err
+			}
 
 			fmt.Printf("Created private intermediate CA %s\n", name)
 			fmt.Printf("id:         %s\n", rec.ID)
 			fmt.Printf("root id:    %s\n", rec.RootCAID)
+			fmt.Printf("generation: %d\n", rec.Generation)
+			fmt.Printf("status:     %s\n", rec.Status)
 			fmt.Printf("commonName: %s\n", rec.CommonName)
 			fmt.Printf("keyType:    %s\n", rec.KeyType)
 			fmt.Printf("notBefore:  %s\n", rec.NotBefore.Format(time.RFC3339))
@@ -125,7 +150,8 @@ func init() {
 	}
 
 	cmd.Flags().StringVar(&rootID, "root-id", "", "root CA ID used to sign the intermediate")
-	cmd.Flags().StringVar(&name, "name", "", "unique intermediate CA name")
+	cmd.Flags().StringVar(&rootName, "root-name", "", "active root CA logical name used to sign the intermediate")
+	cmd.Flags().StringVar(&name, "name", "", "intermediate CA logical name")
 	cmd.Flags().StringVar(&commonName, "common-name", "", "intermediate CA common name")
 	cmd.Flags().IntVar(&days, "days", 1825, "validity in days")
 	cmd.Flags().StringVar(&keyType, "key-type", "ec256", "key type: ec256, ec384, rsa2048, rsa4096, ed25519")
@@ -140,7 +166,6 @@ func init() {
 	cmd.Flags().StringVar(&province, "province", "", "province/state")
 	cmd.Flags().StringVar(&locality, "locality", "", "locality/city")
 
-	_ = cmd.MarkFlagRequired("root-id")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("common-name")
 

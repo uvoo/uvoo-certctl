@@ -3,6 +3,7 @@ package cmd
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"certctl/internal/cli"
@@ -30,8 +31,13 @@ func init() {
 				}
 				return err
 			}
+			if showKey && strings.TrimSpace(password) == "" {
+				return fmt.Errorf("--password is required when --show-key is set")
+			}
 			certPEM := rec.CertPEM
+			printKV("id", rec.ID)
 			printKV("common_name", rec.CommonName)
+			printKV("status", rec.Status)
 			printKV("provider", rec.Provider)
 			printKV("email", rec.Email)
 			printKV("issuer", rec.Issuer)
@@ -58,6 +64,5 @@ func init() {
 	cmd.Flags().StringVar(&password, "password", "", "encryption password")
 	cmd.Flags().BoolVar(&showKey, "show-key", false, "also print the private key")
 	_ = cmd.MarkFlagRequired("san")
-	_ = cmd.MarkFlagRequired("password")
 	rootCmd.AddCommand(cmd)
 }

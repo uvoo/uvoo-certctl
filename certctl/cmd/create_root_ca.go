@@ -57,6 +57,9 @@ func init() {
 				ID:         util.NewID(),
 				Name:       name,
 				CommonName: commonName,
+				Status:     storage.StatusActive,
+				IsTrusted:  true,
+				IsIssuing:  true,
 				KeyType:    keyType,
 				CertPEM:    plainCert,
 				KeyPEM:     encKey,
@@ -68,9 +71,15 @@ func init() {
 			if err := store.UpsertPrivateRootCA(rec); err != nil {
 				return err
 			}
+			rec, err = store.GetPrivateRootCAByID(rec.ID)
+			if err != nil {
+				return err
+			}
 
 			fmt.Printf("Created private root CA %s\n", name)
 			fmt.Printf("id:         %s\n", rec.ID)
+			fmt.Printf("generation: %d\n", rec.Generation)
+			fmt.Printf("status:     %s\n", rec.Status)
 			fmt.Printf("commonName: %s\n", rec.CommonName)
 			fmt.Printf("keyType:    %s\n", rec.KeyType)
 			fmt.Printf("notBefore:  %s\n", rec.NotBefore.Format(time.RFC3339))

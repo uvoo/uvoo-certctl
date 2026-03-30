@@ -37,7 +37,7 @@ func init() {
 			}
 			defer store.Close()
 
-			rec, err := store.GetPrivateCertByName(commonName)
+			rec, err := store.GetPrivateCertByNameOrSAN(commonName)
 			if err != nil {
 				return fmt.Errorf("no private certificate found for common name: %s", commonName)
 			}

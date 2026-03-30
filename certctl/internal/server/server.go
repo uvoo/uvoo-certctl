@@ -101,27 +101,51 @@ func (s *Server) handleShare(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleShareMetadata(w http.ResponseWriter, r *http.Request, store *storage.Store, share storage.CertShare) {
-	rec, err := store.GetByID(share.CertID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load certificate")
-		return
-	}
-
 	resp := map[string]any{
 		"share_id":              share.ID,
+		"cert_kind":             share.CertKind,
 		"mode":                  share.Mode,
-		"common_name":           rec.CommonName,
-		"sans_csv":              rec.SANsCSV,
-		"provider":              rec.Provider,
-		"issuer":                rec.Issuer,
-		"not_before":            formatTime(rec.NotBefore),
-		"not_after":             formatTime(rec.NotAfter),
 		"expires_at":            formatTime(share.ExpiresAt),
 		"requires_access":       true,
 		"requires_key_password": share.Mode == "cert_key",
 		"view_count":            share.ViewCount,
 		"max_views":             nullableInt64(share.MaxViews),
 		"note":                  share.Note,
+	}
+
+	switch share.CertKind {
+	case storage.CertKindPublic:
+		rec, err := store.GetByID(share.CertID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load certificate")
+			return
+		}
+		resp["common_name"] = rec.CommonName
+		resp["sans_csv"] = rec.SANsCSV
+		resp["provider"] = rec.Provider
+		resp["issuer"] = rec.Issuer
+		resp["status"] = rec.Status
+		resp["not_before"] = formatTime(rec.NotBefore)
+		resp["not_after"] = formatTime(rec.NotAfter)
+
+	case storage.CertKindPrivate:
+		rec, err := store.GetPrivateCertByID(share.CertID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load certificate")
+			return
+		}
+		resp["common_name"] = rec.CommonName
+		resp["sans_csv"] = rec.SANsCSV
+		resp["issuer"] = rec.Issuer
+		resp["status"] = rec.Status
+		resp["cert_type"] = rec.CertType
+		resp["key_type"] = rec.KeyType
+		resp["not_before"] = formatTime(rec.NotBefore)
+		resp["not_after"] = formatTime(rec.NotAfter)
+
+	default:
+		writeError(w, http.StatusInternalServerError, "unsupported certificate share kind")
+		return
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -135,6 +159,7 @@ type accessRequest struct {
 
 type accessResponse struct {
 	ShareID        string `json:"share_id"`
+	CertKind       string `json:"cert_kind"`
 	CertID         string `json:"cert_id"`
 	CommonName     string `json:"common_name"`
 	SANsCSV        string `json:"sans_csv"`
@@ -154,37 +179,54 @@ func (s *Server) handleShareAccess(w http.ResponseWriter, r *http.Request, store
 		return
 	}
 
-	rec, err := store.GetByID(share.CertID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load certificate")
-		return
-	}
-
-	certPEM := rec.CertPEM
-
 	resp := accessResponse{
-		ShareID:        share.ID,
-		CertID:         rec.ID,
-		CommonName:     rec.CommonName,
-		SANsCSV:        rec.SANsCSV,
-		CertificatePEM: string(certPEM),
+		ShareID:  share.ID,
+		CertKind: share.CertKind,
 	}
 
-	if share.Mode == "cert_key" {
-		if strings.TrimSpace(req.KeyPassword) == "" {
-			writeError(w, http.StatusForbidden, "key password required")
-			return
-		}
-		if err := util.CheckPassword(share.KeyPasswordHash, req.KeyPassword); err != nil {
-			writeError(w, http.StatusForbidden, "invalid key password")
-			return
-		}
-		keyPEM, err := cli.Decrypt(rec.KeyPEM, req.Password)
+	switch share.CertKind {
+	case storage.CertKindPublic:
+		rec, err := store.GetByID(share.CertID)
 		if err != nil {
-			writeError(w, http.StatusForbidden, "failed to decrypt private key with provided password")
+			writeError(w, http.StatusInternalServerError, "failed to load certificate")
 			return
 		}
-		resp.PrivateKeyPEM = string(keyPEM)
+		resp.CertID = rec.ID
+		resp.CommonName = rec.CommonName
+		resp.SANsCSV = rec.SANsCSV
+		resp.CertificatePEM = string(rec.CertPEM)
+
+	case storage.CertKindPrivate:
+		rec, err := store.GetPrivateCertByID(share.CertID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load certificate")
+			return
+		}
+		resp.CertID = rec.ID
+		resp.CommonName = rec.CommonName
+		resp.SANsCSV = rec.SANsCSV
+		resp.CertificatePEM = string(rec.CertPEM)
+
+		if share.Mode == "cert_key" {
+			if strings.TrimSpace(req.KeyPassword) == "" {
+				writeError(w, http.StatusForbidden, "key password required")
+				return
+			}
+			if err := util.CheckPassword(share.KeyPasswordHash, req.KeyPassword); err != nil {
+				writeError(w, http.StatusForbidden, "invalid key password")
+				return
+			}
+			keyPEM, err := cli.Decrypt(rec.KeyPEM, req.Password)
+			if err != nil {
+				writeError(w, http.StatusForbidden, "failed to decrypt private key with provided password")
+				return
+			}
+			resp.PrivateKeyPEM = string(keyPEM)
+		}
+
+	default:
+		writeError(w, http.StatusInternalServerError, "unsupported certificate share kind")
+		return
 	}
 
 	if err := store.IncrementShareView(share.ID); err != nil {

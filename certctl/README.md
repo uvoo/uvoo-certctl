@@ -9,6 +9,15 @@ A Cobra-based refactor of the original single-file ACME utility.
 - Added `create-record` and `delete-record` for explicit DNS record management.
 - Preserved encrypted SQLite storage for certificates and keys.
 - Expanded stored metadata with issuer and validity timestamps.
+- Public and private certificates now rotate immutably instead of being overwritten.
+- Private root and intermediate CAs now keep logical generations with trust and issuing state split apart.
+
+## Rotation model
+
+- Public and private leaf certificates keep one active row per `common_name`; new issuance supersedes the previous active row.
+- Private root and intermediate CAs keep immutable generations under the same logical `--name`.
+- CAs use `status`, `is_trusted`, and `is_issuing` separately so rollover can keep older chains trusted without allowing new issuance from them.
+- Active lookups resolve by policy instead of “latest updated row”.
 
 ## Commands
 
@@ -51,10 +60,11 @@ go run . delete-record \
 
 ```bash
 go run . get \
+  --common-name '*.example.com' \
+  --sans '*.example.com,example.com' \
   --provider godaddy \
-  --domain '*.example.com' \
   --email admin@example.com \
-  --password 'change-me' \
+  --storage-password 'change-me' \
   --api-user "$GODADDY_API_KEY" \
   --api-key "$GODADDY_API_SECRET"
 ```
@@ -63,9 +73,40 @@ go run . get \
 
 ```bash
 go run . query \
-  --domain '*.example.com' \
+  --san '*.example.com' \
   --password 'change-me' \
   --show-key
+```
+
+### Create or rotate a private root CA
+
+```bash
+go run . create-root-ca \
+  --name internal-root \
+  --common-name 'Internal Root CA' \
+  --storage-password 'change-me'
+```
+
+### Create or rotate a private intermediate CA
+
+```bash
+go run . create-intermediate-ca \
+  --root-name internal-root \
+  --name internal-ica \
+  --common-name 'Internal Issuing CA' \
+  --parent-key-password 'change-me' \
+  --key-password 'change-me-too'
+```
+
+### Issue a private leaf certificate from the active ICA generation
+
+```bash
+go run . issue-private-cert \
+  --intermediate-name internal-ica \
+  --common-name api.internal.example \
+  --domain api.internal.example \
+  --parent-key-password 'change-me-too' \
+  --key-password 'leaf-password'
 ```
 
 ## Notes

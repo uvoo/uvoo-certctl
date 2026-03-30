@@ -11,6 +11,7 @@ import (
 
 func init() {
 	var commonName string
+	var all bool
 
 	cmd := &cobra.Command{
 		Use:   "list-private-certs",
@@ -22,7 +23,7 @@ func init() {
 			}
 			defer store.Close()
 
-			rows, err := store.ListPrivateCerts(commonName)
+			rows, err := store.ListPrivateCerts(commonName, all)
 			if err != nil {
 				return err
 			}
@@ -37,6 +38,7 @@ func init() {
 
 			for _, r := range rows {
 				fmt.Printf("id:              %s\n", r.ID)
+				fmt.Printf("status:          %s\n", r.Status)
 				fmt.Printf("commonName:      %s\n", r.CommonName)
 				fmt.Printf("sans:         %s\n", r.SANsCSV)
 				fmt.Printf("certType:        %s\n", r.CertType)
@@ -51,6 +53,7 @@ func init() {
 	}
 
 	cmd.Flags().StringVar(&commonName, "common-name", "", "filter by common name")
+	cmd.Flags().BoolVar(&all, "all", false, "include inactive and historical certificates")
 	rootCmd.AddCommand(cmd)
 }
 
