@@ -188,3 +188,16 @@ func uniqueSorted(values []string) []string {
 	sort.Strings(out)
 	return out
 }
+
+func logAuditEvent(store *storage.Store, action, targetKind, targetID, summary string) {
+	if store == nil {
+		return
+	}
+	_ = store.LogAuditEvent(storage.AuditEvent{
+		ID:         util.NewID(),
+		Action:     action,
+		TargetKind: targetKind,
+		TargetID:   targetID,
+		Summary:    summary,
+	})
+}

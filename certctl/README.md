@@ -137,6 +137,7 @@ Manage lifecycle:
 go run . revoke --kind private --id <cert-id>
 go run . retire --kind intermediate --id <ica-id>
 go run . promote --kind intermediate --id <ica-id>
+go run . list-audit --limit 50
 ```
 
 Export safe metadata or a DB backup:
@@ -144,6 +145,15 @@ Export safe metadata or a DB backup:
 ```bash
 go run . export-metadata --out certctl-metadata.json
 go run . backup-db --out certctl-backup.db
+go run . restore-db --from certctl-backup.db --force
+```
+
+Mutating commands support `--json` for automation, for example:
+
+```bash
+go run . create-root-ca --name internal-root --common-name 'Internal Root CA' --json
+go run . issue-private-cert --intermediate-name internal-ica --common-name api.internal.example --json
+go run . share-cert --kind private --name api.internal.example --mode cert --share-password env:CERTCTL_SHARE_PASSWORD --json
 ```
 
 ## Build

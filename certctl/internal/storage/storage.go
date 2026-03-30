@@ -65,6 +65,15 @@ type CertShare struct {
 	Note              string
 }
 
+type AuditEvent struct {
+	ID         string
+	Action     string
+	TargetKind string
+	TargetID   string
+	Summary    string
+	CreatedAt  time.Time
+}
+
 type PrivateRootCA struct {
 	ID             string
 	Name           string
@@ -939,6 +948,9 @@ func ensureSchema(db *sql.DB) error {
 	if err := ensurePrivateCertsSchema(db); err != nil {
 		return err
 	}
+	if err := ensureAuditEventsSchema(db); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1069,6 +1081,20 @@ func ensureCertSharesSchema(db *sql.DB) error {
 			note TEXT,
 			CHECK (cert_kind IN ('public', 'private')),
 			CHECK (mode IN ('cert', 'cert_key'))
+		)
+	`)
+	return err
+}
+
+func ensureAuditEventsSchema(db *sql.DB) error {
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS audit_events (
+			id TEXT PRIMARY KEY,
+			action TEXT NOT NULL,
+			target_kind TEXT NOT NULL,
+			target_id TEXT NOT NULL,
+			summary TEXT,
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 		)
 	`)
 	return err
@@ -1800,6 +1826,57 @@ func withTx(db *sql.DB, fn func(tx *sql.Tx) error) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+func (s *Store) LogAuditEvent(event AuditEvent) error {
+	if strings.TrimSpace(event.ID) == "" {
+		return fmt.Errorf("audit event id is required")
+	}
+	if strings.TrimSpace(event.Action) == "" {
+		return fmt.Errorf("audit event action is required")
+	}
+	if strings.TrimSpace(event.TargetKind) == "" {
+		return fmt.Errorf("audit event target kind is required")
+	}
+	if strings.TrimSpace(event.TargetID) == "" {
+		return fmt.Errorf("audit event target id is required")
+	}
+	if event.CreatedAt.IsZero() {
+		event.CreatedAt = time.Now().UTC()
+	}
+	_, err := s.db.Exec(`
+		INSERT INTO audit_events (id, action, target_kind, target_id, summary, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, event.ID, event.Action, event.TargetKind, event.TargetID, nullIfEmpty(event.Summary), timeOrNil(event.CreatedAt))
+	return err
+}
+
+func (s *Store) ListAuditEvents(limit int) ([]AuditEvent, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.Query(`
+		SELECT id, action, target_kind, target_id, COALESCE(summary, ''), created_at
+		FROM audit_events
+		ORDER BY created_at DESC, id DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []AuditEvent
+	for rows.Next() {
+		var event AuditEvent
+		var createdAt sql.NullString
+		if err := rows.Scan(&event.ID, &event.Action, &event.TargetKind, &event.TargetID, &event.Summary, &createdAt); err != nil {
+			return nil, err
+		}
+		event.CreatedAt = parseRFC3339Null(createdAt)
+		out = append(out, event)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) ListPublicCertHistory(commonName string) ([]PublicCert, error) {

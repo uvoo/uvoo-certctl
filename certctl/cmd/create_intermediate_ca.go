@@ -29,11 +29,24 @@ func init() {
 	var country string
 	var province string
 	var locality string
+	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "create-intermediate-ca",
 		Short: "Create a private intermediate CA signed by a private root CA",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			parentKeyPassword, err := util.ResolveSecretValue(parentKeyPassword, "CERTCTL_PARENT_KEY_PASSWORD")
+			if err != nil {
+				return err
+			}
+			keyPassword, err = util.ResolveSecretValue(keyPassword, "CERTCTL_KEY_PASSWORD")
+			if err != nil {
+				return err
+			}
+			storagePassword, err = util.ResolveSecretValue(storagePassword, "CERTCTL_STORAGE_PASSWORD")
+			if err != nil {
+				return err
+			}
 			issuerPassword, err := util.ResolveCryptoPassword(parentKeyPassword, storagePassword)
 			if err != nil {
 				return fmt.Errorf("root CA password required: %w", err)
@@ -140,6 +153,23 @@ func init() {
 			if err != nil {
 				return err
 			}
+			logAuditEvent(store, "create_intermediate_ca", "private_intermediate_ca", rec.ID, rec.Name)
+			if jsonOut {
+				return printJSON(map[string]any{
+					"id":          rec.ID,
+					"root_ca_id":  rec.RootCAID,
+					"name":        rec.Name,
+					"common_name": rec.CommonName,
+					"generation":  rec.Generation,
+					"status":      rec.Status,
+					"is_trusted":  rec.IsTrusted,
+					"is_issuing":  rec.IsIssuing,
+					"key_type":    rec.KeyType,
+					"issuer":      rec.Issuer,
+					"not_before":  formatTimeValue(rec.NotBefore),
+					"not_after":   formatTimeValue(rec.NotAfter),
+				})
+			}
 
 			fmt.Printf("Created private intermediate CA %s\n", name)
 			fmt.Printf("id:         %s\n", rec.ID)
@@ -170,6 +200,7 @@ func init() {
 	cmd.Flags().StringVar(&country, "country", "", "country")
 	cmd.Flags().StringVar(&province, "province", "", "province/state")
 	cmd.Flags().StringVar(&locality, "locality", "", "locality/city")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("common-name")

@@ -234,3 +234,33 @@ func TestLegacyPrivateCertMigrationBuildsHistory(t *testing.T) {
 		t.Fatalf("expected older migrated row superseded, got %s", history[1].Status)
 	}
 }
+
+func TestAuditEventRoundTrip(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "audit.db")
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if err := store.LogAuditEvent(AuditEvent{
+		ID:         "audit-1",
+		Action:     "test_action",
+		TargetKind: "database",
+		TargetID:   dbPath,
+		Summary:    "hello",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := store.ListAuditEvents(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 audit row, got %d", len(rows))
+	}
+	if rows[0].Action != "test_action" || rows[0].Summary != "hello" {
+		t.Fatalf("unexpected audit row: %+v", rows[0])
+	}
+}

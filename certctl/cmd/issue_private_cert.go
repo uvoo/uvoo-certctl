@@ -32,6 +32,7 @@ func init() {
 	var country string
 	var province string
 	var locality string
+	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "issue-private-cert",
@@ -39,6 +40,18 @@ func init() {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if parentKeyPassword == "" && parentPasswordAlias != "" {
 				parentKeyPassword = parentPasswordAlias
+			}
+			parentKeyPassword, err := util.ResolveSecretValue(parentKeyPassword, "CERTCTL_PARENT_KEY_PASSWORD")
+			if err != nil {
+				return err
+			}
+			keyPassword, err = util.ResolveSecretValue(keyPassword, "CERTCTL_KEY_PASSWORD")
+			if err != nil {
+				return err
+			}
+			storagePassword, err = util.ResolveSecretValue(storagePassword, "CERTCTL_STORAGE_PASSWORD")
+			if err != nil {
+				return err
 			}
 
 			issuerPassword, err := util.ResolveCryptoPassword(parentKeyPassword, storagePassword)
@@ -162,6 +175,21 @@ func init() {
 			if err != nil {
 				return err
 			}
+			logAuditEvent(store, "issue_private_cert", "private_cert", rec.ID, rec.CommonName)
+			if jsonOut {
+				return printJSON(map[string]any{
+					"id":                 rec.ID,
+					"intermediate_ca_id": rec.IntermediateCAID,
+					"common_name":        rec.CommonName,
+					"sans_csv":           rec.SANsCSV,
+					"cert_type":          rec.CertType,
+					"key_type":           rec.KeyType,
+					"issuer":             rec.Issuer,
+					"status":             rec.Status,
+					"not_before":         formatTimeValue(rec.NotBefore),
+					"not_after":          formatTimeValue(rec.NotAfter),
+				})
+			}
 
 			fmt.Printf("Issued private certificate %s\n", commonName)
 			fmt.Printf("id:              %s\n", rec.ID)
@@ -197,6 +225,7 @@ func init() {
 	cmd.Flags().StringVar(&country, "country", "", "country")
 	cmd.Flags().StringVar(&province, "province", "", "province/state")
 	cmd.Flags().StringVar(&locality, "locality", "", "locality/city")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 
 	_ = cmd.MarkFlagRequired("common-name")
 

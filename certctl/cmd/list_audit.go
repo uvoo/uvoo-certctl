@@ -8,12 +8,12 @@ import (
 )
 
 func init() {
-	var shareID string
+	var limit int
 	var jsonOut bool
 
 	cmd := &cobra.Command{
-		Use:   "revoke-share",
-		Short: "Revoke a certificate share",
+		Use:   "list-audit",
+		Short: "List recent audit events",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {
@@ -21,24 +21,21 @@ func init() {
 			}
 			defer store.Close()
 
-			if err := store.RevokeShare(shareID); err != nil {
+			rows, err := store.ListAuditEvents(limit)
+			if err != nil {
 				return err
 			}
-			logAuditEvent(store, "revoke_share", "share", shareID, "")
 			if jsonOut {
-				return printJSON(map[string]any{
-					"share_id": shareID,
-					"status":   "revoked",
-				})
+				return printJSON(rows)
 			}
-			fmt.Printf("Revoked share %s\n", shareID)
+			for _, row := range rows {
+				fmt.Printf("%s  %s  %s  %s  %s\n", formatTimeValue(row.CreatedAt), row.Action, row.TargetKind, row.TargetID, row.Summary)
+			}
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&shareID, "share-id", "", "share ID to revoke")
+	cmd.Flags().IntVar(&limit, "limit", 100, "maximum number of events to show")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
-	_ = cmd.MarkFlagRequired("share-id")
-
 	rootCmd.AddCommand(cmd)
 }

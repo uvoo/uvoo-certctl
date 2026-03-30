@@ -8,6 +8,7 @@ import (
 	"certctl/internal/acme"
 	"certctl/internal/cli"
 	"certctl/internal/storage"
+	"certctl/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -16,11 +17,16 @@ func init() {
 	var password string
 	var force bool
 	var days int
+	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "renew",
 		Short: "Renew a stored certificate",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			password, err := util.ResolveSecretValue(password, "CERTCTL_KEY_PASSWORD", "CERTCTL_STORAGE_PASSWORD")
+			if err != nil {
+				return err
+			}
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {
 				return err
@@ -35,6 +41,13 @@ func init() {
 
 			remaining := time.Until(rec.NotAfter)
 			if !force && remaining > time.Duration(days)*24*time.Hour {
+				if jsonOut {
+					return printJSON(map[string]any{
+						"common_name": common_name,
+						"status":      "skipped",
+						"not_after":   formatTimeValue(rec.NotAfter),
+					})
+				}
 				fmt.Printf("Skipping renewal for %s (expires %s)\n", common_name, rec.NotAfter.Format(time.RFC3339))
 				return nil
 			}
@@ -78,6 +91,21 @@ func init() {
 			if err := store.Upsert(rec); err != nil {
 				return err
 			}
+			rec, err = store.GetByCommonName(common_name)
+			if err != nil {
+				return err
+			}
+			logAuditEvent(store, "renew_public_cert", "public_cert", rec.ID, rec.CommonName)
+			if jsonOut {
+				return printJSON(map[string]any{
+					"id":          rec.ID,
+					"common_name": rec.CommonName,
+					"status":      rec.Status,
+					"issuer":      rec.Issuer,
+					"not_before":  formatTimeValue(rec.NotBefore),
+					"not_after":   formatTimeValue(rec.NotAfter),
+				})
+			}
 
 			fmt.Printf("Renewed certificate for %s\n", common_name)
 			return nil
@@ -88,8 +116,7 @@ func init() {
 	cmd.Flags().StringVar(&password, "password", "", "encryption password")
 	cmd.Flags().BoolVar(&force, "force", false, "renew even if not near expiry")
 	cmd.Flags().IntVar(&days, "days", 30, "renew if expires within this many days")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 	_ = cmd.MarkFlagRequired("common_name")
-	_ = cmd.MarkFlagRequired("password")
-
 	rootCmd.AddCommand(cmd)
 }

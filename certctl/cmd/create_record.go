@@ -13,6 +13,7 @@ func init() {
 	var domain, name, value, recordType string
 	var ttl int
 	var timeout time.Duration
+	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "create-record",
@@ -26,6 +27,16 @@ func init() {
 			}
 			if err := p.CreateRecord(ctx, domain, name, strings.ToUpper(recordType), value, ttl); err != nil {
 				return err
+			}
+			if jsonOut {
+				return printJSON(map[string]any{
+					"action": "create_record",
+					"domain": domain,
+					"name":   name,
+					"type":   strings.ToUpper(recordType),
+					"value":  value,
+					"ttl":    ttl,
+				})
 			}
 			fmt.Printf("Created %s record %s for %s\n", strings.ToUpper(recordType), name, domain)
 			return nil
@@ -41,6 +52,7 @@ func init() {
 	cmd.Flags().StringVar(&flags.APIKey, "api-key", "", "provider API secret/key")
 	cmd.Flags().StringVar(&flags.ClientIP, "client-ip", "", "namecheap whitelisted client IP")
 	cmd.Flags().DurationVar(&timeout, "timeout", 2*time.Minute, "overall timeout")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 	_ = cmd.MarkFlagRequired("domain")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("value")

@@ -32,6 +32,7 @@ func init() {
 			if err != nil {
 				return err
 			}
+			logAuditEvent(store, "revoke", kind+"_cert", id, "")
 
 			fmt.Printf("Revoked %s certificate %s\n", kind, id)
 			return nil

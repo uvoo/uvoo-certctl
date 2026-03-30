@@ -32,6 +32,7 @@ func init() {
 			if err != nil {
 				return err
 			}
+			logAuditEvent(store, "retire", "private_"+kind+"_ca", id, "")
 
 			fmt.Printf("Retired %s CA %s\n", kind, id)
 			return nil
