@@ -8,6 +8,7 @@ A Cobra-based refactor of the original single-file ACME utility.
 - Added `check-precursors` for provider auth, zone access, and public DNS checks.
 - Added `create-record` and `delete-record` for explicit DNS record management.
 - Preserved encrypted SQLite storage for certificates and keys.
+- Switched SQLite access to a pure-Go driver, so builds no longer require cgo or a local C toolchain.
 - Expanded stored metadata with issuer and validity timestamps.
 - Public and private certificates now rotate immutably instead of being overwritten.
 - Private root and intermediate CAs now keep logical generations with trust and issuing state split apart.
@@ -117,6 +118,50 @@ go run . issue-private-cert \
 - Namecheap record updates work by reading all DNS hosts and writing the full set back.
 - `get` runs precursor checks by default. Use `--skip-checks` only when you are sure provider access and DNS are already correct.
 - The ACME flow still uses lego for DNS-01 challenge presentation.
+
+## Build
+
+Build a local binary for the current machine:
+
+```bash
+go build -o certctl .
+```
+
+If your Go executable is not the default `go` on `PATH`, set `GO_BIN`, for example:
+
+```bash
+GO_BIN=/snap/bin/go ./scripts/build-release.sh
+```
+
+If you are in a restricted environment, you can also point the Go build cache at a writable directory:
+
+```bash
+GOCACHE=/tmp/certctl-gocache ./scripts/build-release.sh
+```
+
+Install it into `/usr/local/bin`:
+
+```bash
+./scripts/build-and-cp-to-bin.sh
+```
+
+Build common release binaries for Linux, macOS, and Windows:
+
+```bash
+./scripts/build-release.sh
+```
+
+Build a versioned set of release artifacts:
+
+```bash
+VERSION=v0.1.0 ./scripts/build-release.sh
+```
+
+Build only specific targets:
+
+```bash
+./scripts/build-release.sh linux/amd64 darwin/arm64 windows/amd64
+```
 
 ## Suggested next improvements
 
