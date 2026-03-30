@@ -55,8 +55,12 @@ func init() {
 					"not_before":         formatTimeValue(rec.NotBefore),
 					"not_after":          formatTimeValue(rec.NotAfter),
 					"certificate_pem":    string(certPEM),
+					"private_key_stored": privateKeyStored(rec.KeyPEM),
 				}
 				if showKey {
+					if !privateKeyStored(rec.KeyPEM) {
+						return fmt.Errorf("private key is not stored for csr-based certificate %s", rec.CommonName)
+					}
 					keyPEM, err := cli.Decrypt(rec.KeyPEM, password)
 					if err != nil {
 						return fmt.Errorf("failed to decrypt private key: %w", err)
@@ -80,6 +84,9 @@ func init() {
 			fmt.Println("--- CERTIFICATE ---")
 			fmt.Print(string(certPEM))
 			if showKey {
+				if !privateKeyStored(rec.KeyPEM) {
+					return fmt.Errorf("private key is not stored for csr-based certificate %s", rec.CommonName)
+				}
 				keyPEM, err := cli.Decrypt(rec.KeyPEM, password)
 				if err != nil {
 					return fmt.Errorf("failed to decrypt private key: %w", err)

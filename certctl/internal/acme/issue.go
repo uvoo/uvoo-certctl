@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/x509"
 	"fmt"
 	"os"
 	"strings"
@@ -40,6 +41,18 @@ type IssueOptions struct {
 	UseStaging  bool
 	Propagation time.Duration
 	KeyType     string
+}
+
+type IssueForCSROptions struct {
+	Email       string
+	CSR         *x509.CertificateRequest
+	Provider    string
+	APIUser     string
+	APIKey      string
+	ClientIP    string
+	Timeout     time.Duration
+	UseStaging  bool
+	Propagation time.Duration
 }
 
 func Issue(ctx context.Context, opts IssueOptions) (*certificate.Resource, error) {
@@ -107,6 +120,62 @@ func Issue(ctx context.Context, opts IssueOptions) (*certificate.Resource, error
 	}
 
 	return certs, nil
+}
+
+func IssueForCSR(ctx context.Context, opts IssueForCSROptions) (*certificate.Resource, error) {
+	if opts.CSR == nil {
+		return nil, fmt.Errorf("csr is required")
+	}
+
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+
+	u := &user{
+		Email: opts.Email,
+		key:   privateKey,
+	}
+
+	config := lego.NewConfig(u)
+	if opts.UseStaging {
+		config.CADirURL = lego.LEDirectoryStaging
+	} else {
+		config.CADirURL = lego.LEDirectoryProduction
+	}
+
+	client, err := lego.NewClient(config)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := configureDNSProvider(client, IssueOptions{
+		Provider:    opts.Provider,
+		APIUser:     opts.APIUser,
+		APIKey:      opts.APIKey,
+		ClientIP:    opts.ClientIP,
+		Timeout:     opts.Timeout,
+		Propagation: opts.Propagation,
+	}); err != nil {
+		return nil, err
+	}
+
+	reg, err := client.Registration.Register(registration.RegisterOptions{
+		TermsOfServiceAgreed: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	u.Registration = reg
+
+	request := certificate.ObtainForCSRRequest{
+		CSR:    opts.CSR,
+		Bundle: true,
+	}
+
+	_ = ctx
+
+	return client.Certificate.ObtainForCSR(request)
 }
 
 func configureDNSProvider(client *lego.Client, opts IssueOptions) error {

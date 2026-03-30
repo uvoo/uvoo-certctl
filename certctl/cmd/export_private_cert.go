@@ -69,6 +69,9 @@ func init() {
 
 			case "", "pem", "der", "pkcs12", "p12":
 				// These formats need the private key, so only resolve/decrypt here.
+				if !privateKeyStored(rec.KeyPEM) {
+					return fmt.Errorf("private key is not stored for csr-based private certificate %s", rec.CommonName)
+				}
 				keyPassword, err = util.ResolveSecretValue(keyPassword, "CERTCTL_KEY_PASSWORD")
 				if err != nil {
 					return err

@@ -34,6 +34,9 @@ func init() {
 			if err != nil {
 				return fmt.Errorf("no private certificate found for common name: %s", commonName)
 			}
+			if !privateKeyStored(rec.KeyPEM) {
+				return fmt.Errorf("private key is not stored for csr-based private certificate %s", rec.CommonName)
+			}
 
 			certPEM := rec.CertPEM
 			keyPEM, err := cli.Decrypt(rec.KeyPEM, cryptoPassword)
@@ -56,6 +59,7 @@ func init() {
 					"not_after":          formatTimeValue(rec.NotAfter),
 					"certificate_pem":    string(certPEM),
 					"private_key_pem":    string(keyPEM),
+					"private_key_stored": true,
 				})
 			}
 

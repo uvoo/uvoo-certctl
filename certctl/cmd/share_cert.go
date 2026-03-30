@@ -68,6 +68,15 @@ func init() {
 			if err != nil {
 				return fmt.Errorf("certificate not found for %s %q: %w", kind, name, err)
 			}
+			if kind == storage.CertKindPrivate && mode == "cert_key" {
+				rec, err := store.GetPrivateCertByID(targetID)
+				if err != nil {
+					return err
+				}
+				if !privateKeyStored(rec.KeyPEM) {
+					return fmt.Errorf("private key is not stored for csr-based private certificate %s", rec.CommonName)
+				}
+			}
 
 			shareHash, err := util.HashPassword(sharePassword)
 			if err != nil {
