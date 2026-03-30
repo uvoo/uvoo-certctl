@@ -163,7 +163,10 @@ Serve certificate shares and CSR pickup/submission:
 go run . serve-certs --listen :8080
 go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt --tls-key-file /etc/certctl/tls/server.key
 go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt --tls-key-file /etc/certctl/tls/server.key --nacl 127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
+go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt --tls-key-file /etc/certctl/tls/server.key --admin-username admin --admin-password env:CERTCTL_ADMIN_PASSWORD --metrics
 ```
+
+With `--admin-username` and `--admin-password`, the built-in server also exposes a small authenticated JSON admin API under `/admin/v1` for remote `doctor` and CSR queue actions. `--metrics` enables a Prometheus-style `/metrics` endpoint, using the same Basic auth when admin auth is enabled.
 
 Export safe metadata or a DB backup:
 

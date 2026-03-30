@@ -148,6 +148,26 @@ Reject a CSR:
 certctl reject-csr --id <request-id> --reason "unable to verify requester"
 ```
 
+Review the queue remotely over the built-in admin API:
+
+```bash
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/csr-requests
+```
+
+Approve a private CSR remotely:
+
+```bash
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X POST https://certctl.example.com:8443/admin/v1/csr-requests/<id>/approve \
+  -d '{
+    "intermediate_name": "corp-issuing",
+    "parent_key_password": "'"$CERTCTL_PARENT_KEY_PASSWORD"'",
+    "decision_note": "approved"
+  }'
+```
+
 The broader operator flow for CSR review, backup, restore, and rotation is in [`RUNBOOK.md`](RUNBOOK.md).
 
 ## Notes
@@ -157,4 +177,5 @@ The broader operator flow for CSR review, backup, restore, and rotation is in [`
 - CSR-backed certificates can be queried and shared as certificates, but `cert_key` sharing and private-key export are intentionally unavailable because the private key is not stored.
 - HTTP CSR submission is capped in size and rate-limited per client IP by default.
 - `serve-certs` can run over HTTPS when both `--tls-cert-file` and `--tls-key-file` are provided.
+- `serve-certs` can expose a Basic-Auth-protected admin API under `/admin/v1` and Prometheus-style metrics at `/metrics`.
 - The built-in network ACL accepts both IPv4 and IPv6 CIDRs, checks the TCP client address, and does not trust forwarded-for headers.

@@ -19,14 +19,20 @@ import (
 )
 
 type Config struct {
-	DBPath            string
-	Listen            string
-	TLSCertFile       string
-	TLSKeyFile        string
-	AllowCIDRs        []string
-	CSRSubmitPassword string
-	CSRMaxBodyBytes   int64
-	CSRMinInterval    time.Duration
+	DBPath                  string
+	Listen                  string
+	TLSCertFile             string
+	TLSKeyFile              string
+	AllowCIDRs              []string
+	CSRSubmitPassword       string
+	CSRMaxBodyBytes         int64
+	CSRMinInterval          time.Duration
+	AdminUsername           string
+	AdminPassword           string
+	AdminWarnDays           int
+	DefaultIntermediateName string
+	ProviderHTTPTimeout     time.Duration
+	EnableMetrics           bool
 }
 
 type Server struct {
@@ -56,6 +62,18 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("/share/", s.handleShare)
 	s.mux.HandleFunc("/csr-requests", s.handleCSRRequests)
 	s.mux.HandleFunc("/csr-requests/", s.handleCSRRequests)
+	if s.adminAPIEnabled() {
+		s.mux.HandleFunc("/admin/v1/doctor", s.requireAdminAuth(s.handleAdminDoctor))
+		s.mux.HandleFunc("/admin/v1/csr-requests", s.requireAdminAuth(s.handleAdminCSRRequests))
+		s.mux.HandleFunc("/admin/v1/csr-requests/", s.requireAdminAuth(s.handleAdminCSRRequests))
+	}
+	if s.cfg.EnableMetrics {
+		handler := http.HandlerFunc(s.handleMetrics)
+		if s.adminAPIEnabled() {
+			handler = s.requireAdminAuth(handler)
+		}
+		s.mux.Handle("/metrics", handler)
+	}
 
 	return s
 }

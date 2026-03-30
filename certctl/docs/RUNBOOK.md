@@ -146,12 +146,36 @@ certctl serve-certs \
   --nacl 127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
 ```
 
+Enable the remote admin API and Prometheus metrics:
+
+```bash
+certctl serve-certs \
+  --listen :8443 \
+  --tls-cert-file server.crt \
+  --tls-key-file server.key \
+  --csr-submit-password env:CERTCTL_CSR_SUBMIT_PASSWORD \
+  --admin-username admin \
+  --admin-password env:CERTCTL_ADMIN_PASSWORD \
+  --metrics
+```
+
+Useful remote checks:
+
+```bash
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/doctor
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/metrics
+```
+
 Notes:
 
 - the default NACL allows private IPv4 ranges and IPv6 ULA space
 - loopback is not included by default
 - if you run behind a reverse proxy, allow the proxy source address
 - the built-in NACL checks the TCP client address, not forwarded-for headers
+- `/metrics` uses the same Basic auth when the admin API is enabled
 
 ## 6. Backup and restore
 
