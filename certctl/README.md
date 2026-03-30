@@ -2,6 +2,9 @@
 
 A Cobra-based refactor of the original single-file ACME utility.
 
+- Release notes: [`docs/RELEASE_NOTES_v0.1.0.md`](docs/RELEASE_NOTES_v0.1.0.md)
+- Install guide: [`docs/INSTALL.md`](docs/INSTALL.md)
+
 ## What changed
 
 - Split the CLI into subcommands.
@@ -203,19 +206,21 @@ Build common release binaries for Linux, macOS, and Windows:
 ./scripts/build-release.sh
 ```
 
-Build a versioned set of release artifacts:
+Build a versioned set of release archives:
 
 ```bash
 VERSION=v0.1.0 ./scripts/build-release.sh
 ```
 
-The release scripts also stamp `version`, `commit`, and `date` into the binary for the `version` command.
+The release script stamps `version`, `commit`, and `date` into the binary, bundles the docs into each archive, and writes a matching checksum for each uploaded asset.
 
 Build only specific targets:
 
 ```bash
 ./scripts/build-release.sh linux/amd64 darwin/arm64 windows/amd64
 ```
+
+For binary install and checksum verification steps, see [`docs/INSTALL.md`](docs/INSTALL.md).
 
 ## Release checklist
 
