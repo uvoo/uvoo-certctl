@@ -11,6 +11,8 @@ import (
 
 func init() {
 	var commonName string
+	var all bool
+	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "list-private-certs",
@@ -22,7 +24,7 @@ func init() {
 			}
 			defer store.Close()
 
-			rows, err := store.ListPrivateCerts(commonName)
+			rows, err := store.ListPrivateCerts(commonName, all)
 			if err != nil {
 				return err
 			}
@@ -34,9 +36,32 @@ func init() {
 				}
 				return nil
 			}
+			if jsonOut {
+				var payload []map[string]any
+				for _, r := range rows {
+					payload = append(payload, map[string]any{
+						"id":                 r.ID,
+						"intermediate_ca_id": r.IntermediateCAID,
+						"common_name":        r.CommonName,
+						"sans_csv":           r.SANsCSV,
+						"cert_type":          r.CertType,
+						"key_type":           r.KeyType,
+						"issuer":             r.Issuer,
+						"status":             r.Status,
+						"supersedes_cert_id": r.SupersedesCertID,
+						"revoked_at":         formatTimeValue(r.RevokedAt),
+						"not_before":         formatTimeValue(r.NotBefore),
+						"not_after":          formatTimeValue(r.NotAfter),
+						"created_at":         formatTimeValue(r.CreatedAt),
+						"updated_at":         formatTimeValue(r.UpdatedAt),
+					})
+				}
+				return printJSON(payload)
+			}
 
 			for _, r := range rows {
 				fmt.Printf("id:              %s\n", r.ID)
+				fmt.Printf("status:          %s\n", r.Status)
 				fmt.Printf("commonName:      %s\n", r.CommonName)
 				fmt.Printf("sans:         %s\n", r.SANsCSV)
 				fmt.Printf("certType:        %s\n", r.CertType)
@@ -51,6 +76,8 @@ func init() {
 	}
 
 	cmd.Flags().StringVar(&commonName, "common-name", "", "filter by common name")
+	cmd.Flags().BoolVar(&all, "all", false, "include inactive and historical certificates")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 	rootCmd.AddCommand(cmd)
 }
 

@@ -14,6 +14,7 @@ import (
 
 func init() {
 	var intermediateID string
+	var intermediateName string
 	var commonName string
 	var domains []string
 	var sans []string
@@ -31,13 +32,34 @@ func init() {
 	var country string
 	var province string
 	var locality string
+	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "issue-private-cert",
 		Short: "Issue a private leaf certificate from an intermediate CA",
+		Example: `  certctl issue-private-cert \
+    --intermediate-name corp-issuing \
+    --common-name api.internal.example \
+    --domain api.internal.example \
+    --san api \
+    --parent-key-password env:CERTCTL_PARENT_KEY_PASSWORD \
+    --key-password env:CERTCTL_KEY_PASSWORD \
+    --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if parentKeyPassword == "" && parentPasswordAlias != "" {
 				parentKeyPassword = parentPasswordAlias
+			}
+			parentKeyPassword, err := util.ResolveSecretValue(parentKeyPassword, "CERTCTL_PARENT_KEY_PASSWORD")
+			if err != nil {
+				return err
+			}
+			keyPassword, err = util.ResolveSecretValue(keyPassword, "CERTCTL_KEY_PASSWORD")
+			if err != nil {
+				return err
+			}
+			storagePassword, err = util.ResolveSecretValue(storagePassword, "CERTCTL_STORAGE_PASSWORD")
+			if err != nil {
+				return err
 			}
 
 			issuerPassword, err := util.ResolveCryptoPassword(parentKeyPassword, storagePassword)
@@ -50,18 +72,18 @@ func init() {
 				return fmt.Errorf("leaf certificate password required: %w", err)
 			}
 
-            if issuerPassword != "" {
-                if err := util.IsPasswordComplex(issuerPassword); err != nil {
-                    return fmt.Errorf("invalid issuer-password: %w", err)
-                }
-            }
-            if childPassword != "" {
-                if err := util.IsPasswordComplex(childPassword); err != nil {
-                    return fmt.Errorf("invalid child-password: %w", err)
-                }
-            }
+			if issuerPassword != "" {
+				if err := util.IsPasswordComplex(issuerPassword); err != nil {
+					return fmt.Errorf("invalid issuer-password: %w", err)
+				}
+			}
+			if childPassword != "" {
+				if err := util.IsPasswordComplex(childPassword); err != nil {
+					return fmt.Errorf("invalid child-password: %w", err)
+				}
+			}
 
-			allSANs := normalizePrivateCertSANs(commonName, sans)
+			allSANs := normalizePrivateCertSANs(commonName, append(append([]string{}, domains...), sans...))
 			if len(allSANs) == 0 {
 				return fmt.Errorf("at least one domain or common name is required")
 			}
@@ -72,21 +94,35 @@ func init() {
 			}
 			defer store.Close()
 
-			icaRec, err := store.GetPrivateIntermediateCAByID(intermediateID)
-			if err != nil {
-				return fmt.Errorf("failed to load intermediate CA %q: %w", intermediateID, err)
+			var icaRec storage.PrivateIntermediateCA
+			switch {
+			case strings.TrimSpace(intermediateID) != "":
+				icaRec, err = store.GetPrivateIntermediateCAByID(intermediateID)
+				if err != nil {
+					return fmt.Errorf("failed to load intermediate CA %q: %w", intermediateID, err)
+				}
+			case strings.TrimSpace(intermediateName) != "":
+				icaRec, err = store.GetIssuingPrivateIntermediateCAByName(intermediateName)
+				if err != nil {
+					return fmt.Errorf("failed to load issuing intermediate CA %q: %w", intermediateName, err)
+				}
+			case strings.TrimSpace(rootCfg.DefaultIntermediateName) != "":
+				icaRec, err = store.GetIssuingPrivateIntermediateCAByName(rootCfg.DefaultIntermediateName)
+				if err != nil {
+					return fmt.Errorf("failed to load issuing intermediate CA %q: %w", rootCfg.DefaultIntermediateName, err)
+				}
+			default:
+				return fmt.Errorf("one of --intermediate-id, --intermediate-name, or --default-intermediate-ca is required")
+			}
+			if icaRec.Status != storage.StatusActive || !icaRec.IsIssuing {
+				return fmt.Errorf("intermediate CA %q is not active for issuance", icaRec.ID)
+			}
+
+			if err := warnPrivateSANConflicts(store, commonName, allSANs); err != nil {
+				return err
 			}
 
 			icaCertPEM := icaRec.CertPEM
-			// fmt.Printf(icaCertPEM)
-			fmt.Printf("Certificate: %s\n", string(icaCertPEM))
-			/*
-				xx
-				icaCertPEM, err := cli.Decrypt(icaRec.CertPEM, issuerPassword)
-				if err != nil {
-					return fmt.Errorf("failed to decrypt intermediate CA certificate: %w", err)
-				}
-			*/
 
 			icaKeyPEM, err := cli.Decrypt(icaRec.KeyPEM, issuerPassword)
 			if err != nil {
@@ -135,6 +171,7 @@ func init() {
 				CertPEM:          plainCert,
 				KeyPEM:           encKey,
 				Issuer:           res.Issuer,
+				Status:           storage.StatusActive,
 				NotBefore:        res.NotBefore,
 				NotAfter:         res.NotAfter,
 			}
@@ -142,10 +179,30 @@ func init() {
 			if err := store.UpsertPrivateCert(rec); err != nil {
 				return err
 			}
+			rec, err = store.GetPrivateCertByID(rec.ID)
+			if err != nil {
+				return err
+			}
+			logAuditEvent(store, "issue_private_cert", "private_cert", rec.ID, rec.CommonName)
+			if jsonOut {
+				return printJSON(map[string]any{
+					"id":                 rec.ID,
+					"intermediate_ca_id": rec.IntermediateCAID,
+					"common_name":        rec.CommonName,
+					"sans_csv":           rec.SANsCSV,
+					"cert_type":          rec.CertType,
+					"key_type":           rec.KeyType,
+					"issuer":             rec.Issuer,
+					"status":             rec.Status,
+					"not_before":         formatTimeValue(rec.NotBefore),
+					"not_after":          formatTimeValue(rec.NotAfter),
+				})
+			}
 
 			fmt.Printf("Issued private certificate %s\n", commonName)
 			fmt.Printf("id:              %s\n", rec.ID)
 			fmt.Printf("intermediate id: %s\n", rec.IntermediateCAID)
+			fmt.Printf("status:          %s\n", rec.Status)
 			fmt.Printf("commonName:      %s\n", rec.CommonName)
 			fmt.Printf("sans:         %s\n", rec.SANsCSV)
 			fmt.Printf("certType:        %s\n", rec.CertType)
@@ -158,6 +215,7 @@ func init() {
 	}
 
 	cmd.Flags().StringVar(&intermediateID, "intermediate-id", "", "intermediate CA ID used to sign the certificate")
+	cmd.Flags().StringVar(&intermediateName, "intermediate-name", "", "active intermediate CA logical name used to sign the certificate")
 	cmd.Flags().StringVar(&commonName, "common-name", "", "certificate common name")
 	cmd.Flags().StringSliceVar(&domains, "domain", nil, "certificate DNS names or IP SANs; may be repeated or comma-separated")
 	cmd.Flags().StringSliceVar(&sans, "san", nil, "alias for --domain; additional SANs")
@@ -175,8 +233,8 @@ func init() {
 	cmd.Flags().StringVar(&country, "country", "", "country")
 	cmd.Flags().StringVar(&province, "province", "", "province/state")
 	cmd.Flags().StringVar(&locality, "locality", "", "locality/city")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 
-	_ = cmd.MarkFlagRequired("intermediate-id")
 	_ = cmd.MarkFlagRequired("common-name")
 
 	rootCmd.AddCommand(cmd)
@@ -200,11 +258,6 @@ func normalizePrivateCertSANs(commonName string, sans []string) []string {
 
 	add(commonName)
 
-	for _, item := range sans {
-		for part := range strings.SplitSeq(item, ",") {
-			add(part)
-		}
-	}
 	for _, item := range sans {
 		for part := range strings.SplitSeq(item, ",") {
 			add(part)

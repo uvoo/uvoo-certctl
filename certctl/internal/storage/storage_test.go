@@ -1,0 +1,266 @@
+package storage
+
+import (
+	"database/sql"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func TestPublicCertRotationSupersedesPrevious(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "certs.db")
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	rec1 := PublicCert{
+		ID:         "pub-1",
+		CommonName: "api.example.com",
+		SANsCSV:    "api.example.com",
+		SANsHash:   "hash-1",
+		CertPEM:    []byte("cert-1"),
+		KeyPEM:     []byte("key-1"),
+		NotBefore:  time.Now().UTC().Add(-time.Hour),
+		NotAfter:   time.Now().UTC().Add(24 * time.Hour),
+	}
+	rec2 := PublicCert{
+		ID:         "pub-2",
+		CommonName: "api.example.com",
+		SANsCSV:    "api.example.com,www.example.com",
+		SANsHash:   "hash-2",
+		CertPEM:    []byte("cert-2"),
+		KeyPEM:     []byte("key-2"),
+		NotBefore:  time.Now().UTC().Add(-time.Hour),
+		NotAfter:   time.Now().UTC().Add(48 * time.Hour),
+	}
+
+	if err := store.Upsert(rec1); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Upsert(rec2); err != nil {
+		t.Fatal(err)
+	}
+
+	active, err := store.GetByCommonName("api.example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active.ID != "pub-2" {
+		t.Fatalf("expected newest cert active, got %s", active.ID)
+	}
+
+	history, err := store.ListPublicCertHistory("api.example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("expected 2 history rows, got %d", len(history))
+	}
+	if history[0].Status != StatusActive {
+		t.Fatalf("expected newest row active, got %s", history[0].Status)
+	}
+	if history[1].Status != StatusSuperseded {
+		t.Fatalf("expected older row superseded, got %s", history[1].Status)
+	}
+}
+
+func TestPromotePrivateRootCARetiresCurrentActive(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "certs.db")
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	root1 := PrivateRootCA{
+		ID:         "root-1",
+		Name:       "corp-root",
+		CommonName: "Corp Root",
+		KeyType:    "ec256",
+		CertPEM:    []byte("cert-1"),
+		KeyPEM:     []byte("key-1"),
+		NotBefore:  time.Now().UTC().Add(-time.Hour),
+		NotAfter:   time.Now().UTC().Add(24 * time.Hour),
+		Status:     StatusActive,
+		IsTrusted:  true,
+		IsIssuing:  true,
+	}
+	root2 := PrivateRootCA{
+		ID:         "root-2",
+		Name:       "corp-root",
+		CommonName: "Corp Root",
+		KeyType:    "ec256",
+		CertPEM:    []byte("cert-2"),
+		KeyPEM:     []byte("key-2"),
+		NotBefore:  time.Now().UTC().Add(-time.Hour),
+		NotAfter:   time.Now().UTC().Add(48 * time.Hour),
+		Status:     StatusActive,
+		IsTrusted:  true,
+		IsIssuing:  true,
+	}
+
+	if err := store.UpsertPrivateRootCA(root1); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertPrivateRootCA(root2); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PromotePrivateRootCA("root-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := store.ListPrivateRootCAs("corp-root", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 root rows, got %d", len(rows))
+	}
+
+	var activeCount int
+	var promoted PrivateRootCA
+	for _, row := range rows {
+		if row.Status == StatusActive {
+			activeCount++
+			promoted = row
+		}
+	}
+	if activeCount != 1 {
+		t.Fatalf("expected exactly one active root, got %d", activeCount)
+	}
+	if promoted.ID != "root-1" {
+		t.Fatalf("expected root-1 to be promoted, got %s", promoted.ID)
+	}
+}
+
+func TestLegacyPrivateCertMigrationBuildsHistory(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "legacy.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stmts := []string{
+		`CREATE TABLE private_root_cas (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL UNIQUE,
+			common_name TEXT NOT NULL,
+			key_type TEXT NOT NULL,
+			cert_pem BLOB NOT NULL,
+			key_pem BLOB NOT NULL,
+			issuer TEXT,
+			not_before TEXT,
+			not_after TEXT,
+			created_at TEXT,
+			updated_at TEXT
+		)`,
+		`CREATE TABLE private_intermediate_cas (
+			id TEXT PRIMARY KEY,
+			root_ca_id TEXT NOT NULL,
+			name TEXT NOT NULL UNIQUE,
+			common_name TEXT NOT NULL,
+			key_type TEXT NOT NULL,
+			cert_pem BLOB NOT NULL,
+			key_pem BLOB NOT NULL,
+			issuer TEXT,
+			not_before TEXT,
+			not_after TEXT,
+			created_at TEXT,
+			updated_at TEXT
+		)`,
+		`CREATE TABLE private_certs (
+			id TEXT PRIMARY KEY,
+			intermediate_ca_id TEXT NOT NULL,
+			common_name TEXT NOT NULL,
+			sans_csv TEXT,
+			cert_type TEXT NOT NULL,
+			key_type TEXT NOT NULL,
+			cert_pem BLOB NOT NULL,
+			key_pem BLOB NOT NULL,
+			issuer TEXT,
+			not_before TEXT,
+			not_after TEXT,
+			created_at TEXT,
+			updated_at TEXT
+		)`,
+	}
+	for _, stmt := range stmts {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := db.Exec(`
+		INSERT INTO private_root_cas (id, name, common_name, key_type, cert_pem, key_pem, created_at, updated_at)
+		VALUES ('root-1', 'corp-root', 'Corp Root', 'ec256', X'01', X'02', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO private_intermediate_cas (id, root_ca_id, name, common_name, key_type, cert_pem, key_pem, created_at, updated_at)
+		VALUES ('ica-1', 'root-1', 'corp-ica', 'Corp ICA', 'ec256', X'03', X'04', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO private_certs (id, intermediate_ca_id, common_name, sans_csv, cert_type, key_type, cert_pem, key_pem, created_at, updated_at)
+		VALUES
+		('leaf-1', 'ica-1', 'api.internal', 'api.internal', 'server', 'ec256', X'05', X'06', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
+		('leaf-2', 'ica-1', 'api.internal', 'api.internal,api2.internal', 'server', 'ec256', X'07', X'08', '2026-02-01T00:00:00Z', '2026-02-01T00:00:00Z')
+	`); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	history, err := store.ListPrivateCertHistory("api.internal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("expected 2 rows after migration, got %d", len(history))
+	}
+	if history[0].ID != "leaf-2" || history[0].Status != StatusActive {
+		t.Fatalf("expected newest migrated row active, got %s %s", history[0].ID, history[0].Status)
+	}
+	if history[1].Status != StatusSuperseded {
+		t.Fatalf("expected older migrated row superseded, got %s", history[1].Status)
+	}
+}
+
+func TestAuditEventRoundTrip(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "audit.db")
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if err := store.LogAuditEvent(AuditEvent{
+		ID:         "audit-1",
+		Action:     "test_action",
+		TargetKind: "database",
+		TargetID:   dbPath,
+		Summary:    "hello",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := store.ListAuditEvents(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 audit row, got %d", len(rows))
+	}
+	if rows[0].Action != "test_action" || rows[0].Summary != "hello" {
+		t.Fatalf("unexpected audit row: %+v", rows[0])
+	}
+}

@@ -12,6 +12,7 @@ func init() {
 	var flags providerFlags
 	var domain, name, value, recordType string
 	var timeout time.Duration
+	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "delete-record",
@@ -26,6 +27,15 @@ func init() {
 			if err := p.DeleteRecord(ctx, domain, name, strings.ToUpper(recordType), value); err != nil {
 				return err
 			}
+			if jsonOut {
+				return printJSON(map[string]any{
+					"action": "delete_record",
+					"domain": domain,
+					"name":   name,
+					"type":   strings.ToUpper(recordType),
+					"value":  value,
+				})
+			}
 			fmt.Printf("Deleted %s record %s for %s\n", strings.ToUpper(recordType), name, domain)
 			return nil
 		},
@@ -39,6 +49,7 @@ func init() {
 	cmd.Flags().StringVar(&flags.APIKey, "api-key", "", "provider API secret/key")
 	cmd.Flags().StringVar(&flags.ClientIP, "client-ip", "", "namecheap whitelisted client IP")
 	cmd.Flags().DurationVar(&timeout, "timeout", 2*time.Minute, "overall timeout")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 	_ = cmd.MarkFlagRequired("domain")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("provider")

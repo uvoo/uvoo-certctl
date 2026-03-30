@@ -10,6 +10,7 @@ import (
 
 func init() {
 	var san string
+	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "list-shares",
@@ -38,6 +39,26 @@ func init() {
 				fmt.Println("No shares found")
 				return nil
 			}
+			if jsonOut {
+				var payload []map[string]any
+				for _, sh := range shares {
+					payload = append(payload, map[string]any{
+						"id":             sh.ID,
+						"cert_kind":      sh.CertKind,
+						"cert_id":        sh.CertID,
+						"share_token":    sh.ShareToken,
+						"mode":           sh.Mode,
+						"expires_at":     formatTimeValue(sh.ExpiresAt),
+						"max_views":      nullableInt64Value(sh.MaxViews),
+						"view_count":     sh.ViewCount,
+						"created_at":     formatTimeValue(sh.CreatedAt),
+						"last_viewed_at": formatTimeValue(sh.LastViewedAt),
+						"revoked_at":     formatTimeValue(sh.RevokedAt),
+						"note":           sh.Note,
+					})
+				}
+				return printJSON(payload)
+			}
 
 			for _, sh := range shares {
 				fmt.Printf("share id:   %s\n", sh.ID)
@@ -63,5 +84,6 @@ func init() {
 	}
 
 	cmd.Flags().StringVar(&san, "san", "", "filter shares by certificate san")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 	rootCmd.AddCommand(cmd)
 }

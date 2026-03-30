@@ -12,3 +12,5 @@ out-*/
 trash1/
 certs.db-shm
 certs.db-wal
+.gocache/
+dist

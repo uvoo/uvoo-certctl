@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"certctl/internal/cli"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 func main() {
@@ -19,7 +19,7 @@ func main() {
 	domain := os.Args[2]
 	password := os.Args[3]
 
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -59,13 +59,31 @@ func init() {
 	var skipChecks, staging bool
 	var force bool
 	var skipIfExpiresWithinRaw string
+	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "get",
 		Short: "Obtain a Let's Encrypt certificate and store it encrypted in SQLite",
+		Example: `  certctl get \
+    --common-name '*.example.com' \
+    --sans '*.example.com,example.com' \
+    --provider godaddy \
+    --email admin@example.com \
+    --storage-password env:CERTCTL_STORAGE_PASSWORD \
+    --api-user "$GODADDY_API_KEY" \
+    --api-key "$GODADDY_API_SECRET"`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := withTimeout(timeout)
 			defer cancel()
+
+			keyPassword, err := util.ResolveSecretValue(keyPassword, "CERTCTL_KEY_PASSWORD")
+			if err != nil {
+				return err
+			}
+			storagePassword, err = util.ResolveSecretValue(storagePassword, "CERTCTL_STORAGE_PASSWORD")
+			if err != nil {
+				return err
+			}
 
 			p, err := providerFromFlags(ctx, flags)
 			if err != nil {
@@ -141,6 +159,10 @@ func init() {
 			}
 			defer store.Close()
 
+			if err := warnPublicSANConflicts(store, commonName, allSANs); err != nil {
+				return err
+			}
+
 			if !force {
 				if existing, err := store.FindByHash(commonName, sansHash); err == nil {
 					remaining := time.Until(existing.NotAfter)
@@ -162,7 +184,7 @@ func init() {
 				return nil
 			}
 
-			if err := store.Upsert(storage.PublicCert{
+			rec := storage.PublicCert{
 				ID:         util.NewID(),
 				CommonName: commonName,
 				SANsCSV:    sansCSV,
@@ -174,8 +196,27 @@ func init() {
 				Issuer:     issuer,
 				NotBefore:  notBefore,
 				NotAfter:   notAfter,
-			}); err != nil {
+			}
+			if err := store.Upsert(rec); err != nil {
 				return err
+			}
+			rec, err = store.GetByCommonName(commonName)
+			if err != nil {
+				return err
+			}
+			logAuditEvent(store, "issue_public_cert", "public_cert", rec.ID, rec.CommonName)
+			if jsonOut {
+				return printJSON(map[string]any{
+					"id":          rec.ID,
+					"common_name": rec.CommonName,
+					"sans_csv":    rec.SANsCSV,
+					"provider":    rec.Provider,
+					"email":       rec.Email,
+					"issuer":      rec.Issuer,
+					"status":      rec.Status,
+					"not_before":  formatTimeValue(rec.NotBefore),
+					"not_after":   formatTimeValue(rec.NotAfter),
+				})
 			}
 
 			fmt.Printf("Successfully obtained and stored certificate for %s\n", commonName)
@@ -217,6 +258,7 @@ func init() {
 		false,
 		"force issuance even if an identical cert already exists",
 	)
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 
 	_ = cmd.MarkFlagRequired("common-name")
 	_ = cmd.MarkFlagRequired("email")

@@ -21,6 +21,7 @@ func init() {
 	var maxViews int64
 	var note string
 	var baseURL string
+	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "share-cert",
@@ -39,11 +40,19 @@ func init() {
 			if mode != "cert" && mode != "cert_key" {
 				return fmt.Errorf("--mode must be cert or cert_key")
 			}
+			if kind == storage.CertKindPublic && mode == "cert_key" {
+				return fmt.Errorf("--mode=cert_key is only valid for private certificates")
+			}
+			sharePassword, err := util.ResolveSecretValue(sharePassword, "CERTCTL_SHARE_PASSWORD")
+			if err != nil {
+				return err
+			}
 			if sharePassword == "" {
 				return fmt.Errorf("--share-password is required")
 			}
-			if kind == storage.CertKindPublic && mode == "cert_key" {
-				return fmt.Errorf("--mode=cert_key is only valid for private certificates")
+			keyPassword, err = util.ResolveSecretValue(keyPassword, "CERTCTL_SHARE_KEY_PASSWORD")
+			if err != nil {
+				return err
 			}
 			if mode == "cert_key" && keyPassword == "" {
 				return fmt.Errorf("--key-password is required when --mode=cert_key")
@@ -101,6 +110,23 @@ func init() {
 			if err := store.CreateShare(sh); err != nil {
 				return err
 			}
+			logAuditEvent(store, "share_cert", "share", sh.ID, resolvedName)
+			if jsonOut {
+				payload := map[string]any{
+					"share_id":    sh.ID,
+					"cert_kind":   sh.CertKind,
+					"cert_id":     sh.CertID,
+					"name":        resolvedName,
+					"mode":        sh.Mode,
+					"expires_at":  formatTimeValue(sh.ExpiresAt),
+					"max_views":   nullableInt64Value(sh.MaxViews),
+					"share_token": sh.ShareToken,
+				}
+				if baseURL != "" {
+					payload["url"] = strings.TrimRight(baseURL, "/") + "/share/" + sh.ShareToken
+				}
+				return printJSON(payload)
+			}
 
 			fmt.Println("Share created")
 			fmt.Printf("share id:   %s\n", sh.ID)
@@ -130,10 +156,9 @@ func init() {
 	cmd.Flags().Int64Var(&maxViews, "max-views", 0, "optional maximum number of views")
 	cmd.Flags().StringVar(&note, "note", "", "optional note")
 	cmd.Flags().StringVar(&baseURL, "base-url", "", "optional base URL used to print a full share URL")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 
 	_ = cmd.MarkFlagRequired("kind")
 	_ = cmd.MarkFlagRequired("name")
-	_ = cmd.MarkFlagRequired("share-password")
-
 	rootCmd.AddCommand(cmd)
 }
