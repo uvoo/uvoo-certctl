@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"certctl/internal/csrqueue"
+	"certctl/internal/ops"
 	"certctl/internal/storage"
 	"github.com/spf13/cobra"
 )
@@ -43,7 +43,13 @@ func init() {
 				return err
 			}
 
-			prepared, err := csrqueue.Prepare(csrqueue.Submission{
+			store, err := storage.Open(rootCfg.DBPath)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+
+			result, err := ops.SubmitCSR(store, ops.SubmitCSRParams{
 				Kind:            kind,
 				CSRData:         csrData,
 				RequesterName:   requesterName,
@@ -60,30 +66,19 @@ func init() {
 				return err
 			}
 
-			store, err := storage.Open(rootCfg.DBPath)
-			if err != nil {
-				return err
-			}
-			defer store.Close()
-
-			if err := store.CreateCSRRequest(prepared.Request); err != nil {
-				return err
-			}
-			logAuditEvent(store, "submit_csr", "csr_request", prepared.Request.ID, prepared.Request.CommonName)
-
 			if jsonOut {
-				payload := csrRequestPayload(prepared.Request, false)
-				payload["pickup_token"] = prepared.PickupToken
+				payload := csrRequestPayload(result.Request, false)
+				payload["pickup_token"] = result.PickupToken
 				return printJSON(payload)
 			}
 
 			fmt.Println("CSR request submitted")
-			printKV("id", prepared.Request.ID)
-			printKV("kind", prepared.Request.Kind)
-			printKV("status", prepared.Request.Status)
-			printKV("common_name", prepared.Request.CommonName)
-			printKV("sans", prepared.Request.SANsCSV)
-			printKV("pickup_token", prepared.PickupToken)
+			printKV("id", result.Request.ID)
+			printKV("kind", result.Request.Kind)
+			printKV("status", result.Request.Status)
+			printKV("common_name", result.Request.CommonName)
+			printKV("sans", result.Request.SANsCSV)
+			printKV("pickup_token", result.PickupToken)
 			return nil
 		},
 	}

@@ -84,7 +84,7 @@ func TestBackupRestoreAndDoctorCommands(t *testing.T) {
 		t.Fatalf("expected restored DB to contain original cert only, got %+v", rows)
 	}
 
-	out, err = runRootCommandForTest("--db", dbPath, "doctor", "--json")
+	out, err = runRootCommandForTest("--db", dbPath, "doctor", "--warn-days", "0", "--json")
 	if err != nil {
 		t.Fatal(err)
 	}

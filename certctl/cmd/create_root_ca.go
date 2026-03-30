@@ -4,8 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"certctl/internal/cli"
-	"certctl/internal/privateca"
+	"certctl/internal/ops"
 	"certctl/internal/storage"
 	"certctl/internal/util"
 	"github.com/spf13/cobra"
@@ -42,55 +41,27 @@ func init() {
 				return err
 			}
 
-			res, _, _, err := privateca.CreateRootCA(privateca.CreateRootOptions{
-				CommonName: commonName,
-				KeyType:    keyType,
-				Days:       days,
-				Org:        org,
-				OrgUnit:    orgUnit,
-				Country:    country,
-				Province:   province,
-				Locality:   locality,
-			})
-			if err != nil {
-				return err
-			}
-
-			plainCert := res.CertPEM
-			encKey, err := cli.Encrypt(res.KeyPEM, cryptoPassword)
-			if err != nil {
-				return err
-			}
-
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {
 				return err
 			}
 			defer store.Close()
 
-			rec := storage.PrivateRootCA{
-				ID:         util.NewID(),
-				Name:       name,
-				CommonName: commonName,
-				Status:     storage.StatusActive,
-				IsTrusted:  true,
-				IsIssuing:  true,
-				KeyType:    keyType,
-				CertPEM:    plainCert,
-				KeyPEM:     encKey,
-				Issuer:     res.Issuer,
-				NotBefore:  res.NotBefore,
-				NotAfter:   res.NotAfter,
-			}
-
-			if err := store.UpsertPrivateRootCA(rec); err != nil {
-				return err
-			}
-			rec, err = store.GetPrivateRootCAByID(rec.ID)
+			rec, err := ops.CreatePrivateRootCA(store, ops.CreatePrivateRootCAParams{
+				Name:           name,
+				CommonName:     commonName,
+				Days:           days,
+				KeyType:        keyType,
+				CryptoPassword: cryptoPassword,
+				Org:            org,
+				OrgUnit:        orgUnit,
+				Country:        country,
+				Province:       province,
+				Locality:       locality,
+			})
 			if err != nil {
 				return err
 			}
-			logAuditEvent(store, "create_root_ca", "private_root_ca", rec.ID, rec.Name)
 			if jsonOut {
 				return printJSON(map[string]any{
 					"id":          rec.ID,

@@ -4,42 +4,48 @@
 
 ## Verify the download
 
-Each release archive has a matching `.sha256` file.
+Each release archive has a matching `.sha256` file. Releases may also include a signed `checksums.txt.asc` file for checksum verification with GPG.
 
 On Linux or macOS:
 
 ```bash
-sha256sum -c certctl_v0.1.0_linux_amd64.tar.gz.sha256
+sha256sum -c certctl_v0.2.0_linux_amd64.tar.gz.sha256
 ```
 
 On macOS without `sha256sum`:
 
 ```bash
-shasum -a 256 -c certctl_v0.1.0_darwin_arm64.tar.gz.sha256
+shasum -a 256 -c certctl_v0.2.0_darwin_arm64.tar.gz.sha256
 ```
 
 On Windows PowerShell:
 
 ```powershell
-Get-FileHash .\certctl_v0.1.0_windows_amd64.zip -Algorithm SHA256
+Get-FileHash .\certctl_v0.2.0_windows_amd64.zip -Algorithm SHA256
 ```
 
 Compare the output with the contents of the matching `.sha256` file, then extract the archive.
+
+If the release includes `checksums.txt` and `checksums.txt.asc`, you can also verify the signed checksum manifest:
+
+```bash
+gpg --verify checksums.txt.asc checksums.txt
+```
 
 ## Extract the archive
 
 On Linux or macOS:
 
 ```bash
-tar -xzf certctl_v0.1.0_linux_amd64.tar.gz
-cd certctl_v0.1.0_linux_amd64
+tar -xzf certctl_v0.2.0_linux_amd64.tar.gz
+cd certctl_v0.2.0_linux_amd64
 ```
 
 On Windows PowerShell:
 
 ```powershell
-Expand-Archive .\certctl_v0.1.0_windows_amd64.zip -DestinationPath .
-Set-Location .\certctl_v0.1.0_windows_amd64
+Expand-Archive .\certctl_v0.2.0_windows_amd64.zip -DestinationPath .
+Set-Location .\certctl_v0.2.0_windows_amd64
 ```
 
 ## Install on Linux
@@ -78,5 +84,9 @@ go build -o certctl .
 Or build the release matrix:
 
 ```bash
-VERSION=v0.1.0 ./scripts/build-release.sh
+VERSION=v0.2.0 ./scripts/build-release.sh
 ```
+
+For day-to-day operations after install, see [`RUNBOOK.md`](RUNBOOK.md).
+
+For tagging, signing, and GitHub draft release creation, see [`RELEASING.md`](RELEASING.md).

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"certctl/internal/ops"
 	"certctl/internal/storage"
 	"github.com/spf13/cobra"
 )
@@ -27,10 +28,9 @@ func init() {
 			}
 			defer store.Close()
 
-			if err := store.RejectCSRRequest(id, reason); err != nil {
+			if err := ops.RejectCSRRequest(store, id, reason); err != nil {
 				return err
 			}
-			logAuditEvent(store, "reject_csr", "csr_request", id, reason)
 			if jsonOut {
 				return printJSON(map[string]any{
 					"id":            id,

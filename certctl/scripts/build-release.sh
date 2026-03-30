@@ -7,7 +7,8 @@ VERSION="${VERSION:-dev}"
 COMMIT="${COMMIT:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 GO_BIN="${GO_BIN:-go}"
-GOCACHE="${GOCACHE:-$ROOT_DIR/.gocache}"
+DEFAULT_CACHE_ROOT="${XDG_CACHE_HOME:-${HOME:-$ROOT_DIR/.cache}}"
+GOCACHE="${GOCACHE:-$DEFAULT_CACHE_ROOT/certctl-gocache}"
 
 DEFAULT_TARGETS=(
   "linux/amd64"
@@ -33,7 +34,12 @@ Environment:
   BUILD_DATE Build timestamp embedded into the binary. Default: current UTC time
   OUT_DIR   Output directory for built archives. Default: ./dist
   GO_BIN    Go executable to use. Default: go
-  GOCACHE   Go build cache directory. Default: $ROOT_DIR/.gocache
+  GOCACHE   Go build cache directory. Default: $HOME/.cache/certctl-gocache
+
+Outputs:
+  - Per-platform release archives in ./dist
+  - Matching per-archive .sha256 files
+  - checksums.txt manifest covering all generated archives
 EOF
 }
 
@@ -59,6 +65,8 @@ if ! command -v sha256sum >/dev/null 2>&1; then
   echo "sha256sum is required to build release checksums" >&2
   exit 1
 fi
+
+ARCHIVES=()
 
 ZIP_CMD=""
 if command -v zip >/dev/null 2>&1; then
@@ -135,6 +143,8 @@ for target in "${TARGETS[@]}"; do
     )
   fi
 
+  ARCHIVES+=("$archive_name")
+
   (
     cd "$OUT_DIR"
     sha256sum "$archive_name" > "${archive_name}.sha256"
@@ -142,6 +152,13 @@ for target in "${TARGETS[@]}"; do
 
   rm -rf "$artifact_dir"
 done
+
+if [[ ${#ARCHIVES[@]} -gt 0 ]]; then
+  (
+    cd "$OUT_DIR"
+    sha256sum "${ARCHIVES[@]}" > checksums.txt
+  )
+fi
 
 echo
 echo "Release archives written to: $OUT_DIR"

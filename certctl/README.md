@@ -2,9 +2,12 @@
 
 A Cobra-based refactor of the original single-file ACME utility.
 
-- Release notes: [`docs/RELEASE_NOTES_v0.1.0.md`](docs/RELEASE_NOTES_v0.1.0.md)
+- Latest release notes: [`docs/RELEASE_NOTES_v0.2.0.md`](docs/RELEASE_NOTES_v0.2.0.md)
+- Initial release notes: [`docs/RELEASE_NOTES_v0.1.0.md`](docs/RELEASE_NOTES_v0.1.0.md)
 - Install guide: [`docs/INSTALL.md`](docs/INSTALL.md)
 - CSR guide: [`docs/CSR_REQUESTS.md`](docs/CSR_REQUESTS.md)
+- Admin runbook: [`docs/RUNBOOK.md`](docs/RUNBOOK.md)
+- Release process: [`docs/RELEASING.md`](docs/RELEASING.md)
 
 ## What changed
 
@@ -151,6 +154,7 @@ Queue and approve CSRs:
 go run . submit-csr --kind private --csr-file server.csr --requester-name 'Jane Doe'
 go run . list-csr-requests
 go run . approve-csr --id <request-id> --intermediate-name internal-ica --parent-key-password env:CERTCTL_PARENT_KEY_PASSWORD
+go run . reject-csr --id <request-id> --reason "unable to verify requester"
 ```
 
 Serve certificate shares and CSR pickup/submission:
@@ -181,6 +185,7 @@ Health and release information:
 
 ```bash
 go run . doctor
+go run . doctor --warn-days 14
 go run . version
 go run . version --json
 ```
@@ -227,10 +232,10 @@ Build common release binaries for Linux, macOS, and Windows:
 Build a versioned set of release archives:
 
 ```bash
-VERSION=v0.1.0 ./scripts/build-release.sh
+VERSION=v0.2.0 ./scripts/build-release.sh
 ```
 
-The release script stamps `version`, `commit`, and `date` into the binary, bundles the docs into each archive, and writes a matching checksum for each uploaded asset.
+The release script stamps `version`, `commit`, and `date` into the binary, bundles the docs into each archive, and writes both per-archive checksums and a `checksums.txt` manifest.
 
 Build only specific targets:
 
@@ -242,9 +247,15 @@ For binary install and checksum verification steps, see [`docs/INSTALL.md`](docs
 
 For end-user CSR submission with `openssl` and `curl`, see [`docs/CSR_REQUESTS.md`](docs/CSR_REQUESTS.md).
 
+For day-to-day operations, rotation, restore, and approval procedures, see [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
+
+For tagging, signing, and GitHub draft release creation, see [`docs/RELEASING.md`](docs/RELEASING.md).
+
 ## Release checklist
 
 - Run `go run . doctor` before shipping changes.
 - Run `go test -mod=mod ./...` to cover storage and CLI smoke paths.
 - Build stamped release artifacts with `VERSION=vX.Y.Z ./scripts/build-release.sh`.
-- Tag the same version in git so `version` output and release assets stay aligned.
+- Optionally sign `dist/checksums.txt` with `./scripts/sign-release-checksums.sh`.
+- Create the GitHub draft release with `./scripts/draft-release.sh vX.Y.Z --notes-file docs/RELEASE_NOTES_vX.Y.Z.md`.
+- Keep the tag, release notes, and built artifact version aligned.

@@ -51,7 +51,10 @@ certctl serve-certs \
 Enable HTTPS directly in the Go server:
 
 ```bash
-openssl req -x509 -newkey rsa:4096 -sha256 -days 365 -nodes -keyout server.key -out server.crt   -subj "/CN=localhost"
+openssl req -x509 -newkey rsa:4096 -sha256 -days 365 -nodes \
+  -keyout server.key \
+  -out server.crt \
+  -subj "/CN=localhost"
 ```
 
 ```bash
@@ -118,6 +121,16 @@ certctl approve-csr \
   --parent-key-password env:CERTCTL_PARENT_KEY_PASSWORD
 ```
 
+Approve with JSON output for automation:
+
+```bash
+certctl approve-csr \
+  --id <request-id> \
+  --intermediate-name corp-issuing \
+  --parent-key-password env:CERTCTL_PARENT_KEY_PASSWORD \
+  --json
+```
+
 Approve a public CSR:
 
 ```bash
@@ -134,6 +147,8 @@ Reject a CSR:
 ```bash
 certctl reject-csr --id <request-id> --reason "unable to verify requester"
 ```
+
+The broader operator flow for CSR review, backup, restore, and rotation is in [`RUNBOOK.md`](RUNBOOK.md).
 
 ## Notes
 
