@@ -60,6 +60,14 @@ Signing the checksum manifest is usually enough. It gives users an authenticity 
 
 ## 4. Create a GitHub draft release
 
+Dry-run the release flow first:
+
+```bash
+./scripts/draft-release.sh v0.2.0 --notes-file docs/RELEASE_NOTES_v0.2.0.md --dry-run
+```
+
+Then create the real draft:
+
 ```bash
 ./scripts/draft-release.sh v0.2.0 --notes-file docs/RELEASE_NOTES_v0.2.0.md
 ```
