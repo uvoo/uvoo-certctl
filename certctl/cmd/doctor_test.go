@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"certctl/internal/ops"
 	"certctl/internal/storage"
 )
 
@@ -150,13 +151,83 @@ func TestRunDoctorWarnDaysZeroDisablesTimeWarnings(t *testing.T) {
 	}
 }
 
+func TestRunDoctorWarnsOnDisabledIssuerStillReferenced(t *testing.T) {
+	findings, err := runDoctorWithOptions(&fakeDoctorStore{
+		authIssuers: []storage.AuthIssuer{
+			{
+				ID:      "issuer-1",
+				Name:    "keycloak-local",
+				Issuer:  "https://issuer.example.test/realms/certctl",
+				Enabled: false,
+			},
+		},
+		authzBindings: []storage.AuthzBinding{
+			{
+				ID:         "binding-1",
+				Enabled:    true,
+				Principal:  "role:https://issuer.example.test/realms/certctl:certctl_admin",
+				Permission: "doctor.read",
+			},
+		},
+	}, ops.DoctorOptions{WarnDays: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	found := false
+	for _, finding := range findings {
+		if finding.Check == "auth_issuer_disabled_reference" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected auth_issuer_disabled_reference finding, got %+v", findings)
+	}
+}
+
+func TestRunDoctorWarnsOnBrokenIssuerDiscovery(t *testing.T) {
+	findings, err := runDoctorWithOptions(&fakeDoctorStore{
+		authIssuers: []storage.AuthIssuer{
+			{
+				ID:      "issuer-1",
+				Name:    "keycloak-local",
+				Issuer:  "https://issuer.example.test/realms/certctl",
+				Enabled: true,
+			},
+		},
+	}, ops.DoctorOptions{
+		WarnDays: 0,
+		AuthIssuerProbe: func(issuer storage.AuthIssuer) error {
+			if issuer.Issuer == "https://issuer.example.test/realms/certctl" {
+				return assertErr("oidc discovery failed with status 500")
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	found := false
+	for _, finding := range findings {
+		if finding.Check == "auth_issuer_discovery" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected auth_issuer_discovery finding, got %+v", findings)
+	}
+}
+
 type fakeDoctorStore struct {
-	publicRows  []storage.PublicCert
-	privateRows []storage.PrivateCert
-	rootRows    []storage.PrivateRootCA
-	icaRows     []storage.PrivateIntermediateCA
-	shares      []storage.CertShare
-	csrRows     []storage.CSRRequest
+	publicRows    []storage.PublicCert
+	privateRows   []storage.PrivateCert
+	rootRows      []storage.PrivateRootCA
+	icaRows       []storage.PrivateIntermediateCA
+	shares        []storage.CertShare
+	csrRows       []storage.CSRRequest
+	authIssuers   []storage.AuthIssuer
+	authzBindings []storage.AuthzBinding
 }
 
 func (f *fakeDoctorStore) List(_ string, _ bool) ([]storage.PublicCert, error) {
@@ -183,4 +254,16 @@ func (f *fakeDoctorStore) ListCSRRequests(_, _ string) ([]storage.CSRRequest, er
 	return f.csrRows, nil
 }
 
+func (f *fakeDoctorStore) ListAuthIssuers(_ bool) ([]storage.AuthIssuer, error) {
+	return f.authIssuers, nil
+}
+
+func (f *fakeDoctorStore) ListAuthzBindings(_ bool) ([]storage.AuthzBinding, error) {
+	return f.authzBindings, nil
+}
+
 var _ doctorStore = (*fakeDoctorStore)(nil)
+
+type assertErr string
+
+func (e assertErr) Error() string { return string(e) }

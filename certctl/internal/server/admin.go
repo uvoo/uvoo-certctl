@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -66,7 +67,18 @@ func (s *Server) handleAdminDoctor(w http.ResponseWriter, r *http.Request) {
 	}
 	defer store.Close()
 
-	findings, err := ops.RunDoctor(store, warnDays)
+	findings, err := ops.RunDoctorWithOptions(store, ops.DoctorOptions{
+		WarnDays: warnDays,
+		AuthIssuerProbe: func(issuer storage.AuthIssuer) error {
+			timeout := s.cfg.ProviderHTTPTimeout
+			if timeout <= 0 {
+				timeout = 10 * time.Second
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			defer cancel()
+			return s.authVerifier.CheckIssuerConnectivity(ctx, issuer)
+		},
+	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to run doctor")
 		return

@@ -1,11 +1,14 @@
 package ops
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
+	"certctl/internal/auth"
 	"certctl/internal/storage"
 )
 
@@ -22,11 +25,32 @@ type DoctorStore interface {
 	ListPrivateIntermediateCAs(string, bool) ([]storage.PrivateIntermediateCA, error)
 	ListShares(string) ([]storage.CertShare, error)
 	ListCSRRequests(string, string) ([]storage.CSRRequest, error)
+	ListAuthIssuers(bool) ([]storage.AuthIssuer, error)
+	ListAuthzBindings(bool) ([]storage.AuthzBinding, error)
+}
+
+type AuthIssuerProbe func(storage.AuthIssuer) error
+
+type DoctorOptions struct {
+	WarnDays        int
+	Now             time.Time
+	AuthIssuerProbe AuthIssuerProbe
 }
 
 func RunDoctor(store DoctorStore, warnDays int) ([]DoctorFinding, error) {
-	now := time.Now().UTC()
-	warnWindow := time.Duration(warnDays) * 24 * time.Hour
+	return RunDoctorWithOptions(store, DoctorOptions{
+		WarnDays:        warnDays,
+		Now:             time.Now().UTC(),
+		AuthIssuerProbe: DefaultAuthIssuerProbe(10 * time.Second),
+	})
+}
+
+func RunDoctorWithOptions(store DoctorStore, opts DoctorOptions) ([]DoctorFinding, error) {
+	now := opts.Now.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	warnWindow := time.Duration(opts.WarnDays) * 24 * time.Hour
 	var findings []DoctorFinding
 
 	publicRows, err := store.List("", true)
@@ -53,12 +77,22 @@ func RunDoctor(store DoctorStore, warnDays int) ([]DoctorFinding, error) {
 	if err != nil {
 		return nil, err
 	}
+	authIssuers, err := store.ListAuthIssuers(false)
+	if err != nil {
+		return nil, err
+	}
+	authzBindings, err := store.ListAuthzBindings(true)
+	if err != nil {
+		return nil, err
+	}
 
 	findings = append(findings, checkActiveLeafCounts(publicRows, privateRows)...)
 	findings = append(findings, checkLeafLineageLinks(publicRows, privateRows)...)
 	findings = append(findings, checkCAInvariants(rootRows, icaRows, now)...)
 	findings = append(findings, checkPrivateCertIssuers(privateRows, icaRows)...)
-	if warnDays > 0 {
+	findings = append(findings, checkAuthIssuerBindings(authIssuers, authzBindings)...)
+	findings = append(findings, checkAuthIssuerDiscovery(authIssuers, opts.AuthIssuerProbe)...)
+	if opts.WarnDays > 0 {
 		findings = append(findings, checkExpiringLeafs(publicRows, privateRows, now, warnWindow)...)
 		findings = append(findings, checkExpiringCAs(rootRows, icaRows, now, warnWindow)...)
 		findings = append(findings, checkShares(shares, now, warnWindow)...)
@@ -66,6 +100,18 @@ func RunDoctor(store DoctorStore, warnDays int) ([]DoctorFinding, error) {
 	}
 
 	return findings, nil
+}
+
+func DefaultAuthIssuerProbe(timeout time.Duration) AuthIssuerProbe {
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	client := &http.Client{Timeout: timeout}
+	return func(issuer storage.AuthIssuer) error {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		return auth.CheckIssuerConnectivity(ctx, client, issuer)
+	}
 }
 
 func DoctorStatus(findings []DoctorFinding) string {
@@ -368,6 +414,68 @@ func checkPendingCSRRequests(requests []storage.CSRRequest, now time.Time, warnW
 		}
 	}
 	return findings
+}
+
+func checkAuthIssuerBindings(issuers []storage.AuthIssuer, bindings []storage.AuthzBinding) []DoctorFinding {
+	var findings []DoctorFinding
+	disabled := map[string]storage.AuthIssuer{}
+	for _, issuer := range issuers {
+		if !issuer.Enabled {
+			disabled[issuer.Issuer] = issuer
+		}
+	}
+	if len(disabled) == 0 || len(bindings) == 0 {
+		return findings
+	}
+
+	for issuerURL, issuer := range disabled {
+		var bindingIDs []string
+		for _, binding := range bindings {
+			if binding.Enabled && bindingReferencesIssuer(binding, issuerURL) {
+				bindingIDs = append(bindingIDs, binding.ID)
+			}
+		}
+		if len(bindingIDs) == 0 {
+			continue
+		}
+		findings = append(findings, DoctorFinding{
+			Severity: "warn",
+			Check:    "auth_issuer_disabled_reference",
+			Message:  fmt.Sprintf("disabled auth issuer %s (%s) is still referenced by enabled bindings: %s", issuer.Name, issuer.Issuer, strings.Join(bindingIDs, ", ")),
+		})
+	}
+
+	return findings
+}
+
+func checkAuthIssuerDiscovery(issuers []storage.AuthIssuer, probe AuthIssuerProbe) []DoctorFinding {
+	if probe == nil {
+		return nil
+	}
+
+	var findings []DoctorFinding
+	for _, issuer := range issuers {
+		if !issuer.Enabled {
+			continue
+		}
+		if err := probe(issuer); err != nil {
+			findings = append(findings, DoctorFinding{
+				Severity: "warn",
+				Check:    "auth_issuer_discovery",
+				Message:  fmt.Sprintf("auth issuer %s (%s) discovery or JWKS check failed: %v", issuer.Name, issuer.Issuer, err),
+			})
+		}
+	}
+	return findings
+}
+
+func bindingReferencesIssuer(binding storage.AuthzBinding, issuer string) bool {
+	for _, prefix := range []string{"sub:", "role:", "group:"} {
+		if strings.HasPrefix(binding.Principal, prefix+issuer+":") {
+			return true
+		}
+	}
+	return false
 }
 
 func describeRemaining(d time.Duration) string {

@@ -55,6 +55,14 @@ func NewVerifierWithClient(client *http.Client) *Verifier {
 	}
 }
 
+func CheckIssuerConnectivity(ctx context.Context, client *http.Client, issuer storage.AuthIssuer) error {
+	return NewVerifierWithClient(client).checkIssuerConnectivity(ctx, issuer)
+}
+
+func (v *Verifier) CheckIssuerConnectivity(ctx context.Context, issuer storage.AuthIssuer) error {
+	return v.checkIssuerConnectivity(ctx, issuer)
+}
+
 func (v *Verifier) Verify(ctx context.Context, token string, issuers []storage.AuthIssuer) (Identity, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -114,6 +122,11 @@ func (v *Verifier) verifyAgainstIssuer(ctx context.Context, parsed *josejwt.JSON
 		return Identity{}, err
 	}
 	return verifyWithKeys(parsed, rawClaims, issuer, selectKeys(keys, headerKid))
+}
+
+func (v *Verifier) checkIssuerConnectivity(ctx context.Context, issuer storage.AuthIssuer) error {
+	_, err := v.keysForIssuer(ctx, issuer, true)
+	return err
 }
 
 func verifyWithKeys(parsed *josejwt.JSONWebToken, rawClaims map[string]any, issuer storage.AuthIssuer, keys []jose.JSONWebKey) (Identity, error) {

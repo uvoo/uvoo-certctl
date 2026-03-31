@@ -52,6 +52,9 @@ certctl create-authz-binding \
 certctl create-authz-binding \
   --principal 'role:http://127.0.0.1:18080/realms/certctl:certctl_admin' \
   --permission metrics.read
+
+certctl list-auth-issuers --all
+certctl list-authz-bindings --all
 ```
 
 ## Run the built-in server
@@ -100,6 +103,15 @@ The smoke script:
 - fetches a Keycloak access token
 - calls `/admin/v1/doctor`
 - calls `/metrics`
+
+Useful follow-up commands:
+
+```bash
+certctl update-auth-issuer --issuer http://127.0.0.1:18080/realms/certctl --name keycloak-dev-local
+certctl update-authz-binding --id <binding-id> --permission csr.read
+certctl disable-auth-issuer --issuer http://127.0.0.1:18080/realms/certctl
+certctl enable-auth-issuer --issuer http://127.0.0.1:18080/realms/certctl
+```
 
 When you are done:
 

@@ -2508,6 +2508,17 @@ func (s *Store) GetAuthIssuerByIssuer(issuer string) (AuthIssuer, error) {
 	return rec, err
 }
 
+func (s *Store) DeleteAuthIssuer(issuer string) error {
+	res, err := s.db.Exec(`
+		DELETE FROM auth_issuers
+		WHERE issuer = ?
+	`, issuer)
+	if err != nil {
+		return err
+	}
+	return ensureRowsAffected(res, "auth issuer not found")
+}
+
 func (s *Store) ListAuthIssuers(enabledOnly bool) ([]AuthIssuer, error) {
 	query := `
 		SELECT id, name, enabled, issuer, audiences_json, discovery_url, jwks_url, subject_claim, username_claim, email_claim,
@@ -2555,6 +2566,56 @@ func (s *Store) CreateAuthzBinding(rec AuthzBinding) error {
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`, rec.ID, boolToInt(rec.Enabled), rec.Principal, rec.Permission, nullIfEmpty(rec.ResourceKind), nullIfEmpty(rec.ResourceRef), timeOrNil(rec.CreatedAt), timeOrNil(rec.UpdatedAt))
 	return err
+}
+
+func (s *Store) GetAuthzBindingByID(id string) (AuthzBinding, error) {
+	var rec AuthzBinding
+	err := scanAuthzBinding(s.db.QueryRow(`
+		SELECT id, enabled, principal, permission, resource_kind, resource_ref, created_at, updated_at
+		FROM authz_bindings
+		WHERE id = ?
+		LIMIT 1
+	`, id), &rec)
+	return rec, err
+}
+
+func (s *Store) UpdateAuthzBinding(rec AuthzBinding) error {
+	if strings.TrimSpace(rec.ID) == "" {
+		return fmt.Errorf("authz binding id is required")
+	}
+	if strings.TrimSpace(rec.Principal) == "" {
+		return fmt.Errorf("authz binding principal is required")
+	}
+	if strings.TrimSpace(rec.Permission) == "" {
+		return fmt.Errorf("authz binding permission is required")
+	}
+	rec.UpdatedAt = time.Now().UTC()
+
+	res, err := s.db.Exec(`
+		UPDATE authz_bindings
+		SET enabled = ?,
+		    principal = ?,
+		    permission = ?,
+		    resource_kind = ?,
+		    resource_ref = ?,
+		    updated_at = ?
+		WHERE id = ?
+	`, boolToInt(rec.Enabled), rec.Principal, rec.Permission, nullIfEmpty(rec.ResourceKind), nullIfEmpty(rec.ResourceRef), timeOrNil(rec.UpdatedAt), rec.ID)
+	if err != nil {
+		return err
+	}
+	return ensureRowsAffected(res, "authz binding not found")
+}
+
+func (s *Store) DeleteAuthzBinding(id string) error {
+	res, err := s.db.Exec(`
+		DELETE FROM authz_bindings
+		WHERE id = ?
+	`, id)
+	if err != nil {
+		return err
+	}
+	return ensureRowsAffected(res, "authz binding not found")
 }
 
 func (s *Store) ListAuthzBindings(enabledOnly bool) ([]AuthzBinding, error) {

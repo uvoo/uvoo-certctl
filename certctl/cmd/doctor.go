@@ -60,5 +60,12 @@ func init() {
 }
 
 func runDoctor(store doctorStore, warnDays int) ([]doctorFinding, error) {
-	return ops.RunDoctor(store, warnDays)
+	return runDoctorWithOptions(store, ops.DoctorOptions{
+		WarnDays:        warnDays,
+		AuthIssuerProbe: ops.DefaultAuthIssuerProbe(rootCfg.HTTPTimeout),
+	})
+}
+
+func runDoctorWithOptions(store doctorStore, opts ops.DoctorOptions) ([]doctorFinding, error) {
+	return ops.RunDoctorWithOptions(store, opts)
 }

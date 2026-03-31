@@ -304,6 +304,99 @@ func TestSetAuthIssuerEnabled(t *testing.T) {
 	}
 }
 
+func TestDeleteAuthIssuerRemovesRecord(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "auth-delete.db")
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if err := store.UpsertAuthIssuer(AuthIssuer{
+		ID:        "issuer-1",
+		Name:      "keycloak-local",
+		Enabled:   true,
+		Issuer:    "https://issuer.example.test/realms/certctl",
+		Audiences: []string{"certctl"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.DeleteAuthIssuer("https://issuer.example.test/realms/certctl"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.GetAuthIssuerByIssuer("https://issuer.example.test/realms/certctl"); err == nil {
+		t.Fatal("expected deleted issuer lookup to fail")
+	}
+}
+
+func TestUpdateAuthzBindingPersistsChanges(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "authz-update.db")
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if err := store.CreateAuthzBinding(AuthzBinding{
+		ID:         "binding-1",
+		Enabled:    true,
+		Principal:  "role:https://issuer.example.test/realms/certctl:certctl_admin",
+		Permission: "doctor.read",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.UpdateAuthzBinding(AuthzBinding{
+		ID:           "binding-1",
+		Enabled:      false,
+		Principal:    "role:https://issuer.example.test/realms/certctl:certctl_ops",
+		Permission:   "csr.approve",
+		ResourceKind: "csr_request",
+		ResourceRef:  "*",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rec, err := store.GetAuthzBindingByID("binding-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Enabled {
+		t.Fatal("expected binding to be disabled")
+	}
+	if rec.Permission != "csr.approve" || rec.ResourceKind != "csr_request" || rec.ResourceRef != "*" {
+		t.Fatalf("unexpected updated binding: %+v", rec)
+	}
+}
+
+func TestDeleteAuthzBindingRemovesRecord(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "authz-delete.db")
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if err := store.CreateAuthzBinding(AuthzBinding{
+		ID:         "binding-1",
+		Enabled:    true,
+		Principal:  "role:https://issuer.example.test/realms/certctl:certctl_admin",
+		Permission: "doctor.read",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.DeleteAuthzBinding("binding-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.GetAuthzBindingByID("binding-1"); err == nil {
+		t.Fatal("expected deleted binding lookup to fail")
+	}
+}
+
 func TestCSRRequestLifecycle(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "csr.db")
 	store, err := Open(dbPath)
