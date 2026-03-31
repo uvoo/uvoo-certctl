@@ -2583,6 +2583,18 @@ func (s *Store) ListAuthzBindings(enabledOnly bool) ([]AuthzBinding, error) {
 	return out, rows.Err()
 }
 
+func (s *Store) SetAuthIssuerEnabled(issuer string, enabled bool) error {
+	res, err := s.db.Exec(`
+		UPDATE auth_issuers
+		SET enabled = ?, updated_at = ?
+		WHERE issuer = ?
+	`, boolToInt(enabled), nowRFC3339(), issuer)
+	if err != nil {
+		return err
+	}
+	return ensureRowsAffected(res, "auth issuer not found")
+}
+
 func (s *Store) ListPublicCertHistory(commonName string) ([]PublicCert, error) {
 	rows, err := s.db.Query(`
 		SELECT id, common_name, sans_csv, sans_hash, cert, privkey, provider, email, issuer, status,

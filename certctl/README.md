@@ -8,6 +8,7 @@ A Cobra-based refactor of the original single-file ACME utility.
 - CSR guide: [`docs/CSR_REQUESTS.md`](docs/CSR_REQUESTS.md)
 - Admin runbook: [`docs/RUNBOOK.md`](docs/RUNBOOK.md)
 - Auth/authz design: [`docs/AUTHZ_DESIGN.md`](docs/AUTHZ_DESIGN.md)
+- Auth dev guide: [`docs/AUTH_DEV.md`](docs/AUTH_DEV.md)
 - Release process: [`docs/RELEASING.md`](docs/RELEASING.md)
 
 ## What changed
@@ -174,6 +175,9 @@ go run . create-authz-binding \
 
 go run . list-auth-issuers
 go run . list-authz-bindings
+go run . explain-authz --bearer-token env:CERTCTL_BEARER_TOKEN
+go run . disable-auth-issuer --issuer https://sso.example.com/realms/certctl
+go run . enable-auth-issuer --issuer https://sso.example.com/realms/certctl
 ```
 
 Serve certificate shares and CSR pickup/submission:
@@ -188,6 +192,8 @@ go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt 
 With `--admin-username` and `--admin-password`, the built-in server also exposes a small authenticated JSON admin API under `/admin/v1` for remote `doctor` and CSR queue actions. `--metrics` enables a Prometheus-style `/metrics` endpoint, using the same Basic auth when admin auth is enabled.
 
 The admin API can also use bearer tokens from trusted JWT/OIDC issuers configured in the local database. The auth model and claim mapping are documented in [`docs/AUTHZ_DESIGN.md`](docs/AUTHZ_DESIGN.md).
+
+For local Keycloak testing and a one-command bearer-auth smoke path, see [`docs/AUTH_DEV.md`](docs/AUTH_DEV.md).
 
 Export safe metadata or a DB backup:
 

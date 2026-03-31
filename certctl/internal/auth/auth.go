@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"certctl/internal/storage"
@@ -50,14 +51,24 @@ func SuperuserIdentity(username string) Identity {
 }
 
 func Allowed(identity Identity, bindings []storage.AuthzBinding, req PermissionRequest) bool {
+	return len(MatchingBindings(identity, bindings, req)) > 0
+}
+
+func MatchingBindings(identity Identity, bindings []storage.AuthzBinding, req PermissionRequest) []storage.AuthzBinding {
 	if identity.Superuser {
-		return true
+		return []storage.AuthzBinding{{
+			ID:         "superuser",
+			Enabled:    true,
+			Principal:  "superuser",
+			Permission: "*",
+		}}
 	}
 	principals := map[string]struct{}{}
 	for _, principal := range identity.Principals {
 		principals[principal] = struct{}{}
 	}
 
+	var matched []storage.AuthzBinding
 	for _, binding := range bindings {
 		if !binding.Enabled {
 			continue
@@ -74,9 +85,9 @@ func Allowed(identity Identity, bindings []storage.AuthzBinding, req PermissionR
 		if !matchesScope(binding.ResourceRef, req.ResourceRef) {
 			continue
 		}
-		return true
+		matched = append(matched, binding)
 	}
-	return false
+	return matched
 }
 
 func matchesScope(bindingValue, requestValue string) bool {
@@ -88,4 +99,30 @@ func matchesScope(bindingValue, requestValue string) bool {
 	default:
 		return bindingValue == requestValue
 	}
+}
+
+func EffectivePermissions(identity Identity, bindings []storage.AuthzBinding) []string {
+	if identity.Superuser {
+		return []string{"*"}
+	}
+	permissions := map[string]struct{}{}
+	principals := map[string]struct{}{}
+	for _, principal := range identity.Principals {
+		principals[principal] = struct{}{}
+	}
+	for _, binding := range bindings {
+		if !binding.Enabled {
+			continue
+		}
+		if _, ok := principals[binding.Principal]; !ok {
+			continue
+		}
+		permissions[binding.Permission] = struct{}{}
+	}
+	out := make([]string, 0, len(permissions))
+	for permission := range permissions {
+		out = append(out, permission)
+	}
+	slices.Sort(out)
+	return out
 }

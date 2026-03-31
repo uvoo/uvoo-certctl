@@ -271,6 +271,39 @@ func TestAuditEventRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSetAuthIssuerEnabled(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "auth.db")
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if err := store.UpsertAuthIssuer(AuthIssuer{
+		ID:           "issuer-1",
+		Name:         "keycloak-local",
+		Enabled:      true,
+		Issuer:       "https://issuer.example.test/realms/certctl",
+		Audiences:    []string{"certctl"},
+		RolesClaims:  []string{"realm_access.roles"},
+		GroupsClaims: []string{"groups"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.SetAuthIssuerEnabled("https://issuer.example.test/realms/certctl", false); err != nil {
+		t.Fatal(err)
+	}
+
+	rec, err := store.GetAuthIssuerByIssuer("https://issuer.example.test/realms/certctl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Enabled {
+		t.Fatal("expected issuer to be disabled")
+	}
+}
+
 func TestCSRRequestLifecycle(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "csr.db")
 	store, err := Open(dbPath)
