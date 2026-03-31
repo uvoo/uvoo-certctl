@@ -93,7 +93,7 @@ func RunDoctorWithOptions(store DoctorStore, opts DoctorOptions) ([]DoctorFindin
 	findings = append(findings, checkAuthIssuerBindings(authIssuers, authzBindings)...)
 	findings = append(findings, checkBroadAuthzBindings(authzBindings)...)
 	findings = append(findings, checkDuplicateAuthzBindings(authzBindings)...)
-	findings = append(findings, checkAuthIssuerDiscovery(authIssuers, opts.AuthIssuerProbe)...)
+	findings = append(findings, checkAuthIssuerDiscovery(authIssuers, authzBindings, opts.AuthIssuerProbe)...)
 	if opts.WarnDays > 0 {
 		findings = append(findings, checkExpiringLeafs(publicRows, privateRows, now, warnWindow)...)
 		findings = append(findings, checkExpiringCAs(rootRows, icaRows, now, warnWindow)...)
@@ -422,23 +422,27 @@ func checkAuthIssuerBindings(issuers []storage.AuthIssuer, bindings []storage.Au
 	var findings []DoctorFinding
 	knownIssuers := map[string]storage.AuthIssuer{}
 	disabled := map[string]storage.AuthIssuer{}
+	referenced := map[string][]string{}
 	for _, issuer := range issuers {
 		knownIssuers[issuer.Issuer] = issuer
 		if !issuer.Enabled {
 			disabled[issuer.Issuer] = issuer
 		}
 	}
-	if len(bindings) == 0 {
-		return findings
+	for _, binding := range bindings {
+		if !binding.Enabled {
+			continue
+		}
+		for issuerURL := range knownIssuers {
+			if bindingReferencesIssuer(binding, issuerURL) {
+				referenced[issuerURL] = append(referenced[issuerURL], binding.ID)
+				break
+			}
+		}
 	}
 
 	for issuerURL, issuer := range disabled {
-		var bindingIDs []string
-		for _, binding := range bindings {
-			if binding.Enabled && bindingReferencesIssuer(binding, issuerURL) {
-				bindingIDs = append(bindingIDs, binding.ID)
-			}
-		}
+		bindingIDs := referenced[issuerURL]
 		if len(bindingIDs) == 0 {
 			continue
 		}
@@ -447,6 +451,19 @@ func checkAuthIssuerBindings(issuers []storage.AuthIssuer, bindings []storage.Au
 			Check:    "auth_issuer_disabled_reference",
 			Message:  fmt.Sprintf("disabled auth issuer %s (%s) is still referenced by enabled bindings: %s", issuer.Name, issuer.Issuer, strings.Join(bindingIDs, ", ")),
 		})
+	}
+
+	for _, issuer := range issuers {
+		if !issuer.Enabled {
+			continue
+		}
+		if len(referenced[issuer.Issuer]) == 0 {
+			findings = append(findings, DoctorFinding{
+				Severity: "warn",
+				Check:    "auth_issuer_unused",
+				Message:  fmt.Sprintf("enabled auth issuer %s (%s) has no enabled authz bindings", issuer.Name, issuer.Issuer),
+			})
+		}
 	}
 
 	for _, binding := range bindings {
@@ -467,7 +484,7 @@ func checkAuthIssuerBindings(issuers []storage.AuthIssuer, bindings []storage.Au
 	return findings
 }
 
-func checkAuthIssuerDiscovery(issuers []storage.AuthIssuer, probe AuthIssuerProbe) []DoctorFinding {
+func checkAuthIssuerDiscovery(issuers []storage.AuthIssuer, bindings []storage.AuthzBinding, probe AuthIssuerProbe) []DoctorFinding {
 	if probe == nil {
 		return nil
 	}
@@ -478,11 +495,24 @@ func checkAuthIssuerDiscovery(issuers []storage.AuthIssuer, probe AuthIssuerProb
 			continue
 		}
 		if err := probe(issuer); err != nil {
+			var bindingIDs []string
+			for _, binding := range bindings {
+				if binding.Enabled && bindingReferencesIssuer(binding, issuer.Issuer) {
+					bindingIDs = append(bindingIDs, binding.ID)
+				}
+			}
 			findings = append(findings, DoctorFinding{
 				Severity: "warn",
 				Check:    "auth_issuer_discovery",
 				Message:  fmt.Sprintf("auth issuer %s (%s) discovery or JWKS check failed: %v", issuer.Name, issuer.Issuer, err),
 			})
+			if len(bindingIDs) > 0 {
+				findings = append(findings, DoctorFinding{
+					Severity: "warn",
+					Check:    "authz_binding_unreachable_issuer",
+					Message:  fmt.Sprintf("enabled authz bindings %s reference issuer %s but discovery or JWKS is currently unreachable", strings.Join(bindingIDs, ", "), issuer.Issuer),
+				})
+			}
 		}
 	}
 	return findings

@@ -195,6 +195,14 @@ func TestRunDoctorWarnsOnBrokenIssuerDiscovery(t *testing.T) {
 				Enabled: true,
 			},
 		},
+		authzBindings: []storage.AuthzBinding{
+			{
+				ID:         "binding-1",
+				Enabled:    true,
+				Principal:  "role:https://issuer.example.test/realms/certctl:certctl_admin",
+				Permission: "doctor.read",
+			},
+		},
 	}, ops.DoctorOptions{
 		WarnDays: 0,
 		AuthIssuerProbe: func(issuer storage.AuthIssuer) error {
@@ -208,14 +216,19 @@ func TestRunDoctorWarnsOnBrokenIssuerDiscovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	found := false
+	wantChecks := map[string]bool{
+		"auth_issuer_discovery":            false,
+		"authz_binding_unreachable_issuer": false,
+	}
 	for _, finding := range findings {
-		if finding.Check == "auth_issuer_discovery" {
-			found = true
+		if _, ok := wantChecks[finding.Check]; ok {
+			wantChecks[finding.Check] = true
 		}
 	}
-	if !found {
-		t.Fatalf("expected auth_issuer_discovery finding, got %+v", findings)
+	for check, found := range wantChecks {
+		if !found {
+			t.Fatalf("expected %s finding, got %+v", check, findings)
+		}
 	}
 }
 
@@ -340,6 +353,32 @@ func TestRunDoctorWarnsOnDuplicateAndConflictingBindings(t *testing.T) {
 		if !found {
 			t.Fatalf("expected %s finding, got %+v", check, findings)
 		}
+	}
+}
+
+func TestRunDoctorWarnsOnUnusedIssuer(t *testing.T) {
+	findings, err := runDoctorWithOptions(&fakeDoctorStore{
+		authIssuers: []storage.AuthIssuer{
+			{
+				ID:      "issuer-1",
+				Name:    "keycloak-local",
+				Issuer:  "https://issuer.example.test/realms/certctl",
+				Enabled: true,
+			},
+		},
+	}, ops.DoctorOptions{WarnDays: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	found := false
+	for _, finding := range findings {
+		if finding.Check == "auth_issuer_unused" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected auth_issuer_unused finding, got %+v", findings)
 	}
 }
 
