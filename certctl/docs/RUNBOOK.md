@@ -50,8 +50,18 @@ To review locally tracked JWT subjects:
 
 ```bash
 certctl list-subjects --all
+certctl list-subjects --status pending
+certctl approve-subject --issuer https://accounts.google.com --subject user-123 --local-group viewers
 certctl disable-subject --issuer https://sso.example.com/realms/certctl --subject user-123
 certctl enable-subject --issuer https://sso.example.com/realms/certctl --subject user-123
+```
+
+For common public identity providers, start from a preset:
+
+```bash
+certctl list-auth-provider-presets
+certctl create-auth-issuer --preset google --name google-login --audience <client-id>
+certctl create-auth-issuer --preset microsoft-consumers --name microsoft-login --audience <app-id>
 ```
 
 Recommended routine:

@@ -46,6 +46,7 @@ This smoke path:
 - starts Keycloak and `certctl`
 - configures the trusted issuer and local authz bindings inside the container
 - fetches a Keycloak access token
+- registers and approves the first pending JWT subject
 - calls `/admin/v1/doctor`
 - calls `/metrics`
 - creates a private root and intermediate CA

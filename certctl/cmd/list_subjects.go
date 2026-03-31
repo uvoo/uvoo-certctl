@@ -12,6 +12,7 @@ func init() {
 	var all bool
 	var issuer string
 	var subject string
+	var status string
 	var jsonOut bool
 
 	cmd := &cobra.Command{
@@ -19,7 +20,8 @@ func init() {
 		Short: "List observed JWT subjects",
 		Example: `  certctl list-subjects
   certctl list-subjects --all --json
-  certctl list-subjects --issuer https://sso.example.com/realms/certctl`,
+  certctl list-subjects --issuer https://sso.example.com/realms/certctl
+  certctl list-subjects --status pending`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {
@@ -38,6 +40,9 @@ func init() {
 					continue
 				}
 				if subject != "" && row.Subject != strings.TrimSpace(subject) {
+					continue
+				}
+				if status != "" && row.Status != strings.TrimSpace(status) {
 					continue
 				}
 				filtered = append(filtered, row)
@@ -64,6 +69,12 @@ func init() {
 				if row.Email != "" {
 					printKV("email", row.Email)
 				}
+				if len(row.LocalRoles) > 0 {
+					printKV("local_roles", fmt.Sprintf("%v", row.LocalRoles))
+				}
+				if len(row.LocalGroups) > 0 {
+					printKV("local_groups", fmt.Sprintf("%v", row.LocalGroups))
+				}
 				printKV("auth_count", fmt.Sprintf("%d", row.AuthCount))
 				if !row.LastSeenAt.IsZero() {
 					printKV("last_seen_at", row.LastSeenAt.Format("2006-01-02T15:04:05Z07:00"))
@@ -77,6 +88,7 @@ func init() {
 	cmd.Flags().BoolVar(&all, "all", false, "include disabled subjects")
 	cmd.Flags().StringVar(&issuer, "issuer", "", "filter by issuer URL")
 	cmd.Flags().StringVar(&subject, "subject", "", "filter by subject value")
+	cmd.Flags().StringVar(&status, "status", "", "filter by subject status: pending, active, disabled")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 	rootCmd.AddCommand(cmd)
 }

@@ -1,0 +1,68 @@
+package cmd
+
+import (
+	"fmt"
+	"sort"
+)
+
+type authProviderPreset struct {
+	Name          string
+	Issuer        string
+	DiscoveryURL  string
+	SubjectClaim  string
+	UsernameClaim string
+	EmailClaim    string
+	RolesClaims   []string
+	GroupsClaims  []string
+}
+
+var authProviderPresets = map[string]authProviderPreset{
+	"google": {
+		Name:          "google",
+		Issuer:        "https://accounts.google.com",
+		DiscoveryURL:  "https://accounts.google.com/.well-known/openid-configuration",
+		SubjectClaim:  "sub",
+		UsernameClaim: "email",
+		EmailClaim:    "email",
+		RolesClaims:   []string{"roles"},
+		GroupsClaims:  []string{"groups"},
+	},
+	"microsoft-common": {
+		Name:          "microsoft-common",
+		Issuer:        "https://login.microsoftonline.com/common/v2.0",
+		DiscoveryURL:  "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration",
+		SubjectClaim:  "sub",
+		UsernameClaim: "preferred_username",
+		EmailClaim:    "email",
+		RolesClaims:   []string{"roles"},
+		GroupsClaims:  []string{"groups"},
+	},
+	"microsoft-consumers": {
+		Name:          "microsoft-consumers",
+		Issuer:        "https://login.microsoftonline.com/consumers/v2.0",
+		DiscoveryURL:  "https://login.microsoftonline.com/consumers/v2.0/.well-known/openid-configuration",
+		SubjectClaim:  "sub",
+		UsernameClaim: "preferred_username",
+		EmailClaim:    "email",
+		RolesClaims:   []string{"roles"},
+		GroupsClaims:  []string{"groups"},
+	},
+}
+
+func authProviderPresetByName(name string) (authProviderPreset, bool) {
+	rec, ok := authProviderPresets[name]
+	return rec, ok
+}
+
+func authProviderPresetNames() []string {
+	out := make([]string, 0, len(authProviderPresets))
+	for name := range authProviderPresets {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func authProviderPresetSummary(name string, rec authProviderPreset) string {
+	return fmt.Sprintf("%s (%s)", name, rec.Issuer)
+}

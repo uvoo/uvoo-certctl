@@ -34,6 +34,7 @@ const (
 
 	SubjectStatusActive   = "active"
 	SubjectStatusDisabled = "disabled"
+	SubjectStatusPending  = "pending"
 )
 
 type Store struct{ db *sql.DB }
@@ -129,6 +130,8 @@ type Subject struct {
 	Email       string
 	Roles       []string
 	Groups      []string
+	LocalRoles  []string
+	LocalGroups []string
 	AuthCount   int
 	FirstSeenAt time.Time
 	LastSeenAt  time.Time
@@ -1423,26 +1426,62 @@ func ensureAuthzBindingsSchema(db *sql.DB) error {
 }
 
 func ensureSubjectsSchema(db *sql.DB) error {
-	_, err := db.Exec(`
+	create := `
 		CREATE TABLE IF NOT EXISTS subjects (
 			id TEXT PRIMARY KEY,
 			issuer TEXT NOT NULL,
 			subject TEXT NOT NULL,
-			status TEXT NOT NULL DEFAULT 'active',
+			status TEXT NOT NULL DEFAULT 'pending',
 			username TEXT,
 			email TEXT,
 			roles_json TEXT NOT NULL DEFAULT '[]',
 			groups_json TEXT NOT NULL DEFAULT '[]',
+			local_roles_json TEXT NOT NULL DEFAULT '[]',
+			local_groups_json TEXT NOT NULL DEFAULT '[]',
 			auth_count INTEGER NOT NULL DEFAULT 0,
 			first_seen_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
 			last_seen_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
 			updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
 			UNIQUE(issuer, subject),
-			CHECK (status IN ('active', 'disabled'))
+			CHECK (status IN ('pending', 'active', 'disabled'))
 		)
-	`)
+	`
+	exists, err := tableExists(db, "subjects")
 	if err != nil {
 		return err
+	}
+	if !exists {
+		if _, err := db.Exec(create); err != nil {
+			return err
+		}
+	} else {
+		cols, err := tableColumns(db, "subjects")
+		if err != nil {
+			return err
+		}
+		if _, ok := cols["local_roles_json"]; !ok {
+			if err := withTx(db, func(tx *sql.Tx) error {
+				if _, err := tx.Exec(`ALTER TABLE subjects RENAME TO subjects_old`); err != nil {
+					return err
+				}
+				if _, err := tx.Exec(create); err != nil {
+					return err
+				}
+				_, err := tx.Exec(`
+					INSERT INTO subjects
+					(id, issuer, subject, status, username, email, roles_json, groups_json, local_roles_json, local_groups_json, auth_count, first_seen_at, last_seen_at, updated_at)
+					SELECT id, issuer, subject, CASE WHEN status = ? THEN ? ELSE status END, username, email, roles_json, groups_json, '[]', '[]', auth_count, first_seen_at, last_seen_at, updated_at
+					FROM subjects_old
+				`, SubjectStatusActive, SubjectStatusActive)
+				if err != nil {
+					return err
+				}
+				_, err = tx.Exec(`DROP TABLE subjects_old`)
+				return err
+			}); err != nil {
+				return err
+			}
+		}
 	}
 	stmts := []string{
 		`CREATE INDEX IF NOT EXISTS idx_subjects_status_last_seen ON subjects(status, last_seen_at DESC)`,
@@ -2166,7 +2205,7 @@ func scanAuthzBinding(row scanner, rec *AuthzBinding) error {
 }
 
 func scanSubject(row scanner, rec *Subject) error {
-	var rolesJSON, groupsJSON string
+	var rolesJSON, groupsJSON, localRolesJSON, localGroupsJSON string
 	var username, email, firstSeenAt, lastSeenAt, updatedAt sql.NullString
 	var authCount sql.NullInt64
 	if err := row.Scan(
@@ -2178,6 +2217,8 @@ func scanSubject(row scanner, rec *Subject) error {
 		&email,
 		&rolesJSON,
 		&groupsJSON,
+		&localRolesJSON,
+		&localGroupsJSON,
 		&authCount,
 		&firstSeenAt,
 		&lastSeenAt,
@@ -2189,6 +2230,8 @@ func scanSubject(row scanner, rec *Subject) error {
 	rec.Email = email.String
 	rec.Roles = parseJSONArrayStrings(rolesJSON)
 	rec.Groups = parseJSONArrayStrings(groupsJSON)
+	rec.LocalRoles = parseJSONArrayStrings(localRolesJSON)
+	rec.LocalGroups = parseJSONArrayStrings(localGroupsJSON)
 	if authCount.Valid {
 		rec.AuthCount = int(authCount.Int64)
 	}
@@ -2469,7 +2512,7 @@ func defaultCSRStatus(status string) string {
 func defaultSubjectStatus(status string) string {
 	status = strings.TrimSpace(strings.ToLower(status))
 	if status == "" {
-		return SubjectStatusActive
+		return SubjectStatusPending
 	}
 	return status
 }
@@ -2900,10 +2943,12 @@ func (s *Store) UpsertSubjectSeen(rec Subject) (Subject, error) {
 	now := time.Now().UTC()
 	rolesJSON := marshalJSONArrayStrings(uniqueSortedStrings(rec.Roles))
 	groupsJSON := marshalJSONArrayStrings(uniqueSortedStrings(rec.Groups))
+	localRolesJSON := marshalJSONArrayStrings(uniqueSortedStrings(rec.LocalRoles))
+	localGroupsJSON := marshalJSONArrayStrings(uniqueSortedStrings(rec.LocalGroups))
 	_, err := s.db.Exec(`
 		INSERT INTO subjects
-		(id, issuer, subject, status, username, email, roles_json, groups_json, auth_count, first_seen_at, last_seen_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+		(id, issuer, subject, status, username, email, roles_json, groups_json, local_roles_json, local_groups_json, auth_count, first_seen_at, last_seen_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
 		ON CONFLICT(issuer, subject) DO UPDATE SET
 			username = excluded.username,
 			email = excluded.email,
@@ -2912,7 +2957,7 @@ func (s *Store) UpsertSubjectSeen(rec Subject) (Subject, error) {
 			auth_count = subjects.auth_count + 1,
 			last_seen_at = excluded.last_seen_at,
 			updated_at = excluded.updated_at
-	`, rec.ID, rec.Issuer, rec.Subject, rec.Status, nullIfEmpty(rec.Username), nullIfEmpty(rec.Email), rolesJSON, groupsJSON, timeOrNil(now), timeOrNil(now), timeOrNil(now))
+	`, rec.ID, rec.Issuer, rec.Subject, rec.Status, nullIfEmpty(rec.Username), nullIfEmpty(rec.Email), rolesJSON, groupsJSON, localRolesJSON, localGroupsJSON, timeOrNil(now), timeOrNil(now), timeOrNil(now))
 	if err != nil {
 		return Subject{}, err
 	}
@@ -2922,7 +2967,7 @@ func (s *Store) UpsertSubjectSeen(rec Subject) (Subject, error) {
 func (s *Store) GetSubject(issuer, subject string) (Subject, error) {
 	var rec Subject
 	err := scanSubject(s.db.QueryRow(`
-		SELECT id, issuer, subject, status, username, email, roles_json, groups_json, auth_count, first_seen_at, last_seen_at, updated_at
+		SELECT id, issuer, subject, status, username, email, roles_json, groups_json, local_roles_json, local_groups_json, auth_count, first_seen_at, last_seen_at, updated_at
 		FROM subjects
 		WHERE issuer = ? AND subject = ?
 		LIMIT 1
@@ -2932,13 +2977,13 @@ func (s *Store) GetSubject(issuer, subject string) (Subject, error) {
 
 func (s *Store) ListSubjects(activeOnly bool) ([]Subject, error) {
 	query := `
-		SELECT id, issuer, subject, status, username, email, roles_json, groups_json, auth_count, first_seen_at, last_seen_at, updated_at
+		SELECT id, issuer, subject, status, username, email, roles_json, groups_json, local_roles_json, local_groups_json, auth_count, first_seen_at, last_seen_at, updated_at
 		FROM subjects
 	`
 	args := []any{}
 	if activeOnly {
-		query += ` WHERE status = ?`
-		args = append(args, SubjectStatusActive)
+		query += ` WHERE status <> ?`
+		args = append(args, SubjectStatusDisabled)
 	}
 	query += ` ORDER BY last_seen_at DESC, issuer, subject`
 	rows, err := s.db.Query(query, args...)
@@ -2959,7 +3004,7 @@ func (s *Store) ListSubjects(activeOnly bool) ([]Subject, error) {
 }
 
 func (s *Store) SetSubjectStatus(issuer, subject, status string) error {
-	if status != SubjectStatusActive && status != SubjectStatusDisabled {
+	if status != SubjectStatusPending && status != SubjectStatusActive && status != SubjectStatusDisabled {
 		return fmt.Errorf("invalid subject status %q", status)
 	}
 	res, err := s.db.Exec(`
@@ -2967,6 +3012,24 @@ func (s *Store) SetSubjectStatus(issuer, subject, status string) error {
 		SET status = ?, updated_at = ?
 		WHERE issuer = ? AND subject = ?
 	`, status, timeOrNil(time.Now().UTC()), issuer, subject)
+	if err != nil {
+		return err
+	}
+	return ensureRowsAffected(res, "subject not found")
+}
+
+func (s *Store) UpdateSubjectApproval(issuer, subject string, status string, localRoles, localGroups []string) error {
+	if status != SubjectStatusActive && status != SubjectStatusDisabled && status != SubjectStatusPending {
+		return fmt.Errorf("invalid subject status %q", status)
+	}
+	res, err := s.db.Exec(`
+		UPDATE subjects
+		SET status = ?,
+		    local_roles_json = ?,
+		    local_groups_json = ?,
+		    updated_at = ?
+		WHERE issuer = ? AND subject = ?
+	`, status, marshalJSONArrayStrings(uniqueSortedStrings(localRoles)), marshalJSONArrayStrings(uniqueSortedStrings(localGroups)), timeOrNil(time.Now().UTC()), issuer, subject)
 	if err != nil {
 		return err
 	}

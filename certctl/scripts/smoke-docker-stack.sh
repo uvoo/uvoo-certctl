@@ -34,6 +34,7 @@ INTERMEDIATE_CA_CN="${INTERMEDIATE_CA_CN:-Corp Issuing CA}"
 INTERMEDIATE_CA_PASSWORD="${INTERMEDIATE_CA_PASSWORD:-IcaSecret123!}"
 
 ACCESS_TOKEN=""
+TOKEN_SUBJECT=""
 
 compose() {
   docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" "$@"
@@ -74,6 +75,27 @@ import json
 import sys
 
 obj = json.loads(sys.argv[1])
+value = obj
+for part in sys.argv[2].split("."):
+    value = value[part]
+if isinstance(value, (dict, list)):
+    print(json.dumps(value))
+else:
+    print(value)
+PY
+}
+
+jwt_payload_field() {
+  local token="$1"
+  local field="$2"
+  python3 - <<'PY' "$token" "$field"
+import base64
+import json
+import sys
+
+parts = sys.argv[1].split(".")
+payload = parts[1] + "=" * (-len(parts[1]) % 4)
+obj = json.loads(base64.urlsafe_b64decode(payload))
 value = obj
 for part in sys.argv[2].split("."):
     value = value[part]
@@ -133,13 +155,27 @@ fetch_access_token() {
     --data-urlencode "username=$USERNAME" \
     --data-urlencode "password=$PASSWORD")"
   ACCESS_TOKEN="$(json_field "$token_json" "access_token")"
+  TOKEN_SUBJECT="$(jwt_payload_field "$ACCESS_TOKEN" "sub")"
 }
 
 verify_admin_endpoints() {
   echo "Calling /admin/v1/doctor with bearer auth..."
-  local doctor_json
-  doctor_json="$(curl -fsS "$CERTCTL_BASE_URL/admin/v1/doctor" \
+  local doctor_json doctor_code
+  doctor_code="$(curl -sS -o "$WORK_DIR/doctor.json" -w "%{http_code}" \
+    "$CERTCTL_BASE_URL/admin/v1/doctor" \
     -H "Authorization: Bearer $ACCESS_TOKEN")"
+  doctor_json="$(cat "$WORK_DIR/doctor.json")"
+  if [[ "$doctor_code" == "403" ]] && grep -q "pending local approval" "$WORK_DIR/doctor.json"; then
+    echo "Approving pending subject for docker smoke..."
+    certctl_exec approve-subject \
+      --issuer "$ISSUER_URL" \
+      --subject "$TOKEN_SUBJECT" >/dev/null
+    doctor_json="$(curl -fsS "$CERTCTL_BASE_URL/admin/v1/doctor" \
+      -H "Authorization: Bearer $ACCESS_TOKEN")"
+  elif [[ "$doctor_code" != "200" ]]; then
+    echo "Doctor request failed with status $doctor_code: $doctor_json" >&2
+    return 1
+  fi
   python3 - <<'PY' "$doctor_json"
 import json
 import sys

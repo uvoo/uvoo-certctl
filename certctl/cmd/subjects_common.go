@@ -12,6 +12,8 @@ func subjectPayload(rec storage.Subject) map[string]any {
 		"email":         emptyStringToNil(rec.Email),
 		"roles":         rec.Roles,
 		"groups":        rec.Groups,
+		"local_roles":   rec.LocalRoles,
+		"local_groups":  rec.LocalGroups,
 		"auth_count":    rec.AuthCount,
 		"first_seen_at": formatTimeValue(rec.FirstSeenAt),
 		"last_seen_at":  formatTimeValue(rec.LastSeenAt),

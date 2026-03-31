@@ -64,7 +64,7 @@ func (s *Server) authenticateAdminRequest(r *http.Request, req auth.PermissionRe
 		ID:       util.NewID(),
 		Issuer:   identity.Issuer,
 		Subject:  identity.Subject,
-		Status:   storage.SubjectStatusActive,
+		Status:   storage.SubjectStatusPending,
 		Username: identity.Username,
 		Email:    identity.Email,
 		Roles:    identity.Roles,
@@ -73,8 +73,12 @@ func (s *Server) authenticateAdminRequest(r *http.Request, req auth.PermissionRe
 	if err != nil {
 		return auth.Identity{}, http.StatusInternalServerError, err
 	}
+	identity = auth.ApplySubjectRecord(identity, subjectRec)
 	if subjectRec.Status == storage.SubjectStatusDisabled {
 		return auth.Identity{}, http.StatusForbidden, auth.ErrSubjectDisabled
+	}
+	if subjectRec.Status == storage.SubjectStatusPending {
+		return auth.Identity{}, http.StatusForbidden, auth.ErrSubjectPending
 	}
 
 	bindings, err := store.ListAuthzBindings(true)
