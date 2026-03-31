@@ -111,6 +111,7 @@ certctl update-auth-issuer --issuer http://127.0.0.1:18080/realms/certctl --name
 certctl update-authz-binding --id <binding-id> --permission csr.read
 certctl disable-auth-issuer --issuer http://127.0.0.1:18080/realms/certctl
 certctl enable-auth-issuer --issuer http://127.0.0.1:18080/realms/certctl
+certctl delete-auth-issuer --issuer http://127.0.0.1:18080/realms/certctl --force
 ```
 
 When you are done:

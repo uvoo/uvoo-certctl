@@ -219,6 +219,40 @@ func TestRunDoctorWarnsOnBrokenIssuerDiscovery(t *testing.T) {
 	}
 }
 
+func TestRunDoctorWarnsOnBindingReferencingUnknownIssuer(t *testing.T) {
+	findings, err := runDoctorWithOptions(&fakeDoctorStore{
+		authIssuers: []storage.AuthIssuer{
+			{
+				ID:      "issuer-1",
+				Name:    "keycloak-local",
+				Issuer:  "https://issuer.example.test/realms/certctl",
+				Enabled: true,
+			},
+		},
+		authzBindings: []storage.AuthzBinding{
+			{
+				ID:         "binding-1",
+				Enabled:    true,
+				Principal:  "role:https://missing-issuer.example.test/realms/certctl:certctl_admin",
+				Permission: "doctor.read",
+			},
+		},
+	}, ops.DoctorOptions{WarnDays: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	found := false
+	for _, finding := range findings {
+		if finding.Check == "authz_binding_unknown_issuer" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected authz_binding_unknown_issuer finding, got %+v", findings)
+	}
+}
+
 type fakeDoctorStore struct {
 	publicRows    []storage.PublicCert
 	privateRows   []storage.PrivateCert

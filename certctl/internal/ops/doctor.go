@@ -418,13 +418,15 @@ func checkPendingCSRRequests(requests []storage.CSRRequest, now time.Time, warnW
 
 func checkAuthIssuerBindings(issuers []storage.AuthIssuer, bindings []storage.AuthzBinding) []DoctorFinding {
 	var findings []DoctorFinding
+	knownIssuers := map[string]storage.AuthIssuer{}
 	disabled := map[string]storage.AuthIssuer{}
 	for _, issuer := range issuers {
+		knownIssuers[issuer.Issuer] = issuer
 		if !issuer.Enabled {
 			disabled[issuer.Issuer] = issuer
 		}
 	}
-	if len(disabled) == 0 || len(bindings) == 0 {
+	if len(bindings) == 0 {
 		return findings
 	}
 
@@ -442,6 +444,21 @@ func checkAuthIssuerBindings(issuers []storage.AuthIssuer, bindings []storage.Au
 			Severity: "warn",
 			Check:    "auth_issuer_disabled_reference",
 			Message:  fmt.Sprintf("disabled auth issuer %s (%s) is still referenced by enabled bindings: %s", issuer.Name, issuer.Issuer, strings.Join(bindingIDs, ", ")),
+		})
+	}
+
+	for _, binding := range bindings {
+		issuerURL, ok := bindingPrincipalIssuer(binding.Principal)
+		if !ok {
+			continue
+		}
+		if _, exists := knownIssuers[issuerURL]; exists {
+			continue
+		}
+		findings = append(findings, DoctorFinding{
+			Severity: "warn",
+			Check:    "authz_binding_unknown_issuer",
+			Message:  fmt.Sprintf("authz binding %s references unknown issuer %s in principal %s", binding.ID, issuerURL, binding.Principal),
 		})
 	}
 
@@ -476,6 +493,28 @@ func bindingReferencesIssuer(binding storage.AuthzBinding, issuer string) bool {
 		}
 	}
 	return false
+}
+
+func bindingPrincipalIssuer(principal string) (string, bool) {
+	for _, prefix := range []string{"sub:", "role:", "group:"} {
+		if !strings.HasPrefix(principal, prefix) {
+			continue
+		}
+		remainder := strings.TrimPrefix(principal, prefix)
+		if !strings.Contains(remainder, "://") {
+			return "", false
+		}
+		idx := strings.LastIndex(remainder, ":")
+		if idx <= 0 || idx == len(remainder)-1 {
+			return "", false
+		}
+		issuer := strings.TrimSpace(remainder[:idx])
+		if issuer == "" {
+			return "", false
+		}
+		return issuer, true
+	}
+	return "", false
 }
 
 func describeRemaining(d time.Duration) string {

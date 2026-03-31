@@ -176,6 +176,7 @@ go run . create-authz-binding \
 go run . list-auth-issuers
 go run . update-auth-issuer --issuer https://sso.example.com/realms/certctl --name keycloak-prod
 go run . delete-auth-issuer --issuer https://sso.example.com/realms/certctl
+go run . delete-auth-issuer --issuer https://sso.example.com/realms/certctl --force
 go run . list-authz-bindings
 go run . update-authz-binding --id <binding-id> --permission csr.approve
 go run . delete-authz-binding --id <binding-id>
@@ -225,7 +226,7 @@ go run . version
 go run . version --json
 ```
 
-`doctor` also checks enabled JWT/OIDC issuers for broken discovery or JWKS connectivity and warns when disabled issuers are still referenced by enabled authz bindings.
+`doctor` also checks enabled JWT/OIDC issuers for broken discovery or JWKS connectivity, warns when disabled issuers are still referenced by enabled authz bindings, and flags bindings that point at unknown issuers.
 
 Renew a stored public certificate:
 
