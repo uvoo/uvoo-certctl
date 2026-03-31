@@ -300,6 +300,49 @@ func TestRunDoctorWarnsOnBroadAuthzBindings(t *testing.T) {
 	}
 }
 
+func TestRunDoctorWarnsOnDuplicateAndConflictingBindings(t *testing.T) {
+	findings, err := runDoctorWithOptions(&fakeDoctorStore{
+		authzBindings: []storage.AuthzBinding{
+			{
+				ID:         "binding-1",
+				Enabled:    true,
+				Principal:  "role:https://issuer.example.test/realms/certctl:certctl_admin",
+				Permission: "doctor.read",
+			},
+			{
+				ID:         "binding-2",
+				Enabled:    true,
+				Principal:  "role:https://issuer.example.test/realms/certctl:certctl_admin",
+				Permission: "doctor.read",
+			},
+			{
+				ID:         "binding-3",
+				Enabled:    false,
+				Principal:  "role:https://issuer.example.test/realms/certctl:certctl_admin",
+				Permission: "doctor.read",
+			},
+		},
+	}, ops.DoctorOptions{WarnDays: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantChecks := map[string]bool{
+		"authz_binding_duplicate_enabled":  false,
+		"authz_binding_conflicting_states": false,
+	}
+	for _, finding := range findings {
+		if _, ok := wantChecks[finding.Check]; ok {
+			wantChecks[finding.Check] = true
+		}
+	}
+	for check, found := range wantChecks {
+		if !found {
+			t.Fatalf("expected %s finding, got %+v", check, findings)
+		}
+	}
+}
+
 type fakeDoctorStore struct {
 	publicRows    []storage.PublicCert
 	privateRows   []storage.PrivateCert

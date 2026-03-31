@@ -182,6 +182,7 @@ go run . delete-auth-issuer --issuer https://sso.example.com/realms/certctl --fo
 go run . list-authz-bindings
 go run . list-authz-bindings --principal 'role:https://sso.example.com/realms/certctl:certctl_admin'
 go run . update-authz-binding --id <binding-id> --permission csr.approve
+go run . update-authz-binding --match-principal 'role:https://sso.example.com/realms/certctl:certctl_admin' --match-permission doctor.read --permission metrics.read
 go run . delete-authz-binding --principal 'role:https://sso.example.com/realms/certctl:certctl_admin' --permission doctor.read
 go run . delete-authz-binding --id <binding-id>
 go run . explain-authz --bearer-token env:CERTCTL_BEARER_TOKEN

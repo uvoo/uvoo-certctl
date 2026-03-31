@@ -92,6 +92,7 @@ func RunDoctorWithOptions(store DoctorStore, opts DoctorOptions) ([]DoctorFindin
 	findings = append(findings, checkPrivateCertIssuers(privateRows, icaRows)...)
 	findings = append(findings, checkAuthIssuerBindings(authIssuers, authzBindings)...)
 	findings = append(findings, checkBroadAuthzBindings(authzBindings)...)
+	findings = append(findings, checkDuplicateAuthzBindings(authzBindings)...)
 	findings = append(findings, checkAuthIssuerDiscovery(authIssuers, opts.AuthIssuerProbe)...)
 	if opts.WarnDays > 0 {
 		findings = append(findings, checkExpiringLeafs(publicRows, privateRows, now, warnWindow)...)
@@ -525,6 +526,59 @@ func checkBroadAuthzBindings(bindings []storage.AuthzBinding) []DoctorFinding {
 	return findings
 }
 
+func checkDuplicateAuthzBindings(bindings []storage.AuthzBinding) []DoctorFinding {
+	var findings []DoctorFinding
+	type bindingKey struct {
+		Principal    string
+		Permission   string
+		ResourceKind string
+		ResourceRef  string
+	}
+	type enableState struct {
+		enabledIDs  []string
+		disabledIDs []string
+	}
+
+	seen := map[bindingKey]*enableState{}
+	for _, binding := range bindings {
+		key := bindingKey{
+			Principal:    strings.TrimSpace(binding.Principal),
+			Permission:   strings.TrimSpace(binding.Permission),
+			ResourceKind: strings.TrimSpace(binding.ResourceKind),
+			ResourceRef:  strings.TrimSpace(binding.ResourceRef),
+		}
+		state := seen[key]
+		if state == nil {
+			state = &enableState{}
+			seen[key] = state
+		}
+		if binding.Enabled {
+			state.enabledIDs = append(state.enabledIDs, binding.ID)
+		} else {
+			state.disabledIDs = append(state.disabledIDs, binding.ID)
+		}
+	}
+
+	for key, state := range seen {
+		if len(state.enabledIDs) > 1 {
+			findings = append(findings, DoctorFinding{
+				Severity: "warn",
+				Check:    "authz_binding_duplicate_enabled",
+				Message:  fmt.Sprintf("multiple enabled authz bindings share principal=%s permission=%s resource_kind=%s resource_ref=%s: %s", printableScopeValue(key.Principal), printableScopeValue(key.Permission), printableScopeValue(key.ResourceKind), printableScopeValue(key.ResourceRef), strings.Join(state.enabledIDs, ", ")),
+			})
+		}
+		if len(state.enabledIDs) > 0 && len(state.disabledIDs) > 0 {
+			findings = append(findings, DoctorFinding{
+				Severity: "warn",
+				Check:    "authz_binding_conflicting_states",
+				Message:  fmt.Sprintf("authz bindings for principal=%s permission=%s resource_kind=%s resource_ref=%s exist in both enabled and disabled states", printableScopeValue(key.Principal), printableScopeValue(key.Permission), printableScopeValue(key.ResourceKind), printableScopeValue(key.ResourceRef)),
+			})
+		}
+	}
+
+	return findings
+}
+
 func bindingReferencesIssuer(binding storage.AuthzBinding, issuer string) bool {
 	for _, prefix := range []string{"sub:", "role:", "group:"} {
 		if strings.HasPrefix(binding.Principal, prefix+issuer+":") {
@@ -563,6 +617,13 @@ func isScopedMutationPermission(permission string) bool {
 	default:
 		return false
 	}
+}
+
+func printableScopeValue(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "<empty>"
+	}
+	return value
 }
 
 func describeRemaining(d time.Duration) string {

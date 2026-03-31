@@ -28,7 +28,7 @@ func init() {
 			}
 			defer store.Close()
 
-			rec, err := resolveAuthzBindingForDelete(store, storage.AuthzBindingFilter{
+			rec, err := resolveAuthzBinding(store, storage.AuthzBindingFilter{
 				ID:           id,
 				Principal:    principal,
 				Permission:   permission,
@@ -63,7 +63,7 @@ func init() {
 	rootCmd.AddCommand(cmd)
 }
 
-func resolveAuthzBindingForDelete(store *storage.Store, filter storage.AuthzBindingFilter) (storage.AuthzBinding, error) {
+func resolveAuthzBinding(store *storage.Store, filter storage.AuthzBindingFilter) (storage.AuthzBinding, error) {
 	if filter.ID != "" {
 		return store.GetAuthzBindingByID(filter.ID)
 	}

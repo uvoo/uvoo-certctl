@@ -10,6 +10,10 @@ import (
 
 func init() {
 	var id string
+	var matchPrincipal string
+	var matchPermission string
+	var matchResourceKind string
+	var matchResourceRef string
 	var principal string
 	var permission string
 	var resourceKind string
@@ -24,6 +28,10 @@ func init() {
     --id binding-id \
     --permission csr.approve
   certctl update-authz-binding \
+    --match-principal 'role:https://sso.example.com/realms/certctl:certctl_admin' \
+    --match-permission doctor.read \
+    --permission metrics.read
+  certctl update-authz-binding \
     --id binding-id \
     --enabled=false --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -33,7 +41,13 @@ func init() {
 			}
 			defer store.Close()
 
-			rec, err := store.GetAuthzBindingByID(id)
+			rec, err := resolveAuthzBinding(store, storage.AuthzBindingFilter{
+				ID:           id,
+				Principal:    matchPrincipal,
+				Permission:   matchPermission,
+				ResourceKind: matchResourceKind,
+				ResourceRef:  matchResourceRef,
+			})
 			if err != nil {
 				return err
 			}
@@ -58,7 +72,7 @@ func init() {
 			if err := store.UpdateAuthzBinding(rec); err != nil {
 				return err
 			}
-			rec, err = store.GetAuthzBindingByID(id)
+			rec, err = store.GetAuthzBindingByID(rec.ID)
 			if err != nil {
 				return err
 			}
@@ -76,12 +90,15 @@ func init() {
 	}
 
 	cmd.Flags().StringVar(&id, "id", "", "binding ID to update")
+	cmd.Flags().StringVar(&matchPrincipal, "match-principal", "", "match by exact principal when --id is not used")
+	cmd.Flags().StringVar(&matchPermission, "match-permission", "", "match by exact permission when --id is not used")
+	cmd.Flags().StringVar(&matchResourceKind, "match-resource-kind", "", "match by exact resource kind when --id is not used")
+	cmd.Flags().StringVar(&matchResourceRef, "match-resource-ref", "", "match by exact resource ref when --id is not used")
 	cmd.Flags().StringVar(&principal, "principal", "", "principal string such as sub:<issuer>:<sub> or role:<issuer>:<role>")
 	cmd.Flags().StringVar(&permission, "permission", "", "permission name such as doctor.read or csr.approve")
 	cmd.Flags().StringVar(&resourceKind, "resource-kind", "", "optional scoped resource kind; pass an empty value to clear")
 	cmd.Flags().StringVar(&resourceRef, "resource-ref", "", "optional scoped resource reference; pass an empty value to clear")
 	cmd.Flags().BoolVar(&enabled, "enabled", true, "whether this binding is enabled")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
-	_ = cmd.MarkFlagRequired("id")
 	rootCmd.AddCommand(cmd)
 }
