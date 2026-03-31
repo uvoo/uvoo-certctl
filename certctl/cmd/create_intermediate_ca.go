@@ -2,11 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
-	"certctl/internal/cli"
-	"certctl/internal/privateca"
+	"certctl/internal/ops"
 	"certctl/internal/storage"
 	"certctl/internal/util"
 	"github.com/spf13/cobra"
@@ -69,97 +67,25 @@ func init() {
 			}
 			defer store.Close()
 
-			var rootRec storage.PrivateRootCA
-			switch {
-			case strings.TrimSpace(rootID) != "":
-				rootRec, err = store.GetPrivateRootCAByID(rootID)
-				if err != nil {
-					return fmt.Errorf("failed to load root CA %q: %w", rootID, err)
-				}
-			case strings.TrimSpace(rootName) != "":
-				rootRec, err = store.GetIssuingPrivateRootCAByName(rootName)
-				if err != nil {
-					return fmt.Errorf("failed to load issuing root CA %q: %w", rootName, err)
-				}
-			case strings.TrimSpace(rootCfg.DefaultRootCAName) != "":
-				rootRec, err = store.GetIssuingPrivateRootCAByName(rootCfg.DefaultRootCAName)
-				if err != nil {
-					return fmt.Errorf("failed to load issuing root CA %q: %w", rootCfg.DefaultRootCAName, err)
-				}
-			default:
-				return fmt.Errorf("one of --root-id, --root-name, or --default-root-ca is required")
-			}
-			if rootRec.Status != storage.StatusActive || !rootRec.IsIssuing {
-				return fmt.Errorf("root CA %q is not active for issuance", rootRec.ID)
-			}
-
-			rootCertPEM := rootRec.CertPEM
-
-			rootKeyPEM, err := cli.Decrypt(rootRec.KeyPEM, issuerPassword)
-			if err != nil {
-				return fmt.Errorf("failed to decrypt root CA private key: %w", err)
-			}
-
-			rootCert, err := privateca.ParseCertPEM(rootCertPEM)
-			if err != nil {
-				return fmt.Errorf("failed to parse root CA certificate: %w", err)
-			}
-
-			rootKey, err := privateca.ParsePrivateKeyPEM(rootKeyPEM)
-			if err != nil {
-				return fmt.Errorf("failed to parse root CA private key: %w", err)
-			}
-
-			res, _, _, err := privateca.CreateIntermediateCA(rootCert, rootKey, privateca.CreateIntermediateOptions{
-				CommonName: commonName,
-				KeyType:    keyType,
-				Days:       days,
-				Org:        org,
-				OrgUnit:    orgUnit,
-				Country:    country,
-				Province:   province,
-				Locality:   locality,
+			rec, err := ops.CreatePrivateIntermediateCA(store, ops.CreatePrivateIntermediateCAParams{
+				RootID:              rootID,
+				RootName:            rootName,
+				DefaultRootName:     rootCfg.DefaultRootCAName,
+				Name:                name,
+				CommonName:          commonName,
+				Days:                days,
+				KeyType:             keyType,
+				IssuerPassword:      issuerPassword,
+				ChildCryptoPassword: childPassword,
+				Org:                 org,
+				OrgUnit:             orgUnit,
+				Country:             country,
+				Province:            province,
+				Locality:            locality,
 			})
 			if err != nil {
 				return err
 			}
-
-			/*
-				encCert, err := cli.Encrypt(res.CertPEM, childPassword)
-				if err != nil {
-					return err
-				}
-			*/
-			plainCert := res.CertPEM
-			encKey, err := cli.Encrypt(res.KeyPEM, childPassword)
-			if err != nil {
-				return err
-			}
-
-			rec := storage.PrivateIntermediateCA{
-				ID:         util.NewID(),
-				RootCAID:   rootRec.ID,
-				Name:       name,
-				CommonName: commonName,
-				Status:     storage.StatusActive,
-				IsTrusted:  true,
-				IsIssuing:  true,
-				KeyType:    keyType,
-				CertPEM:    plainCert,
-				KeyPEM:     encKey,
-				Issuer:     res.Issuer,
-				NotBefore:  res.NotBefore,
-				NotAfter:   res.NotAfter,
-			}
-
-			if err := store.UpsertPrivateIntermediateCA(rec); err != nil {
-				return err
-			}
-			rec, err = store.GetPrivateIntermediateCAByID(rec.ID)
-			if err != nil {
-				return err
-			}
-			logAuditEvent(store, "create_intermediate_ca", "private_intermediate_ca", rec.ID, rec.Name)
 			if jsonOut {
 				return printJSON(map[string]any{
 					"id":          rec.ID,

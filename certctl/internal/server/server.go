@@ -13,20 +13,27 @@ import (
 	"sync"
 	"time"
 
+	"certctl/internal/auth"
 	"certctl/internal/cli"
 	"certctl/internal/storage"
 	"certctl/internal/util"
 )
 
 type Config struct {
-	DBPath            string
-	Listen            string
-	TLSCertFile       string
-	TLSKeyFile        string
-	AllowCIDRs        []string
-	CSRSubmitPassword string
-	CSRMaxBodyBytes   int64
-	CSRMinInterval    time.Duration
+	DBPath                  string
+	Listen                  string
+	TLSCertFile             string
+	TLSKeyFile              string
+	AllowCIDRs              []string
+	CSRSubmitPassword       string
+	CSRMaxBodyBytes         int64
+	CSRMinInterval          time.Duration
+	AdminUsername           string
+	AdminPassword           string
+	AdminWarnDays           int
+	DefaultIntermediateName string
+	ProviderHTTPTimeout     time.Duration
+	EnableMetrics           bool
 }
 
 type Server struct {
@@ -36,6 +43,7 @@ type Server struct {
 	csrLastSubmit map[string]time.Time
 	allowNets     []*net.IPNet
 	configErr     error
+	authVerifier  *auth.Verifier
 }
 
 func New(cfg Config) *Server {
@@ -43,6 +51,7 @@ func New(cfg Config) *Server {
 		cfg:           cfg,
 		mux:           http.NewServeMux(),
 		csrLastSubmit: map[string]time.Time{},
+		authVerifier:  auth.NewVerifier(cfg.ProviderHTTPTimeout),
 	}
 	if s.cfg.CSRMaxBodyBytes <= 0 {
 		s.cfg.CSRMaxBodyBytes = 1 << 20
@@ -56,6 +65,12 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("/share/", s.handleShare)
 	s.mux.HandleFunc("/csr-requests", s.handleCSRRequests)
 	s.mux.HandleFunc("/csr-requests/", s.handleCSRRequests)
+	s.mux.HandleFunc("/admin/v1/doctor", s.requireAdminPermission(s.handleAdminDoctor, adminDoctorPermission))
+	s.mux.HandleFunc("/admin/v1/csr-requests", s.requireAdminPermission(s.handleAdminCSRRequests, adminCSRCollectionPermission))
+	s.mux.HandleFunc("/admin/v1/csr-requests/", s.requireAdminPermission(s.handleAdminCSRRequests, adminCSRItemPermission))
+	if s.cfg.EnableMetrics {
+		s.mux.Handle("/metrics", s.requireAdminPermission(s.handleMetrics, metricsPermission))
+	}
 
 	return s
 }

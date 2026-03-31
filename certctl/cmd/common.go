@@ -3,11 +3,11 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
 	"certctl/internal/dns"
+	"certctl/internal/ops"
 	"certctl/internal/storage"
 	"certctl/internal/util"
 )
@@ -72,121 +72,30 @@ func printKV(label, value string) {
 }
 
 func warnPublicSANConflicts(store *storage.Store, commonName string, sans []string) error {
-	rows, err := store.List("", false)
+	conflicts, err := ops.ListPublicSANConflicts(store, commonName, sans)
 	if err != nil {
 		return err
 	}
-	conflicts := collectSANConflicts(commonName, sans, func() []sanRecord {
-		out := make([]sanRecord, 0, len(rows))
-		for _, row := range rows {
-			out = append(out, sanRecord{
-				ID:         row.ID,
-				CommonName: row.CommonName,
-				SANsCSV:    row.SANsCSV,
-				Status:     row.Status,
-			})
-		}
-		return out
-	}())
 	printSANConflicts(conflicts)
 	return nil
 }
 
 func warnPrivateSANConflicts(store *storage.Store, commonName string, sans []string) error {
-	rows, err := store.ListPrivateCerts("", false)
+	conflicts, err := ops.ListPrivateSANConflicts(store, commonName, sans)
 	if err != nil {
 		return err
 	}
-	conflicts := collectSANConflicts(commonName, sans, func() []sanRecord {
-		out := make([]sanRecord, 0, len(rows))
-		for _, row := range rows {
-			out = append(out, sanRecord{
-				ID:         row.ID,
-				CommonName: row.CommonName,
-				SANsCSV:    row.SANsCSV,
-				Status:     row.Status,
-			})
-		}
-		return out
-	}())
 	printSANConflicts(conflicts)
 	return nil
 }
 
-type sanRecord struct {
-	ID         string
-	CommonName string
-	SANsCSV    string
-	Status     string
-}
-
-func collectSANConflicts(commonName string, sans []string, rows []sanRecord) map[string][]string {
-	targetSet := map[string]struct{}{}
-	for _, name := range sans {
-		for _, normalized := range splitCSVNames(name) {
-			targetSet[normalized] = struct{}{}
-		}
-	}
-
-	conflicts := map[string][]string{}
-	for _, row := range rows {
-		if row.CommonName == commonName || row.Status != storage.StatusActive {
-			continue
-		}
-		for _, candidate := range splitCSVNames(row.SANsCSV) {
-			if _, ok := targetSet[candidate]; ok {
-				conflicts[row.CommonName] = append(conflicts[row.CommonName], candidate)
-			}
-		}
-	}
-
-	for key := range conflicts {
-		conflicts[key] = uniqueSorted(conflicts[key])
-	}
-	return conflicts
-}
-
-func printSANConflicts(conflicts map[string][]string) {
+func printSANConflicts(conflicts []ops.SANConflict) {
 	if len(conflicts) == 0 {
 		return
 	}
-	names := make([]string, 0, len(conflicts))
-	for name := range conflicts {
-		names = append(names, name)
+	for _, conflict := range conflicts {
+		fmt.Printf("[warn] active SAN overlap with %s: %s\n", conflict.CommonName, strings.Join(conflict.SANs, ", "))
 	}
-	sort.Strings(names)
-
-	for _, name := range names {
-		fmt.Printf("[warn] active SAN overlap with %s: %s\n", name, strings.Join(conflicts[name], ", "))
-	}
-}
-
-func splitCSVNames(csv string) []string {
-	var out []string
-	for part := range strings.SplitSeq(csv, ",") {
-		part = strings.ToLower(strings.TrimSpace(part))
-		if part != "" {
-			out = append(out, part)
-		}
-	}
-	return out
-}
-
-func uniqueSorted(values []string) []string {
-	set := map[string]struct{}{}
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		set[value] = struct{}{}
-	}
-	out := make([]string, 0, len(set))
-	for value := range set {
-		out = append(out, value)
-	}
-	sort.Strings(out)
-	return out
 }
 
 func logAuditEvent(store *storage.Store, action, targetKind, targetID, summary string) {

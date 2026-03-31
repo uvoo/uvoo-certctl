@@ -84,7 +84,7 @@ func TestBackupRestoreAndDoctorCommands(t *testing.T) {
 		t.Fatalf("expected restored DB to contain original cert only, got %+v", rows)
 	}
 
-	out, err = runRootCommandForTest("--db", dbPath, "doctor", "--json")
+	out, err = runRootCommandForTest("--db", dbPath, "doctor", "--warn-days", "0", "--json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,6 +100,69 @@ func TestVersionCommandJSON(t *testing.T) {
 	}
 	if !strings.Contains(out, `"version"`) || !strings.Contains(out, `"commit"`) {
 		t.Fatalf("expected version JSON output, got %s", out)
+	}
+}
+
+func TestAuthCommandsJSON(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "auth.db")
+	issuerURL := "https://issuer.example.test/realms/certctl"
+
+	out, err := runRootCommandForTest(
+		"--db", dbPath,
+		"create-auth-issuer",
+		"--name", "keycloak-local",
+		"--issuer", issuerURL,
+		"--audience", "certctl",
+		"--required-claim", "azp=certctl-cli",
+		"--json",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"required_claims"`) {
+		t.Fatalf("expected required_claims in issuer output, got %s", out)
+	}
+
+	out, err = runRootCommandForTest(
+		"--db", dbPath,
+		"create-authz-binding",
+		"--principal", "role:"+issuerURL+":certctl_admin",
+		"--permission", "doctor.read",
+		"--json",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"doctor.read"`) {
+		t.Fatalf("expected authz binding output, got %s", out)
+	}
+
+	out, err = runRootCommandForTest(
+		"--db", dbPath,
+		"list-effective-authz",
+		"--principal", "role:"+issuerURL+":certctl_admin",
+		"--json",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"effective_permissions"`) || !strings.Contains(out, `"doctor.read"`) {
+		t.Fatalf("expected effective authz output, got %s", out)
+	}
+
+	out, err = runRootCommandForTest(
+		"--db", dbPath,
+		"update-authz-binding",
+		"--match-principal", "role:"+issuerURL+":certctl_admin",
+		"--match-permission", "doctor.read",
+		"--permission", "metrics.read",
+		"--json",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"metrics.read"`) {
+		t.Fatalf("expected updated authz binding output, got %s", out)
 	}
 }
 

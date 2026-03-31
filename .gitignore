@@ -5,7 +5,7 @@ bkp/
 certs.db
 extract
 .env
-docs/
+xxdocs/
 tests/
 out/
 out-*/

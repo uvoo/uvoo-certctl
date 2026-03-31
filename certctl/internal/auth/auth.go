@@ -1,0 +1,128 @@
+package auth
+
+import (
+	"context"
+	"slices"
+	"strings"
+
+	"certctl/internal/storage"
+)
+
+type Identity struct {
+	AuthMethod string
+	Superuser  bool
+	Issuer     string
+	Subject    string
+	Username   string
+	Email      string
+	Roles      []string
+	Groups     []string
+	Principals []string
+	RawClaims  map[string]any
+}
+
+type PermissionRequest struct {
+	Permission   string
+	ResourceKind string
+	ResourceRef  string
+}
+
+type contextKey string
+
+const identityContextKey contextKey = "certctl_auth_identity"
+
+func WithIdentity(ctx context.Context, identity Identity) context.Context {
+	return context.WithValue(ctx, identityContextKey, identity)
+}
+
+func IdentityFromContext(ctx context.Context) (Identity, bool) {
+	identity, ok := ctx.Value(identityContextKey).(Identity)
+	return identity, ok
+}
+
+func SuperuserIdentity(username string) Identity {
+	username = strings.TrimSpace(username)
+	return Identity{
+		AuthMethod: "basic",
+		Superuser:  true,
+		Username:   username,
+		Principals: []string{"superuser"},
+	}
+}
+
+func Allowed(identity Identity, bindings []storage.AuthzBinding, req PermissionRequest) bool {
+	return len(MatchingBindings(identity, bindings, req)) > 0
+}
+
+func MatchingBindings(identity Identity, bindings []storage.AuthzBinding, req PermissionRequest) []storage.AuthzBinding {
+	if identity.Superuser {
+		return []storage.AuthzBinding{{
+			ID:         "superuser",
+			Enabled:    true,
+			Principal:  "superuser",
+			Permission: "*",
+		}}
+	}
+	principals := map[string]struct{}{}
+	for _, principal := range identity.Principals {
+		principals[principal] = struct{}{}
+	}
+
+	var matched []storage.AuthzBinding
+	for _, binding := range bindings {
+		if !binding.Enabled {
+			continue
+		}
+		if _, ok := principals[binding.Principal]; !ok {
+			continue
+		}
+		if binding.Permission != "*" && binding.Permission != req.Permission {
+			continue
+		}
+		if !matchesScope(binding.ResourceKind, req.ResourceKind) {
+			continue
+		}
+		if !matchesScope(binding.ResourceRef, req.ResourceRef) {
+			continue
+		}
+		matched = append(matched, binding)
+	}
+	return matched
+}
+
+func matchesScope(bindingValue, requestValue string) bool {
+	bindingValue = strings.TrimSpace(bindingValue)
+	requestValue = strings.TrimSpace(requestValue)
+	switch bindingValue {
+	case "", "*":
+		return true
+	default:
+		return bindingValue == requestValue
+	}
+}
+
+func EffectivePermissions(identity Identity, bindings []storage.AuthzBinding) []string {
+	if identity.Superuser {
+		return []string{"*"}
+	}
+	permissions := map[string]struct{}{}
+	principals := map[string]struct{}{}
+	for _, principal := range identity.Principals {
+		principals[principal] = struct{}{}
+	}
+	for _, binding := range bindings {
+		if !binding.Enabled {
+			continue
+		}
+		if _, ok := principals[binding.Principal]; !ok {
+			continue
+		}
+		permissions[binding.Permission] = struct{}{}
+	}
+	out := make([]string, 0, len(permissions))
+	for permission := range permissions {
+		out = append(out, permission)
+	}
+	slices.Sort(out)
+	return out
+}

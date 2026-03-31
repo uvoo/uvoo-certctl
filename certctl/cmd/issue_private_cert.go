@@ -2,11 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
-	"certctl/internal/cli"
-	"certctl/internal/privateca"
+	"certctl/internal/ops"
 	"certctl/internal/storage"
 	"certctl/internal/util"
 	"github.com/spf13/cobra"
@@ -83,7 +81,7 @@ func init() {
 				}
 			}
 
-			allSANs := normalizePrivateCertSANs(commonName, append(append([]string{}, domains...), sans...))
+			allSANs := ops.NormalizePrivateCertSANs(commonName, append(append([]string{}, domains...), sans...))
 			if len(allSANs) == 0 {
 				return fmt.Errorf("at least one domain or common name is required")
 			}
@@ -94,96 +92,28 @@ func init() {
 			}
 			defer store.Close()
 
-			var icaRec storage.PrivateIntermediateCA
-			switch {
-			case strings.TrimSpace(intermediateID) != "":
-				icaRec, err = store.GetPrivateIntermediateCAByID(intermediateID)
-				if err != nil {
-					return fmt.Errorf("failed to load intermediate CA %q: %w", intermediateID, err)
-				}
-			case strings.TrimSpace(intermediateName) != "":
-				icaRec, err = store.GetIssuingPrivateIntermediateCAByName(intermediateName)
-				if err != nil {
-					return fmt.Errorf("failed to load issuing intermediate CA %q: %w", intermediateName, err)
-				}
-			case strings.TrimSpace(rootCfg.DefaultIntermediateName) != "":
-				icaRec, err = store.GetIssuingPrivateIntermediateCAByName(rootCfg.DefaultIntermediateName)
-				if err != nil {
-					return fmt.Errorf("failed to load issuing intermediate CA %q: %w", rootCfg.DefaultIntermediateName, err)
-				}
-			default:
-				return fmt.Errorf("one of --intermediate-id, --intermediate-name, or --default-intermediate-ca is required")
-			}
-			if icaRec.Status != storage.StatusActive || !icaRec.IsIssuing {
-				return fmt.Errorf("intermediate CA %q is not active for issuance", icaRec.ID)
-			}
-
-			if err := warnPrivateSANConflicts(store, commonName, allSANs); err != nil {
-				return err
-			}
-
-			icaCertPEM := icaRec.CertPEM
-
-			icaKeyPEM, err := cli.Decrypt(icaRec.KeyPEM, issuerPassword)
-			if err != nil {
-				return fmt.Errorf("failed to decrypt intermediate CA private key: %w", err)
-			}
-
-			icaCert, err := privateca.ParseCertPEM(icaCertPEM)
-			if err != nil {
-				return fmt.Errorf("failed to parse intermediate CA certificate: %w", err)
-			}
-
-			icaKey, err := privateca.ParsePrivateKeyPEM(icaKeyPEM)
-			if err != nil {
-				return fmt.Errorf("failed to parse intermediate CA private key: %w", err)
-			}
-
-			res, _, err := privateca.IssueLeaf(icaCert, icaKey, privateca.IssueLeafOptions{
-				CommonName: commonName,
-				SANs:       allSANs,
-				CertType:   certType,
-				KeyType:    keyType,
-				Days:       days,
-				Org:        org,
-				OrgUnit:    orgUnit,
-				Country:    country,
-				Province:   province,
-				Locality:   locality,
+			result, err := ops.IssuePrivateCert(store, ops.IssuePrivateCertParams{
+				IntermediateID:      intermediateID,
+				IntermediateName:    intermediateName,
+				DefaultIntermediate: rootCfg.DefaultIntermediateName,
+				CommonName:          commonName,
+				SANs:                allSANs,
+				CertType:            certType,
+				Days:                days,
+				KeyType:             keyType,
+				IssuerPassword:      issuerPassword,
+				ChildCryptoPassword: childPassword,
+				Org:                 org,
+				OrgUnit:             orgUnit,
+				Country:             country,
+				Province:            province,
+				Locality:            locality,
 			})
 			if err != nil {
 				return err
 			}
-
-			plainCert := res.CertPEM
-			encKey, err := cli.Encrypt(res.KeyPEM, childPassword)
-			if err != nil {
-				return err
-			}
-
-			rec := storage.PrivateCert{
-				ID:               util.NewID(),
-				IntermediateCAID: icaRec.ID,
-				CommonName:       commonName,
-				SANsCSV:          strings.Join(allSANs, ","),
-				CertType:         certType,
-				KeyType:          keyType,
-				CertPEM:          plainCert,
-				KeyPEM:           encKey,
-				Issuer:           res.Issuer,
-				Status:           storage.StatusActive,
-				NotBefore:        res.NotBefore,
-				NotAfter:         res.NotAfter,
-			}
-
-			if err := store.UpsertPrivateCert(rec); err != nil {
-				return err
-			}
-			rec, err = store.GetPrivateCertByID(rec.ID)
-			if err != nil {
-				return err
-			}
-			logAuditEvent(store, "issue_private_cert", "private_cert", rec.ID, rec.CommonName)
+			printSANConflicts(result.Warnings)
+			rec := result.Record
 			if jsonOut {
 				return printJSON(map[string]any{
 					"id":                 rec.ID,
@@ -238,31 +168,4 @@ func init() {
 	_ = cmd.MarkFlagRequired("common-name")
 
 	rootCmd.AddCommand(cmd)
-}
-
-func normalizePrivateCertSANs(commonName string, sans []string) []string {
-	seen := map[string]struct{}{}
-	var out []string
-
-	add := func(v string) {
-		v = strings.TrimSpace(v)
-		if v == "" {
-			return
-		}
-		if _, ok := seen[v]; ok {
-			return
-		}
-		seen[v] = struct{}{}
-		out = append(out, v)
-	}
-
-	add(commonName)
-
-	for _, item := range sans {
-		for part := range strings.SplitSeq(item, ",") {
-			add(part)
-		}
-	}
-
-	return out
 }

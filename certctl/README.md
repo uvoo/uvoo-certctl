@@ -2,9 +2,14 @@
 
 A Cobra-based refactor of the original single-file ACME utility.
 
-- Release notes: [`docs/RELEASE_NOTES_v0.1.0.md`](docs/RELEASE_NOTES_v0.1.0.md)
+- Latest release notes: [`docs/RELEASE_NOTES_v0.2.0.md`](docs/RELEASE_NOTES_v0.2.0.md)
+- Initial release notes: [`docs/RELEASE_NOTES_v0.1.0.md`](docs/RELEASE_NOTES_v0.1.0.md)
 - Install guide: [`docs/INSTALL.md`](docs/INSTALL.md)
 - CSR guide: [`docs/CSR_REQUESTS.md`](docs/CSR_REQUESTS.md)
+- Admin runbook: [`docs/RUNBOOK.md`](docs/RUNBOOK.md)
+- Auth/authz design: [`docs/AUTHZ_DESIGN.md`](docs/AUTHZ_DESIGN.md)
+- Auth dev guide: [`docs/AUTH_DEV.md`](docs/AUTH_DEV.md)
+- Release process: [`docs/RELEASING.md`](docs/RELEASING.md)
 
 ## What changed
 
@@ -151,6 +156,39 @@ Queue and approve CSRs:
 go run . submit-csr --kind private --csr-file server.csr --requester-name 'Jane Doe'
 go run . list-csr-requests
 go run . approve-csr --id <request-id> --intermediate-name internal-ica --parent-key-password env:CERTCTL_PARENT_KEY_PASSWORD
+go run . reject-csr --id <request-id> --reason "unable to verify requester"
+```
+
+Configure JWT/OIDC auth for the admin API:
+
+```bash
+go run . create-auth-issuer \
+  --name keycloak-local \
+  --issuer https://sso.example.com/realms/certctl \
+  --audience certctl \
+  --required-claim azp=certctl-cli \
+  --discovery-url https://sso.example.com/realms/certctl/.well-known/openid-configuration \
+  --roles-claim realm_access.roles
+
+go run . create-authz-binding \
+  --principal 'role:https://sso.example.com/realms/certctl:certctl_admin' \
+  --permission doctor.read
+
+go run . list-auth-issuers
+go run . check-auth-issuer --issuer https://sso.example.com/realms/certctl
+go run . update-auth-issuer --issuer https://sso.example.com/realms/certctl --name keycloak-prod
+go run . delete-auth-issuer --issuer https://sso.example.com/realms/certctl
+go run . delete-auth-issuer --issuer https://sso.example.com/realms/certctl --force
+go run . list-effective-authz --principal 'role:https://sso.example.com/realms/certctl:certctl_admin'
+go run . list-authz-bindings
+go run . list-authz-bindings --principal 'role:https://sso.example.com/realms/certctl:certctl_admin'
+go run . update-authz-binding --id <binding-id> --permission csr.approve
+go run . update-authz-binding --match-principal 'role:https://sso.example.com/realms/certctl:certctl_admin' --match-permission doctor.read --permission metrics.read
+go run . delete-authz-binding --principal 'role:https://sso.example.com/realms/certctl:certctl_admin' --permission doctor.read
+go run . delete-authz-binding --id <binding-id>
+go run . explain-authz --bearer-token env:CERTCTL_BEARER_TOKEN
+go run . disable-auth-issuer --issuer https://sso.example.com/realms/certctl
+go run . enable-auth-issuer --issuer https://sso.example.com/realms/certctl
 ```
 
 Serve certificate shares and CSR pickup/submission:
@@ -159,7 +197,14 @@ Serve certificate shares and CSR pickup/submission:
 go run . serve-certs --listen :8080
 go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt --tls-key-file /etc/certctl/tls/server.key
 go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt --tls-key-file /etc/certctl/tls/server.key --nacl 127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
+go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt --tls-key-file /etc/certctl/tls/server.key --admin-username admin --admin-password env:CERTCTL_ADMIN_PASSWORD --metrics
 ```
+
+With `--admin-username` and `--admin-password`, the built-in server also exposes a small authenticated JSON admin API under `/admin/v1` for remote `doctor` and CSR queue actions. `--metrics` enables a Prometheus-style `/metrics` endpoint, using the same Basic auth when admin auth is enabled.
+
+The admin API can also use bearer tokens from trusted JWT/OIDC issuers configured in the local database. The auth model and claim mapping are documented in [`docs/AUTHZ_DESIGN.md`](docs/AUTHZ_DESIGN.md).
+
+For local Keycloak testing and a one-command bearer-auth smoke path, see [`docs/AUTH_DEV.md`](docs/AUTH_DEV.md).
 
 Export safe metadata or a DB backup:
 
@@ -181,9 +226,13 @@ Health and release information:
 
 ```bash
 go run . doctor
+go run . doctor --warn-days 14
+go run . doctor --warn-days 0 --json
 go run . version
 go run . version --json
 ```
+
+`doctor` also checks enabled JWT/OIDC issuers for broken discovery or JWKS connectivity, warns when disabled issuers are still referenced by enabled authz bindings, flags bindings that point at unknown issuers, warns on enabled issuers with no bindings, warns when bindings depend on an issuer that is currently unreachable, and warns on overly broad or duplicate/conflicting authz bindings.
 
 Renew a stored public certificate:
 
@@ -227,10 +276,10 @@ Build common release binaries for Linux, macOS, and Windows:
 Build a versioned set of release archives:
 
 ```bash
-VERSION=v0.1.0 ./scripts/build-release.sh
+VERSION=v0.2.0 ./scripts/build-release.sh
 ```
 
-The release script stamps `version`, `commit`, and `date` into the binary, bundles the docs into each archive, and writes a matching checksum for each uploaded asset.
+The release script stamps `version`, `commit`, and `date` into the binary, bundles the docs into each archive, and writes both per-archive checksums and a `checksums.txt` manifest.
 
 Build only specific targets:
 
@@ -242,9 +291,15 @@ For binary install and checksum verification steps, see [`docs/INSTALL.md`](docs
 
 For end-user CSR submission with `openssl` and `curl`, see [`docs/CSR_REQUESTS.md`](docs/CSR_REQUESTS.md).
 
+For day-to-day operations, rotation, restore, and approval procedures, see [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
+
+For tagging, signing, and GitHub draft release creation, see [`docs/RELEASING.md`](docs/RELEASING.md).
+
 ## Release checklist
 
 - Run `go run . doctor` before shipping changes.
 - Run `go test -mod=mod ./...` to cover storage and CLI smoke paths.
 - Build stamped release artifacts with `VERSION=vX.Y.Z ./scripts/build-release.sh`.
-- Tag the same version in git so `version` output and release assets stay aligned.
+- Optionally sign `dist/checksums.txt` with `./scripts/sign-release-checksums.sh`.
+- Create the GitHub draft release with `./scripts/draft-release.sh vX.Y.Z --notes-file docs/RELEASE_NOTES_vX.Y.Z.md`.
+- Keep the tag, release notes, and built artifact version aligned.

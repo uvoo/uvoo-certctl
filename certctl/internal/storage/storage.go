@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -77,6 +78,43 @@ type AuditEvent struct {
 	TargetID   string
 	Summary    string
 	CreatedAt  time.Time
+}
+
+type AuthIssuer struct {
+	ID             string
+	Name           string
+	Enabled        bool
+	Issuer         string
+	Audiences      []string
+	RequiredClaims map[string]string
+	DiscoveryURL   string
+	JWKSURL        string
+	SubjectClaim   string
+	UsernameClaim  string
+	EmailClaim     string
+	RolesClaims    []string
+	GroupsClaims   []string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type AuthzBinding struct {
+	ID           string
+	Enabled      bool
+	Principal    string
+	Permission   string
+	ResourceKind string
+	ResourceRef  string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+type AuthzBindingFilter struct {
+	ID           string
+	Principal    string
+	Permission   string
+	ResourceKind string
+	ResourceRef  string
 }
 
 type CSRRequest struct {
@@ -1123,6 +1161,12 @@ func ensureSchema(db *sql.DB) error {
 	if err := ensureCSRRequestsSchema(db); err != nil {
 		return err
 	}
+	if err := ensureAuthIssuersSchema(db); err != nil {
+		return err
+	}
+	if err := ensureAuthzBindingsSchema(db); err != nil {
+		return err
+	}
 	if err := ensureAuditEventsSchema(db); err != nil {
 		return err
 	}
@@ -1273,6 +1317,88 @@ func ensureAuditEventsSchema(db *sql.DB) error {
 		)
 	`)
 	return err
+}
+
+func ensureAuthIssuersSchema(db *sql.DB) error {
+	create := `
+		CREATE TABLE IF NOT EXISTS auth_issuers (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			issuer TEXT NOT NULL UNIQUE,
+			audiences_json TEXT NOT NULL DEFAULT '[]',
+			required_claims_json TEXT NOT NULL DEFAULT '{}',
+			discovery_url TEXT,
+			jwks_url TEXT,
+			subject_claim TEXT NOT NULL DEFAULT 'sub',
+			username_claim TEXT NOT NULL DEFAULT 'preferred_username',
+			email_claim TEXT NOT NULL DEFAULT 'email',
+			roles_claims_json TEXT NOT NULL DEFAULT '["roles","realm_access.roles"]',
+			groups_claims_json TEXT NOT NULL DEFAULT '["groups"]',
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+			updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+		)
+	`
+	exists, err := tableExists(db, "auth_issuers")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := db.Exec(create); err != nil {
+			return err
+		}
+	} else {
+		cols, err := tableColumns(db, "auth_issuers")
+		if err != nil {
+			return err
+		}
+		if _, ok := cols["required_claims_json"]; !ok {
+			if _, err := db.Exec(`ALTER TABLE auth_issuers ADD COLUMN required_claims_json TEXT NOT NULL DEFAULT '{}'`); err != nil {
+				return err
+			}
+		}
+	}
+	if err != nil {
+		return err
+	}
+	stmts := []string{
+		`CREATE INDEX IF NOT EXISTS idx_auth_issuers_enabled_issuer ON auth_issuers(enabled, issuer)`,
+		`CREATE INDEX IF NOT EXISTS idx_auth_issuers_enabled_name ON auth_issuers(enabled, name)`,
+	}
+	for _, stmt := range stmts {
+		if _, err := db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureAuthzBindingsSchema(db *sql.DB) error {
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS authz_bindings (
+			id TEXT PRIMARY KEY,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			principal TEXT NOT NULL,
+			permission TEXT NOT NULL,
+			resource_kind TEXT,
+			resource_ref TEXT,
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+			updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+		)
+	`)
+	if err != nil {
+		return err
+	}
+	stmts := []string{
+		`CREATE INDEX IF NOT EXISTS idx_authz_bindings_principal_permission ON authz_bindings(enabled, principal, permission)`,
+		`CREATE INDEX IF NOT EXISTS idx_authz_bindings_resource ON authz_bindings(resource_kind, resource_ref)`,
+	}
+	for _, stmt := range stmts {
+		if _, err := db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ensurePrivateRootCASchema(db *sql.DB) error {
@@ -1926,6 +2052,64 @@ func scanCSRRequest(row scanner, req *CSRRequest) error {
 	return nil
 }
 
+func scanAuthIssuer(row scanner, rec *AuthIssuer) error {
+	var enabled int
+	var audiencesJSON, requiredClaimsJSON, rolesJSON, groupsJSON string
+	var discoveryURL, jwksURL, createdAt, updatedAt sql.NullString
+	if err := row.Scan(
+		&rec.ID,
+		&rec.Name,
+		&enabled,
+		&rec.Issuer,
+		&audiencesJSON,
+		&requiredClaimsJSON,
+		&discoveryURL,
+		&jwksURL,
+		&rec.SubjectClaim,
+		&rec.UsernameClaim,
+		&rec.EmailClaim,
+		&rolesJSON,
+		&groupsJSON,
+		&createdAt,
+		&updatedAt,
+	); err != nil {
+		return err
+	}
+	rec.Enabled = enabled != 0
+	rec.Audiences = parseJSONArrayStrings(audiencesJSON)
+	rec.RequiredClaims = parseJSONObjectStrings(requiredClaimsJSON)
+	rec.DiscoveryURL = discoveryURL.String
+	rec.JWKSURL = jwksURL.String
+	rec.RolesClaims = parseJSONArrayStrings(rolesJSON)
+	rec.GroupsClaims = parseJSONArrayStrings(groupsJSON)
+	rec.CreatedAt = parseRFC3339Null(createdAt)
+	rec.UpdatedAt = parseRFC3339Null(updatedAt)
+	return nil
+}
+
+func scanAuthzBinding(row scanner, rec *AuthzBinding) error {
+	var enabled int
+	var resourceKind, resourceRef, createdAt, updatedAt sql.NullString
+	if err := row.Scan(
+		&rec.ID,
+		&enabled,
+		&rec.Principal,
+		&rec.Permission,
+		&resourceKind,
+		&resourceRef,
+		&createdAt,
+		&updatedAt,
+	); err != nil {
+		return err
+	}
+	rec.Enabled = enabled != 0
+	rec.ResourceKind = resourceKind.String
+	rec.ResourceRef = resourceRef.String
+	rec.CreatedAt = parseRFC3339Null(createdAt)
+	rec.UpdatedAt = parseRFC3339Null(updatedAt)
+	return nil
+}
+
 func getActivePublicCertTx(tx *sql.Tx, commonName string) (PublicCert, error) {
 	var rec PublicCert
 	err := scanPublicCert(tx.QueryRow(`
@@ -2052,6 +2236,115 @@ func nullStringValue(v sql.NullString) any {
 		return nil
 	}
 	return v.String
+}
+
+func marshalJSONArrayStrings(values []string) string {
+	if len(values) == 0 {
+		return "[]"
+	}
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			normalized = append(normalized, value)
+		}
+	}
+	if len(normalized) == 0 {
+		return "[]"
+	}
+	data, err := json.Marshal(normalized)
+	if err != nil {
+		return "[]"
+	}
+	return string(data)
+}
+
+func marshalJSONObjectStrings(values map[string]string) string {
+	if len(values) == 0 {
+		return "{}"
+	}
+	normalized := map[string]string{}
+	for key, value := range values {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key != "" && value != "" {
+			normalized[key] = value
+		}
+	}
+	if len(normalized) == 0 {
+		return "{}"
+	}
+	data, err := json.Marshal(normalized)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
+}
+
+func parseJSONArrayStrings(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var values []string
+	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func parseJSONObjectStrings(raw string) map[string]string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var values map[string]string
+	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+		return nil
+	}
+	out := map[string]string{}
+	for key, value := range values {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key != "" && value != "" {
+			out[key] = value
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func defaultStringSlice(values []string, fallback []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	if len(out) > 0 {
+		return out
+	}
+	return append([]string(nil), fallback...)
 }
 
 func defaultCreatedAt(t time.Time) time.Time {
@@ -2224,6 +2517,270 @@ func (s *Store) ListAuditEvents(limit int) ([]AuditEvent, error) {
 		out = append(out, event)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) UpsertAuthIssuer(rec AuthIssuer) error {
+	if strings.TrimSpace(rec.ID) == "" {
+		return fmt.Errorf("auth issuer id is required")
+	}
+	if strings.TrimSpace(rec.Name) == "" {
+		return fmt.Errorf("auth issuer name is required")
+	}
+	if strings.TrimSpace(rec.Issuer) == "" {
+		return fmt.Errorf("auth issuer issuer is required")
+	}
+	rec.SubjectClaim = firstNonEmptyString(rec.SubjectClaim, "sub")
+	rec.UsernameClaim = firstNonEmptyString(rec.UsernameClaim, "preferred_username")
+	rec.EmailClaim = firstNonEmptyString(rec.EmailClaim, "email")
+	rec.RolesClaims = defaultStringSlice(rec.RolesClaims, []string{"roles", "realm_access.roles"})
+	rec.GroupsClaims = defaultStringSlice(rec.GroupsClaims, []string{"groups"})
+	rec.RequiredClaims = parseJSONObjectStrings(marshalJSONObjectStrings(rec.RequiredClaims))
+	rec.CreatedAt = defaultCreatedAt(rec.CreatedAt)
+	rec.UpdatedAt = time.Now().UTC()
+
+	_, err := s.db.Exec(`
+		INSERT INTO auth_issuers
+		(id, name, enabled, issuer, audiences_json, required_claims_json, discovery_url, jwks_url, subject_claim, username_claim, email_claim, roles_claims_json, groups_claims_json, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(issuer) DO UPDATE SET
+			name = excluded.name,
+			enabled = excluded.enabled,
+			audiences_json = excluded.audiences_json,
+			required_claims_json = excluded.required_claims_json,
+			discovery_url = excluded.discovery_url,
+			jwks_url = excluded.jwks_url,
+			subject_claim = excluded.subject_claim,
+			username_claim = excluded.username_claim,
+			email_claim = excluded.email_claim,
+			roles_claims_json = excluded.roles_claims_json,
+			groups_claims_json = excluded.groups_claims_json,
+			updated_at = excluded.updated_at
+	`,
+		rec.ID,
+		rec.Name,
+		boolToInt(rec.Enabled),
+		rec.Issuer,
+		marshalJSONArrayStrings(rec.Audiences),
+		marshalJSONObjectStrings(rec.RequiredClaims),
+		nullIfEmpty(rec.DiscoveryURL),
+		nullIfEmpty(rec.JWKSURL),
+		rec.SubjectClaim,
+		rec.UsernameClaim,
+		rec.EmailClaim,
+		marshalJSONArrayStrings(rec.RolesClaims),
+		marshalJSONArrayStrings(rec.GroupsClaims),
+		timeOrNil(rec.CreatedAt),
+		timeOrNil(rec.UpdatedAt),
+	)
+	return err
+}
+
+func (s *Store) GetAuthIssuerByIssuer(issuer string) (AuthIssuer, error) {
+	var rec AuthIssuer
+	err := scanAuthIssuer(s.db.QueryRow(`
+		SELECT id, name, enabled, issuer, audiences_json, required_claims_json, discovery_url, jwks_url, subject_claim, username_claim, email_claim,
+		       roles_claims_json, groups_claims_json, created_at, updated_at
+		FROM auth_issuers
+		WHERE issuer = ?
+		LIMIT 1
+	`, issuer), &rec)
+	return rec, err
+}
+
+func (s *Store) DeleteAuthIssuer(issuer string) error {
+	res, err := s.db.Exec(`
+		DELETE FROM auth_issuers
+		WHERE issuer = ?
+	`, issuer)
+	if err != nil {
+		return err
+	}
+	return ensureRowsAffected(res, "auth issuer not found")
+}
+
+func (s *Store) ListAuthIssuers(enabledOnly bool) ([]AuthIssuer, error) {
+	query := `
+		SELECT id, name, enabled, issuer, audiences_json, required_claims_json, discovery_url, jwks_url, subject_claim, username_claim, email_claim,
+		       roles_claims_json, groups_claims_json, created_at, updated_at
+		FROM auth_issuers
+	`
+	args := []any{}
+	if enabledOnly {
+		query += ` WHERE enabled = 1`
+	}
+	query += ` ORDER BY name, issuer`
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []AuthIssuer
+	for rows.Next() {
+		var rec AuthIssuer
+		if err := scanAuthIssuer(rows, &rec); err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) ListAuthzBindingsFiltered(enabledOnly bool, filter AuthzBindingFilter) ([]AuthzBinding, error) {
+	query := `
+		SELECT id, enabled, principal, permission, resource_kind, resource_ref, created_at, updated_at
+		FROM authz_bindings
+		WHERE 1 = 1
+	`
+	args := []any{}
+	if enabledOnly {
+		query += ` AND enabled = 1`
+	}
+	if strings.TrimSpace(filter.ID) != "" {
+		query += ` AND id = ?`
+		args = append(args, strings.TrimSpace(filter.ID))
+	}
+	if strings.TrimSpace(filter.Principal) != "" {
+		query += ` AND principal = ?`
+		args = append(args, strings.TrimSpace(filter.Principal))
+	}
+	if strings.TrimSpace(filter.Permission) != "" {
+		query += ` AND permission = ?`
+		args = append(args, strings.TrimSpace(filter.Permission))
+	}
+	if strings.TrimSpace(filter.ResourceKind) != "" {
+		query += ` AND COALESCE(resource_kind, '') = ?`
+		args = append(args, strings.TrimSpace(filter.ResourceKind))
+	}
+	if strings.TrimSpace(filter.ResourceRef) != "" {
+		query += ` AND COALESCE(resource_ref, '') = ?`
+		args = append(args, strings.TrimSpace(filter.ResourceRef))
+	}
+	query += ` ORDER BY principal, permission, resource_kind, resource_ref, created_at DESC`
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []AuthzBinding
+	for rows.Next() {
+		var rec AuthzBinding
+		if err := scanAuthzBinding(rows, &rec); err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) CreateAuthzBinding(rec AuthzBinding) error {
+	if strings.TrimSpace(rec.ID) == "" {
+		return fmt.Errorf("authz binding id is required")
+	}
+	if strings.TrimSpace(rec.Principal) == "" {
+		return fmt.Errorf("authz binding principal is required")
+	}
+	if strings.TrimSpace(rec.Permission) == "" {
+		return fmt.Errorf("authz binding permission is required")
+	}
+	rec.CreatedAt = defaultCreatedAt(rec.CreatedAt)
+	rec.UpdatedAt = time.Now().UTC()
+
+	_, err := s.db.Exec(`
+		INSERT INTO authz_bindings
+		(id, enabled, principal, permission, resource_kind, resource_ref, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, rec.ID, boolToInt(rec.Enabled), rec.Principal, rec.Permission, nullIfEmpty(rec.ResourceKind), nullIfEmpty(rec.ResourceRef), timeOrNil(rec.CreatedAt), timeOrNil(rec.UpdatedAt))
+	return err
+}
+
+func (s *Store) GetAuthzBindingByID(id string) (AuthzBinding, error) {
+	var rec AuthzBinding
+	err := scanAuthzBinding(s.db.QueryRow(`
+		SELECT id, enabled, principal, permission, resource_kind, resource_ref, created_at, updated_at
+		FROM authz_bindings
+		WHERE id = ?
+		LIMIT 1
+	`, id), &rec)
+	return rec, err
+}
+
+func (s *Store) UpdateAuthzBinding(rec AuthzBinding) error {
+	if strings.TrimSpace(rec.ID) == "" {
+		return fmt.Errorf("authz binding id is required")
+	}
+	if strings.TrimSpace(rec.Principal) == "" {
+		return fmt.Errorf("authz binding principal is required")
+	}
+	if strings.TrimSpace(rec.Permission) == "" {
+		return fmt.Errorf("authz binding permission is required")
+	}
+	rec.UpdatedAt = time.Now().UTC()
+
+	res, err := s.db.Exec(`
+		UPDATE authz_bindings
+		SET enabled = ?,
+		    principal = ?,
+		    permission = ?,
+		    resource_kind = ?,
+		    resource_ref = ?,
+		    updated_at = ?
+		WHERE id = ?
+	`, boolToInt(rec.Enabled), rec.Principal, rec.Permission, nullIfEmpty(rec.ResourceKind), nullIfEmpty(rec.ResourceRef), timeOrNil(rec.UpdatedAt), rec.ID)
+	if err != nil {
+		return err
+	}
+	return ensureRowsAffected(res, "authz binding not found")
+}
+
+func (s *Store) DeleteAuthzBinding(id string) error {
+	res, err := s.db.Exec(`
+		DELETE FROM authz_bindings
+		WHERE id = ?
+	`, id)
+	if err != nil {
+		return err
+	}
+	return ensureRowsAffected(res, "authz binding not found")
+}
+
+func (s *Store) ListAuthzBindings(enabledOnly bool) ([]AuthzBinding, error) {
+	query := `
+		SELECT id, enabled, principal, permission, resource_kind, resource_ref, created_at, updated_at
+		FROM authz_bindings
+	`
+	if enabledOnly {
+		query += ` WHERE enabled = 1`
+	}
+	query += ` ORDER BY principal, permission, resource_kind, resource_ref, created_at DESC`
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []AuthzBinding
+	for rows.Next() {
+		var rec AuthzBinding
+		if err := scanAuthzBinding(rows, &rec); err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) SetAuthIssuerEnabled(issuer string, enabled bool) error {
+	res, err := s.db.Exec(`
+		UPDATE auth_issuers
+		SET enabled = ?, updated_at = ?
+		WHERE issuer = ?
+	`, boolToInt(enabled), nowRFC3339(), issuer)
+	if err != nil {
+		return err
+	}
+	return ensureRowsAffected(res, "auth issuer not found")
 }
 
 func (s *Store) ListPublicCertHistory(commonName string) ([]PublicCert, error) {
