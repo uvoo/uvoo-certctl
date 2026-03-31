@@ -91,6 +91,7 @@ func RunDoctorWithOptions(store DoctorStore, opts DoctorOptions) ([]DoctorFindin
 	findings = append(findings, checkCAInvariants(rootRows, icaRows, now)...)
 	findings = append(findings, checkPrivateCertIssuers(privateRows, icaRows)...)
 	findings = append(findings, checkAuthIssuerBindings(authIssuers, authzBindings)...)
+	findings = append(findings, checkBroadAuthzBindings(authzBindings)...)
 	findings = append(findings, checkAuthIssuerDiscovery(authIssuers, opts.AuthIssuerProbe)...)
 	if opts.WarnDays > 0 {
 		findings = append(findings, checkExpiringLeafs(publicRows, privateRows, now, warnWindow)...)
@@ -486,6 +487,44 @@ func checkAuthIssuerDiscovery(issuers []storage.AuthIssuer, probe AuthIssuerProb
 	return findings
 }
 
+func checkBroadAuthzBindings(bindings []storage.AuthzBinding) []DoctorFinding {
+	var findings []DoctorFinding
+	for _, binding := range bindings {
+		if !binding.Enabled {
+			continue
+		}
+		if strings.TrimSpace(binding.Permission) == "*" {
+			findings = append(findings, DoctorFinding{
+				Severity: "warn",
+				Check:    "authz_binding_wildcard_permission",
+				Message:  fmt.Sprintf("authz binding %s grants wildcard permission to %s", binding.ID, binding.Principal),
+			})
+		}
+		if strings.TrimSpace(binding.Principal) == "superuser" {
+			findings = append(findings, DoctorFinding{
+				Severity: "warn",
+				Check:    "authz_binding_superuser",
+				Message:  fmt.Sprintf("authz binding %s uses superuser principal", binding.ID),
+			})
+		}
+		if isScopedMutationPermission(binding.Permission) && strings.TrimSpace(binding.ResourceKind) == "" {
+			findings = append(findings, DoctorFinding{
+				Severity: "warn",
+				Check:    "authz_binding_unscoped_mutation",
+				Message:  fmt.Sprintf("authz binding %s grants %s without a resource kind scope", binding.ID, binding.Permission),
+			})
+		}
+		if isScopedMutationPermission(binding.Permission) && strings.TrimSpace(binding.ResourceRef) == "*" {
+			findings = append(findings, DoctorFinding{
+				Severity: "warn",
+				Check:    "authz_binding_wildcard_scope",
+				Message:  fmt.Sprintf("authz binding %s grants %s with wildcard resource scope", binding.ID, binding.Permission),
+			})
+		}
+	}
+	return findings
+}
+
 func bindingReferencesIssuer(binding storage.AuthzBinding, issuer string) bool {
 	for _, prefix := range []string{"sub:", "role:", "group:"} {
 		if strings.HasPrefix(binding.Principal, prefix+issuer+":") {
@@ -515,6 +554,15 @@ func bindingPrincipalIssuer(principal string) (string, bool) {
 		return issuer, true
 	}
 	return "", false
+}
+
+func isScopedMutationPermission(permission string) bool {
+	switch strings.TrimSpace(permission) {
+	case "csr.approve", "csr.reject", "csr.submit":
+		return true
+	default:
+		return false
+	}
 }
 
 func describeRemaining(d time.Duration) string {

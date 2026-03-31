@@ -44,6 +44,9 @@ func init() {
 				printKV("issuer", row.Issuer)
 				printKV("enabled", fmt.Sprintf("%t", row.Enabled))
 				printKV("audiences", fmt.Sprintf("%v", row.Audiences))
+				if len(row.RequiredClaims) > 0 {
+					printKV("required_claims", fmt.Sprintf("%v", row.RequiredClaims))
+				}
 				fmt.Println()
 			}
 			return nil

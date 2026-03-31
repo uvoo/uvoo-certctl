@@ -81,20 +81,21 @@ type AuditEvent struct {
 }
 
 type AuthIssuer struct {
-	ID            string
-	Name          string
-	Enabled       bool
-	Issuer        string
-	Audiences     []string
-	DiscoveryURL  string
-	JWKSURL       string
-	SubjectClaim  string
-	UsernameClaim string
-	EmailClaim    string
-	RolesClaims   []string
-	GroupsClaims  []string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID             string
+	Name           string
+	Enabled        bool
+	Issuer         string
+	Audiences      []string
+	RequiredClaims map[string]string
+	DiscoveryURL   string
+	JWKSURL        string
+	SubjectClaim   string
+	UsernameClaim  string
+	EmailClaim     string
+	RolesClaims    []string
+	GroupsClaims   []string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type AuthzBinding struct {
@@ -106,6 +107,14 @@ type AuthzBinding struct {
 	ResourceRef  string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+}
+
+type AuthzBindingFilter struct {
+	ID           string
+	Principal    string
+	Permission   string
+	ResourceKind string
+	ResourceRef  string
 }
 
 type CSRRequest struct {
@@ -1311,13 +1320,14 @@ func ensureAuditEventsSchema(db *sql.DB) error {
 }
 
 func ensureAuthIssuersSchema(db *sql.DB) error {
-	_, err := db.Exec(`
+	create := `
 		CREATE TABLE IF NOT EXISTS auth_issuers (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
 			enabled INTEGER NOT NULL DEFAULT 1,
 			issuer TEXT NOT NULL UNIQUE,
 			audiences_json TEXT NOT NULL DEFAULT '[]',
+			required_claims_json TEXT NOT NULL DEFAULT '{}',
 			discovery_url TEXT,
 			jwks_url TEXT,
 			subject_claim TEXT NOT NULL DEFAULT 'sub',
@@ -1328,7 +1338,26 @@ func ensureAuthIssuersSchema(db *sql.DB) error {
 			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
 			updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 		)
-	`)
+	`
+	exists, err := tableExists(db, "auth_issuers")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := db.Exec(create); err != nil {
+			return err
+		}
+	} else {
+		cols, err := tableColumns(db, "auth_issuers")
+		if err != nil {
+			return err
+		}
+		if _, ok := cols["required_claims_json"]; !ok {
+			if _, err := db.Exec(`ALTER TABLE auth_issuers ADD COLUMN required_claims_json TEXT NOT NULL DEFAULT '{}'`); err != nil {
+				return err
+			}
+		}
+	}
 	if err != nil {
 		return err
 	}
@@ -2025,7 +2054,7 @@ func scanCSRRequest(row scanner, req *CSRRequest) error {
 
 func scanAuthIssuer(row scanner, rec *AuthIssuer) error {
 	var enabled int
-	var audiencesJSON, rolesJSON, groupsJSON string
+	var audiencesJSON, requiredClaimsJSON, rolesJSON, groupsJSON string
 	var discoveryURL, jwksURL, createdAt, updatedAt sql.NullString
 	if err := row.Scan(
 		&rec.ID,
@@ -2033,6 +2062,7 @@ func scanAuthIssuer(row scanner, rec *AuthIssuer) error {
 		&enabled,
 		&rec.Issuer,
 		&audiencesJSON,
+		&requiredClaimsJSON,
 		&discoveryURL,
 		&jwksURL,
 		&rec.SubjectClaim,
@@ -2047,6 +2077,7 @@ func scanAuthIssuer(row scanner, rec *AuthIssuer) error {
 	}
 	rec.Enabled = enabled != 0
 	rec.Audiences = parseJSONArrayStrings(audiencesJSON)
+	rec.RequiredClaims = parseJSONObjectStrings(requiredClaimsJSON)
 	rec.DiscoveryURL = discoveryURL.String
 	rec.JWKSURL = jwksURL.String
 	rec.RolesClaims = parseJSONArrayStrings(rolesJSON)
@@ -2228,6 +2259,28 @@ func marshalJSONArrayStrings(values []string) string {
 	return string(data)
 }
 
+func marshalJSONObjectStrings(values map[string]string) string {
+	if len(values) == 0 {
+		return "{}"
+	}
+	normalized := map[string]string{}
+	for key, value := range values {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key != "" && value != "" {
+			normalized[key] = value
+		}
+	}
+	if len(normalized) == 0 {
+		return "{}"
+	}
+	data, err := json.Marshal(normalized)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
+}
+
 func parseJSONArrayStrings(raw string) []string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -2243,6 +2296,29 @@ func parseJSONArrayStrings(raw string) []string {
 		if value != "" {
 			out = append(out, value)
 		}
+	}
+	return out
+}
+
+func parseJSONObjectStrings(raw string) map[string]string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var values map[string]string
+	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+		return nil
+	}
+	out := map[string]string{}
+	for key, value := range values {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key != "" && value != "" {
+			out[key] = value
+		}
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }
@@ -2458,17 +2534,19 @@ func (s *Store) UpsertAuthIssuer(rec AuthIssuer) error {
 	rec.EmailClaim = firstNonEmptyString(rec.EmailClaim, "email")
 	rec.RolesClaims = defaultStringSlice(rec.RolesClaims, []string{"roles", "realm_access.roles"})
 	rec.GroupsClaims = defaultStringSlice(rec.GroupsClaims, []string{"groups"})
+	rec.RequiredClaims = parseJSONObjectStrings(marshalJSONObjectStrings(rec.RequiredClaims))
 	rec.CreatedAt = defaultCreatedAt(rec.CreatedAt)
 	rec.UpdatedAt = time.Now().UTC()
 
 	_, err := s.db.Exec(`
 		INSERT INTO auth_issuers
-		(id, name, enabled, issuer, audiences_json, discovery_url, jwks_url, subject_claim, username_claim, email_claim, roles_claims_json, groups_claims_json, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		(id, name, enabled, issuer, audiences_json, required_claims_json, discovery_url, jwks_url, subject_claim, username_claim, email_claim, roles_claims_json, groups_claims_json, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(issuer) DO UPDATE SET
 			name = excluded.name,
 			enabled = excluded.enabled,
 			audiences_json = excluded.audiences_json,
+			required_claims_json = excluded.required_claims_json,
 			discovery_url = excluded.discovery_url,
 			jwks_url = excluded.jwks_url,
 			subject_claim = excluded.subject_claim,
@@ -2483,6 +2561,7 @@ func (s *Store) UpsertAuthIssuer(rec AuthIssuer) error {
 		boolToInt(rec.Enabled),
 		rec.Issuer,
 		marshalJSONArrayStrings(rec.Audiences),
+		marshalJSONObjectStrings(rec.RequiredClaims),
 		nullIfEmpty(rec.DiscoveryURL),
 		nullIfEmpty(rec.JWKSURL),
 		rec.SubjectClaim,
@@ -2499,7 +2578,7 @@ func (s *Store) UpsertAuthIssuer(rec AuthIssuer) error {
 func (s *Store) GetAuthIssuerByIssuer(issuer string) (AuthIssuer, error) {
 	var rec AuthIssuer
 	err := scanAuthIssuer(s.db.QueryRow(`
-		SELECT id, name, enabled, issuer, audiences_json, discovery_url, jwks_url, subject_claim, username_claim, email_claim,
+		SELECT id, name, enabled, issuer, audiences_json, required_claims_json, discovery_url, jwks_url, subject_claim, username_claim, email_claim,
 		       roles_claims_json, groups_claims_json, created_at, updated_at
 		FROM auth_issuers
 		WHERE issuer = ?
@@ -2521,7 +2600,7 @@ func (s *Store) DeleteAuthIssuer(issuer string) error {
 
 func (s *Store) ListAuthIssuers(enabledOnly bool) ([]AuthIssuer, error) {
 	query := `
-		SELECT id, name, enabled, issuer, audiences_json, discovery_url, jwks_url, subject_claim, username_claim, email_claim,
+		SELECT id, name, enabled, issuer, audiences_json, required_claims_json, discovery_url, jwks_url, subject_claim, username_claim, email_claim,
 		       roles_claims_json, groups_claims_json, created_at, updated_at
 		FROM auth_issuers
 	`
@@ -2540,6 +2619,54 @@ func (s *Store) ListAuthIssuers(enabledOnly bool) ([]AuthIssuer, error) {
 	for rows.Next() {
 		var rec AuthIssuer
 		if err := scanAuthIssuer(rows, &rec); err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) ListAuthzBindingsFiltered(enabledOnly bool, filter AuthzBindingFilter) ([]AuthzBinding, error) {
+	query := `
+		SELECT id, enabled, principal, permission, resource_kind, resource_ref, created_at, updated_at
+		FROM authz_bindings
+		WHERE 1 = 1
+	`
+	args := []any{}
+	if enabledOnly {
+		query += ` AND enabled = 1`
+	}
+	if strings.TrimSpace(filter.ID) != "" {
+		query += ` AND id = ?`
+		args = append(args, strings.TrimSpace(filter.ID))
+	}
+	if strings.TrimSpace(filter.Principal) != "" {
+		query += ` AND principal = ?`
+		args = append(args, strings.TrimSpace(filter.Principal))
+	}
+	if strings.TrimSpace(filter.Permission) != "" {
+		query += ` AND permission = ?`
+		args = append(args, strings.TrimSpace(filter.Permission))
+	}
+	if strings.TrimSpace(filter.ResourceKind) != "" {
+		query += ` AND COALESCE(resource_kind, '') = ?`
+		args = append(args, strings.TrimSpace(filter.ResourceKind))
+	}
+	if strings.TrimSpace(filter.ResourceRef) != "" {
+		query += ` AND COALESCE(resource_ref, '') = ?`
+		args = append(args, strings.TrimSpace(filter.ResourceRef))
+	}
+	query += ` ORDER BY principal, permission, resource_kind, resource_ref, created_at DESC`
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []AuthzBinding
+	for rows.Next() {
+		var rec AuthzBinding
+		if err := scanAuthzBinding(rows, &rec); err != nil {
 			return nil, err
 		}
 		out = append(out, rec)

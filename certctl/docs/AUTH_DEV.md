@@ -42,6 +42,7 @@ certctl create-auth-issuer \
   --name keycloak-dev \
   --issuer http://127.0.0.1:18080/realms/certctl \
   --audience certctl \
+  --required-claim azp=certctl \
   --discovery-url http://127.0.0.1:18080/realms/certctl/.well-known/openid-configuration \
   --roles-claim realm_access.roles
 
@@ -108,7 +109,9 @@ Useful follow-up commands:
 
 ```bash
 certctl update-auth-issuer --issuer http://127.0.0.1:18080/realms/certctl --name keycloak-dev-local
+certctl check-auth-issuer --issuer http://127.0.0.1:18080/realms/certctl
 certctl update-authz-binding --id <binding-id> --permission csr.read
+certctl list-authz-bindings --principal 'role:http://127.0.0.1:18080/realms/certctl:certctl_admin'
 certctl disable-auth-issuer --issuer http://127.0.0.1:18080/realms/certctl
 certctl enable-auth-issuer --issuer http://127.0.0.1:18080/realms/certctl
 certctl delete-auth-issuer --issuer http://127.0.0.1:18080/realms/certctl --force

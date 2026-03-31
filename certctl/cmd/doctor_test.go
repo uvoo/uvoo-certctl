@@ -253,6 +253,53 @@ func TestRunDoctorWarnsOnBindingReferencingUnknownIssuer(t *testing.T) {
 	}
 }
 
+func TestRunDoctorWarnsOnBroadAuthzBindings(t *testing.T) {
+	findings, err := runDoctorWithOptions(&fakeDoctorStore{
+		authzBindings: []storage.AuthzBinding{
+			{
+				ID:         "binding-1",
+				Enabled:    true,
+				Principal:  "superuser",
+				Permission: "*",
+			},
+			{
+				ID:           "binding-2",
+				Enabled:      true,
+				Principal:    "role:https://issuer.example.test/realms/certctl:approver",
+				Permission:   "csr.approve",
+				ResourceKind: "csr_request",
+				ResourceRef:  "*",
+			},
+			{
+				ID:         "binding-3",
+				Enabled:    true,
+				Principal:  "role:https://issuer.example.test/realms/certctl:submitter",
+				Permission: "csr.submit",
+			},
+		},
+	}, ops.DoctorOptions{WarnDays: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantChecks := map[string]bool{
+		"authz_binding_wildcard_permission": false,
+		"authz_binding_superuser":           false,
+		"authz_binding_wildcard_scope":      false,
+		"authz_binding_unscoped_mutation":   false,
+	}
+	for _, finding := range findings {
+		if _, ok := wantChecks[finding.Check]; ok {
+			wantChecks[finding.Check] = true
+		}
+	}
+	for check, found := range wantChecks {
+		if !found {
+			t.Fatalf("expected %s finding, got %+v", check, findings)
+		}
+	}
+}
+
 type fakeDoctorStore struct {
 	publicRows    []storage.PublicCert
 	privateRows   []storage.PrivateCert

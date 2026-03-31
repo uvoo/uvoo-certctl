@@ -166,6 +166,7 @@ go run . create-auth-issuer \
   --name keycloak-local \
   --issuer https://sso.example.com/realms/certctl \
   --audience certctl \
+  --required-claim azp=certctl-cli \
   --discovery-url https://sso.example.com/realms/certctl/.well-known/openid-configuration \
   --roles-claim realm_access.roles
 
@@ -174,11 +175,14 @@ go run . create-authz-binding \
   --permission doctor.read
 
 go run . list-auth-issuers
+go run . check-auth-issuer --issuer https://sso.example.com/realms/certctl
 go run . update-auth-issuer --issuer https://sso.example.com/realms/certctl --name keycloak-prod
 go run . delete-auth-issuer --issuer https://sso.example.com/realms/certctl
 go run . delete-auth-issuer --issuer https://sso.example.com/realms/certctl --force
 go run . list-authz-bindings
+go run . list-authz-bindings --principal 'role:https://sso.example.com/realms/certctl:certctl_admin'
 go run . update-authz-binding --id <binding-id> --permission csr.approve
+go run . delete-authz-binding --principal 'role:https://sso.example.com/realms/certctl:certctl_admin' --permission doctor.read
 go run . delete-authz-binding --id <binding-id>
 go run . explain-authz --bearer-token env:CERTCTL_BEARER_TOKEN
 go run . disable-auth-issuer --issuer https://sso.example.com/realms/certctl
@@ -226,7 +230,7 @@ go run . version
 go run . version --json
 ```
 
-`doctor` also checks enabled JWT/OIDC issuers for broken discovery or JWKS connectivity, warns when disabled issuers are still referenced by enabled authz bindings, and flags bindings that point at unknown issuers.
+`doctor` also checks enabled JWT/OIDC issuers for broken discovery or JWKS connectivity, warns when disabled issuers are still referenced by enabled authz bindings, flags bindings that point at unknown issuers, and warns on overly broad authz bindings such as wildcard permissions or unscoped mutation permissions.
 
 Renew a stored public certificate:
 

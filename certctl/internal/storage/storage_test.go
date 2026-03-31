@@ -331,6 +331,34 @@ func TestDeleteAuthIssuerRemovesRecord(t *testing.T) {
 	}
 }
 
+func TestAuthIssuerRoundTripRequiredClaims(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "auth-required-claims.db")
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if err := store.UpsertAuthIssuer(AuthIssuer{
+		ID:             "issuer-1",
+		Name:           "keycloak-local",
+		Enabled:        true,
+		Issuer:         "https://issuer.example.test/realms/certctl",
+		Audiences:      []string{"certctl"},
+		RequiredClaims: map[string]string{"azp": "certctl-cli", "tid": "tenant-1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rec, err := store.GetAuthIssuerByIssuer("https://issuer.example.test/realms/certctl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.RequiredClaims["azp"] != "certctl-cli" || rec.RequiredClaims["tid"] != "tenant-1" {
+		t.Fatalf("unexpected required claims: %+v", rec.RequiredClaims)
+	}
+}
+
 func TestUpdateAuthzBindingPersistsChanges(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "authz-update.db")
 	store, err := Open(dbPath)

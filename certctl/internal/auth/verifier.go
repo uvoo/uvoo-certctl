@@ -28,6 +28,19 @@ type Verifier struct {
 	cache  map[string]issuerState
 }
 
+type IssuerCheckResult struct {
+	DiscoveryURL string
+	JWKSURL      string
+	KeyCount     int
+}
+
+type TokenInspection struct {
+	Issuer    string
+	Subject   string
+	Audiences []string
+	RawClaims map[string]any
+}
+
 type issuerState struct {
 	jwksURL   string
 	keys      jose.JSONWebKeySet
@@ -61,6 +74,53 @@ func CheckIssuerConnectivity(ctx context.Context, client *http.Client, issuer st
 
 func (v *Verifier) CheckIssuerConnectivity(ctx context.Context, issuer storage.AuthIssuer) error {
 	return v.checkIssuerConnectivity(ctx, issuer)
+}
+
+func (v *Verifier) CheckIssuer(ctx context.Context, issuer storage.AuthIssuer) (IssuerCheckResult, error) {
+	discoveryURL := strings.TrimSpace(issuer.DiscoveryURL)
+	if discoveryURL == "" {
+		discoveryURL = strings.TrimRight(strings.TrimSpace(issuer.Issuer), "/") + "/.well-known/openid-configuration"
+	}
+	keys, err := v.keysForIssuer(ctx, issuer, true)
+	if err != nil {
+		return IssuerCheckResult{DiscoveryURL: discoveryURL}, err
+	}
+
+	v.mu.Lock()
+	state := v.cache[issuer.Issuer]
+	v.mu.Unlock()
+	return IssuerCheckResult{
+		DiscoveryURL: discoveryURL,
+		JWKSURL:      state.jwksURL,
+		KeyCount:     len(keys),
+	}, nil
+}
+
+func InspectToken(token string) (TokenInspection, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return TokenInspection{}, ErrMissingBearerToken
+	}
+
+	parsed, err := josejwt.ParseSigned(token, []jose.SignatureAlgorithm{
+		jose.RS256, jose.RS384, jose.RS512,
+	})
+	if err != nil {
+		return TokenInspection{}, fmt.Errorf("%w: %v", ErrInvalidToken, err)
+	}
+
+	var rawClaims map[string]any
+	if err := parsed.UnsafeClaimsWithoutVerification(&rawClaims); err != nil {
+		return TokenInspection{}, fmt.Errorf("%w: unable to inspect token claims", ErrInvalidToken)
+	}
+	issuer, _ := claimString(rawClaims, "iss")
+	subject, _ := claimString(rawClaims, "sub")
+	return TokenInspection{
+		Issuer:    issuer,
+		Subject:   subject,
+		Audiences: collectClaimValues(rawClaims, []string{"aud"}),
+		RawClaims: rawClaims,
+	}, nil
 }
 
 func (v *Verifier) Verify(ctx context.Context, token string, issuers []storage.AuthIssuer) (Identity, error) {
@@ -149,6 +209,9 @@ func verifyWithKeys(parsed *josejwt.JSONWebToken, rawClaims map[string]any, issu
 		}
 		if err := std.ValidateWithLeeway(expected, time.Minute); err != nil {
 			continue
+		}
+		if err := validateRequiredClaims(verified, issuer.RequiredClaims); err != nil {
+			return Identity{}, err
 		}
 
 		subject := firstNonEmpty(
@@ -311,6 +374,13 @@ func claimPathString(claims map[string]any, path string) string {
 	switch typed := value.(type) {
 	case string:
 		return strings.TrimSpace(typed)
+	case bool:
+		if typed {
+			return "true"
+		}
+		return "false"
+	case float64:
+		return strings.TrimSpace(fmt.Sprintf("%v", typed))
 	default:
 		return ""
 	}
@@ -325,6 +395,10 @@ func collectClaimValues(claims map[string]any, paths []string) []string {
 			if v := strings.TrimSpace(typed); v != "" {
 				out = append(out, v)
 			}
+		case bool:
+			out = append(out, claimPathString(map[string]any{"value": typed}, "value"))
+		case float64:
+			out = append(out, claimPathString(map[string]any{"value": typed}, "value"))
 		case []any:
 			for _, item := range typed {
 				if v, ok := item.(string); ok && strings.TrimSpace(v) != "" {
@@ -386,4 +460,13 @@ func uniqueStrings(values ...string) []string {
 		out = append(out, value)
 	}
 	return out
+}
+
+func validateRequiredClaims(claims map[string]any, required map[string]string) error {
+	for path, expected := range required {
+		if claimPathString(claims, path) != strings.TrimSpace(expected) {
+			return fmt.Errorf("required claim %s=%q not satisfied", path, expected)
+		}
+	}
+	return nil
 }

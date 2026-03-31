@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"certctl/internal/storage"
 	"certctl/internal/util"
@@ -20,6 +21,7 @@ func init() {
 	var emailClaim string
 	var rolesClaims []string
 	var groupsClaims []string
+	var requiredClaims []string
 	var jsonOut bool
 
 	cmd := &cobra.Command{
@@ -39,18 +41,19 @@ func init() {
 			defer store.Close()
 
 			if err := store.UpsertAuthIssuer(storage.AuthIssuer{
-				ID:            util.NewID(),
-				Name:          name,
-				Enabled:       enabled,
-				Issuer:        issuer,
-				Audiences:     audiences,
-				DiscoveryURL:  discoveryURL,
-				JWKSURL:       jwksURL,
-				SubjectClaim:  subjectClaim,
-				UsernameClaim: usernameClaim,
-				EmailClaim:    emailClaim,
-				RolesClaims:   rolesClaims,
-				GroupsClaims:  groupsClaims,
+				ID:             util.NewID(),
+				Name:           name,
+				Enabled:        enabled,
+				Issuer:         issuer,
+				Audiences:      audiences,
+				RequiredClaims: parseRequiredClaims(requiredClaims),
+				DiscoveryURL:   discoveryURL,
+				JWKSURL:        jwksURL,
+				SubjectClaim:   subjectClaim,
+				UsernameClaim:  usernameClaim,
+				EmailClaim:     emailClaim,
+				RolesClaims:    rolesClaims,
+				GroupsClaims:   groupsClaims,
 			}); err != nil {
 				return err
 			}
@@ -82,6 +85,7 @@ func init() {
 	cmd.Flags().StringVar(&emailClaim, "email-claim", "email", "claim path used as the email")
 	cmd.Flags().StringSliceVar(&rolesClaims, "roles-claim", []string{"roles", "realm_access.roles"}, "claim path used for roles; repeat as needed")
 	cmd.Flags().StringSliceVar(&groupsClaims, "groups-claim", []string{"groups"}, "claim path used for groups; repeat as needed")
+	cmd.Flags().StringSliceVar(&requiredClaims, "required-claim", nil, "required claim match in path=value form; repeat as needed")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("issuer")
@@ -90,19 +94,41 @@ func init() {
 
 func authIssuerPayload(rec storage.AuthIssuer) map[string]any {
 	return map[string]any{
-		"id":             rec.ID,
-		"name":           rec.Name,
-		"enabled":        rec.Enabled,
-		"issuer":         rec.Issuer,
-		"audiences":      rec.Audiences,
-		"discovery_url":  emptyStringToNil(rec.DiscoveryURL),
-		"jwks_url":       emptyStringToNil(rec.JWKSURL),
-		"subject_claim":  rec.SubjectClaim,
-		"username_claim": rec.UsernameClaim,
-		"email_claim":    rec.EmailClaim,
-		"roles_claims":   rec.RolesClaims,
-		"groups_claims":  rec.GroupsClaims,
-		"created_at":     formatTimeValue(rec.CreatedAt),
-		"updated_at":     formatTimeValue(rec.UpdatedAt),
+		"id":              rec.ID,
+		"name":            rec.Name,
+		"enabled":         rec.Enabled,
+		"issuer":          rec.Issuer,
+		"audiences":       rec.Audiences,
+		"required_claims": rec.RequiredClaims,
+		"discovery_url":   emptyStringToNil(rec.DiscoveryURL),
+		"jwks_url":        emptyStringToNil(rec.JWKSURL),
+		"subject_claim":   rec.SubjectClaim,
+		"username_claim":  rec.UsernameClaim,
+		"email_claim":     rec.EmailClaim,
+		"roles_claims":    rec.RolesClaims,
+		"groups_claims":   rec.GroupsClaims,
+		"created_at":      formatTimeValue(rec.CreatedAt),
+		"updated_at":      formatTimeValue(rec.UpdatedAt),
 	}
+}
+
+func parseRequiredClaims(values []string) map[string]string {
+	out := map[string]string{}
+	for _, raw := range values {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		key, value, ok := strings.Cut(raw, "=")
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if !ok || key == "" || value == "" {
+			continue
+		}
+		out[key] = value
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

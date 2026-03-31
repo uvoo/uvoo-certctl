@@ -44,7 +44,7 @@ certctl doctor --warn-days 14
 certctl doctor --warn-days 0 --json
 ```
 
-`doctor` also checks enabled JWT/OIDC issuers for broken discovery or JWKS connectivity, flags disabled issuers that are still referenced by enabled authz bindings, and warns on bindings that still point at unknown issuers.
+`doctor` also checks enabled JWT/OIDC issuers for broken discovery or JWKS connectivity, flags disabled issuers that are still referenced by enabled authz bindings, warns on bindings that still point at unknown issuers, and highlights overly broad authz bindings.
 
 Recommended routine:
 

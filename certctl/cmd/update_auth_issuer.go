@@ -20,6 +20,7 @@ func init() {
 	var emailClaim string
 	var rolesClaims []string
 	var groupsClaims []string
+	var requiredClaims []string
 	var jsonOut bool
 
 	cmd := &cobra.Command{
@@ -75,6 +76,9 @@ func init() {
 			if flags.Changed("groups-claim") {
 				rec.GroupsClaims = compactStrings(groupsClaims)
 			}
+			if flags.Changed("required-claim") {
+				rec.RequiredClaims = parseRequiredClaims(requiredClaims)
+			}
 
 			if err := store.UpsertAuthIssuer(rec); err != nil {
 				return err
@@ -107,6 +111,7 @@ func init() {
 	cmd.Flags().StringVar(&emailClaim, "email-claim", "", "claim path used as the email")
 	cmd.Flags().StringSliceVar(&rolesClaims, "roles-claim", nil, "claim path used for roles; repeat as needed")
 	cmd.Flags().StringSliceVar(&groupsClaims, "groups-claim", nil, "claim path used for groups; repeat as needed")
+	cmd.Flags().StringSliceVar(&requiredClaims, "required-claim", nil, "required claim match in path=value form; repeat as needed")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 	_ = cmd.MarkFlagRequired("issuer")
 	rootCmd.AddCommand(cmd)
