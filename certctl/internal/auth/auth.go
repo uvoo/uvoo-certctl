@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 
@@ -49,6 +50,8 @@ func SuperuserIdentity(username string) Identity {
 		Principals: []string{"superuser"},
 	}
 }
+
+var ErrSubjectDisabled = errors.New("subject is locally disabled")
 
 func Allowed(identity Identity, bindings []storage.AuthzBinding, req PermissionRequest) bool {
 	return len(MatchingBindings(identity, bindings, req)) > 0

@@ -31,6 +31,9 @@ const (
 	CSRStatusPending  = "pending"
 	CSRStatusIssued   = "issued"
 	CSRStatusRejected = "rejected"
+
+	SubjectStatusActive   = "active"
+	SubjectStatusDisabled = "disabled"
 )
 
 type Store struct{ db *sql.DB }
@@ -115,6 +118,21 @@ type AuthzBindingFilter struct {
 	Permission   string
 	ResourceKind string
 	ResourceRef  string
+}
+
+type Subject struct {
+	ID          string
+	Issuer      string
+	Subject     string
+	Status      string
+	Username    string
+	Email       string
+	Roles       []string
+	Groups      []string
+	AuthCount   int
+	FirstSeenAt time.Time
+	LastSeenAt  time.Time
+	UpdatedAt   time.Time
 }
 
 type CSRRequest struct {
@@ -1167,6 +1185,9 @@ func ensureSchema(db *sql.DB) error {
 	if err := ensureAuthzBindingsSchema(db); err != nil {
 		return err
 	}
+	if err := ensureSubjectsSchema(db); err != nil {
+		return err
+	}
 	if err := ensureAuditEventsSchema(db); err != nil {
 		return err
 	}
@@ -1392,6 +1413,40 @@ func ensureAuthzBindingsSchema(db *sql.DB) error {
 	stmts := []string{
 		`CREATE INDEX IF NOT EXISTS idx_authz_bindings_principal_permission ON authz_bindings(enabled, principal, permission)`,
 		`CREATE INDEX IF NOT EXISTS idx_authz_bindings_resource ON authz_bindings(resource_kind, resource_ref)`,
+	}
+	for _, stmt := range stmts {
+		if _, err := db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureSubjectsSchema(db *sql.DB) error {
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS subjects (
+			id TEXT PRIMARY KEY,
+			issuer TEXT NOT NULL,
+			subject TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'active',
+			username TEXT,
+			email TEXT,
+			roles_json TEXT NOT NULL DEFAULT '[]',
+			groups_json TEXT NOT NULL DEFAULT '[]',
+			auth_count INTEGER NOT NULL DEFAULT 0,
+			first_seen_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+			last_seen_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+			updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+			UNIQUE(issuer, subject),
+			CHECK (status IN ('active', 'disabled'))
+		)
+	`)
+	if err != nil {
+		return err
+	}
+	stmts := []string{
+		`CREATE INDEX IF NOT EXISTS idx_subjects_status_last_seen ON subjects(status, last_seen_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_subjects_issuer_subject ON subjects(issuer, subject)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := db.Exec(stmt); err != nil {
@@ -2110,6 +2165,39 @@ func scanAuthzBinding(row scanner, rec *AuthzBinding) error {
 	return nil
 }
 
+func scanSubject(row scanner, rec *Subject) error {
+	var rolesJSON, groupsJSON string
+	var username, email, firstSeenAt, lastSeenAt, updatedAt sql.NullString
+	var authCount sql.NullInt64
+	if err := row.Scan(
+		&rec.ID,
+		&rec.Issuer,
+		&rec.Subject,
+		&rec.Status,
+		&username,
+		&email,
+		&rolesJSON,
+		&groupsJSON,
+		&authCount,
+		&firstSeenAt,
+		&lastSeenAt,
+		&updatedAt,
+	); err != nil {
+		return err
+	}
+	rec.Username = username.String
+	rec.Email = email.String
+	rec.Roles = parseJSONArrayStrings(rolesJSON)
+	rec.Groups = parseJSONArrayStrings(groupsJSON)
+	if authCount.Valid {
+		rec.AuthCount = int(authCount.Int64)
+	}
+	rec.FirstSeenAt = parseRFC3339Null(firstSeenAt)
+	rec.LastSeenAt = parseRFC3339Null(lastSeenAt)
+	rec.UpdatedAt = parseRFC3339Null(updatedAt)
+	return nil
+}
+
 func getActivePublicCertTx(tx *sql.Tx, commonName string) (PublicCert, error) {
 	var rec PublicCert
 	err := scanPublicCert(tx.QueryRow(`
@@ -2378,11 +2466,38 @@ func defaultCSRStatus(status string) string {
 	return status
 }
 
+func defaultSubjectStatus(status string) string {
+	status = strings.TrimSpace(strings.ToLower(status))
+	if status == "" {
+		return SubjectStatusActive
+	}
+	return status
+}
+
 func boolToInt(v bool) int {
 	if v {
 		return 1
 	}
 	return 0
+}
+
+func uniqueSortedStrings(values []string) []string {
+	set := map[string]struct{}{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			set[value] = struct{}{}
+		}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(set))
+	for value := range set {
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func legacySortKey(createdAt, updatedAt sql.NullString, id string) time.Time {
@@ -2769,6 +2884,93 @@ func (s *Store) ListAuthzBindings(enabledOnly bool) ([]AuthzBinding, error) {
 		out = append(out, rec)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) UpsertSubjectSeen(rec Subject) (Subject, error) {
+	if strings.TrimSpace(rec.ID) == "" {
+		return Subject{}, fmt.Errorf("subject id is required")
+	}
+	if strings.TrimSpace(rec.Issuer) == "" {
+		return Subject{}, fmt.Errorf("subject issuer is required")
+	}
+	if strings.TrimSpace(rec.Subject) == "" {
+		return Subject{}, fmt.Errorf("subject value is required")
+	}
+	rec.Status = defaultSubjectStatus(rec.Status)
+	now := time.Now().UTC()
+	rolesJSON := marshalJSONArrayStrings(uniqueSortedStrings(rec.Roles))
+	groupsJSON := marshalJSONArrayStrings(uniqueSortedStrings(rec.Groups))
+	_, err := s.db.Exec(`
+		INSERT INTO subjects
+		(id, issuer, subject, status, username, email, roles_json, groups_json, auth_count, first_seen_at, last_seen_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+		ON CONFLICT(issuer, subject) DO UPDATE SET
+			username = excluded.username,
+			email = excluded.email,
+			roles_json = excluded.roles_json,
+			groups_json = excluded.groups_json,
+			auth_count = subjects.auth_count + 1,
+			last_seen_at = excluded.last_seen_at,
+			updated_at = excluded.updated_at
+	`, rec.ID, rec.Issuer, rec.Subject, rec.Status, nullIfEmpty(rec.Username), nullIfEmpty(rec.Email), rolesJSON, groupsJSON, timeOrNil(now), timeOrNil(now), timeOrNil(now))
+	if err != nil {
+		return Subject{}, err
+	}
+	return s.GetSubject(rec.Issuer, rec.Subject)
+}
+
+func (s *Store) GetSubject(issuer, subject string) (Subject, error) {
+	var rec Subject
+	err := scanSubject(s.db.QueryRow(`
+		SELECT id, issuer, subject, status, username, email, roles_json, groups_json, auth_count, first_seen_at, last_seen_at, updated_at
+		FROM subjects
+		WHERE issuer = ? AND subject = ?
+		LIMIT 1
+	`, issuer, subject), &rec)
+	return rec, err
+}
+
+func (s *Store) ListSubjects(activeOnly bool) ([]Subject, error) {
+	query := `
+		SELECT id, issuer, subject, status, username, email, roles_json, groups_json, auth_count, first_seen_at, last_seen_at, updated_at
+		FROM subjects
+	`
+	args := []any{}
+	if activeOnly {
+		query += ` WHERE status = ?`
+		args = append(args, SubjectStatusActive)
+	}
+	query += ` ORDER BY last_seen_at DESC, issuer, subject`
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Subject
+	for rows.Next() {
+		var rec Subject
+		if err := scanSubject(rows, &rec); err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) SetSubjectStatus(issuer, subject, status string) error {
+	if status != SubjectStatusActive && status != SubjectStatusDisabled {
+		return fmt.Errorf("invalid subject status %q", status)
+	}
+	res, err := s.db.Exec(`
+		UPDATE subjects
+		SET status = ?, updated_at = ?
+		WHERE issuer = ? AND subject = ?
+	`, status, timeOrNil(time.Now().UTC()), issuer, subject)
+	if err != nil {
+		return err
+	}
+	return ensureRowsAffected(res, "subject not found")
 }
 
 func (s *Store) SetAuthIssuerEnabled(issuer string, enabled bool) error {

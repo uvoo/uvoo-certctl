@@ -1,19 +1,14 @@
-name: Docker Integration
+name: Docker Public Provider Smoke
 
 on:
   workflow_dispatch:
     inputs:
-      public_smoke:
-        description: "Also run optional public provider precursor checks"
+      issue:
+        description: "Attempt real public ACME issuance"
         required: false
         default: false
         type: boolean
-      public_issue:
-        description: "When public smoke is enabled, attempt real public ACME issuance"
-        required: false
-        default: false
-        type: boolean
-      public_write_test:
+      write_test:
         description: "Create and remove a temporary provider TXT record"
         required: false
         default: false
@@ -27,7 +22,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Run Docker integration smoke
+      - name: Run Docker public provider smoke
         env:
           PUBLIC_DOMAIN: ${{ vars.CERTCTL_PUBLIC_TEST_DOMAIN }}
           PUBLIC_CERT_COMMON_NAME: ${{ vars.CERTCTL_PUBLIC_TEST_COMMON_NAME }}
@@ -38,14 +33,12 @@ jobs:
           NAMECHEAP_CLIENT_IP: ${{ secrets.NAMECHEAP_CLIENT_IP }}
         run: |
           set -euo pipefail
-          export SMOKE_PRIVATE_CA=1
-          if [[ "${{ inputs.public_smoke }}" == "true" ]]; then
-            export SMOKE_PUBLIC_CERT=1
-          fi
-          if [[ "${{ inputs.public_issue }}" == "true" ]]; then
+          export SMOKE_PRIVATE_CA=0
+          export SMOKE_PUBLIC_CERT=1
+          if [[ "${{ inputs.issue }}" == "true" ]]; then
             export SMOKE_PUBLIC_CERT_ISSUE=1
           fi
-          if [[ "${{ inputs.public_write_test }}" == "true" ]]; then
+          if [[ "${{ inputs.write_test }}" == "true" ]]; then
             export PUBLIC_WRITE_TEST=1
           fi
           ./scripts/smoke-docker-stack.sh

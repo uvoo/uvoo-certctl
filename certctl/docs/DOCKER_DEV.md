@@ -119,9 +119,12 @@ NAMECHEAP_CLIENT_IP="$NAMECHEAP_CLIENT_IP" \
 
 ## Optional GitHub Actions workflow
 
-The repo also includes a manual workflow at `.github/workflows/docker-integration.yml`.
+The repo includes two manual GitHub Actions workflows:
 
-It reuses `scripts/smoke-docker-stack.sh` and supports optional public smoke inputs when the matching repository variables and secrets are configured:
+- `.github/workflows/docker-integration.yml` for the normal private/auth integration path, with optional public smoke inputs
+- `.github/workflows/docker-public-provider.yml` for explicitly public-provider-focused runs
+
+They reuse `scripts/smoke-docker-stack.sh`. Public runs need the matching repository variables and secrets configured:
 
 - `CERTCTL_PUBLIC_TEST_DOMAIN`
 - `CERTCTL_PUBLIC_TEST_COMMON_NAME`

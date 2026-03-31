@@ -7,6 +7,7 @@ import (
 
 	"certctl/internal/auth"
 	"certctl/internal/storage"
+	"certctl/internal/util"
 )
 
 type permissionResolver func(r *http.Request) (auth.PermissionRequest, bool)
@@ -58,6 +59,22 @@ func (s *Server) authenticateAdminRequest(r *http.Request, req auth.PermissionRe
 	identity, err := s.authVerifier.Verify(r.Context(), token, issuers)
 	if err != nil {
 		return auth.Identity{}, http.StatusUnauthorized, err
+	}
+	subjectRec, err := store.UpsertSubjectSeen(storage.Subject{
+		ID:       util.NewID(),
+		Issuer:   identity.Issuer,
+		Subject:  identity.Subject,
+		Status:   storage.SubjectStatusActive,
+		Username: identity.Username,
+		Email:    identity.Email,
+		Roles:    identity.Roles,
+		Groups:   identity.Groups,
+	})
+	if err != nil {
+		return auth.Identity{}, http.StatusInternalServerError, err
+	}
+	if subjectRec.Status == storage.SubjectStatusDisabled {
+		return auth.Identity{}, http.StatusForbidden, auth.ErrSubjectDisabled
 	}
 
 	bindings, err := store.ListAuthzBindings(true)

@@ -407,6 +407,18 @@ func buildMetrics(store *storage.Store, warnDays int) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	authIssuers, err := store.ListAuthIssuers(false)
+	if err != nil {
+		return "", err
+	}
+	authzBindings, err := store.ListAuthzBindings(false)
+	if err != nil {
+		return "", err
+	}
+	subjects, err := store.ListSubjects(false)
+	if err != nil {
+		return "", err
+	}
 	shares, err := store.ListShares("")
 	if err != nil {
 		return "", err
@@ -478,6 +490,58 @@ func buildMetrics(store *storage.Store, warnDays int) (string, error) {
 		writeMetricSample(&b, "certctl_csr_requests_total", map[string]string{"kind": parts[0], "status": parts[1]}, float64(count))
 	}
 
+	writeMetricHeader(&b, "certctl_pending_csr_requests_total", "Pending CSR requests by kind.")
+	pendingCSRByKind := map[string]int{}
+	readyCSRByKind := map[string]int{}
+	for _, row := range csrRows {
+		switch row.Status {
+		case storage.CSRStatusPending:
+			pendingCSRByKind[row.Kind]++
+		case storage.CSRStatusIssued:
+			readyCSRByKind[row.Kind]++
+		}
+	}
+	for kind, count := range pendingCSRByKind {
+		writeMetricSample(&b, "certctl_pending_csr_requests_total", map[string]string{"kind": kind}, float64(count))
+	}
+
+	writeMetricHeader(&b, "certctl_csr_requests_ready_for_pickup_total", "Issued CSR requests by kind that are ready for pickup.")
+	for kind, count := range readyCSRByKind {
+		writeMetricSample(&b, "certctl_csr_requests_ready_for_pickup_total", map[string]string{"kind": kind}, float64(count))
+	}
+
+	writeMetricHeader(&b, "certctl_auth_issuers_total", "Trusted auth issuers by enabled state.")
+	authIssuerCounts := map[string]int{}
+	for _, issuer := range authIssuers {
+		authIssuerCounts[strconv.FormatBool(issuer.Enabled)]++
+	}
+	for enabled, count := range authIssuerCounts {
+		writeMetricSample(&b, "certctl_auth_issuers_total", map[string]string{"enabled": enabled}, float64(count))
+	}
+
+	writeMetricHeader(&b, "certctl_authz_bindings_total", "Authorization bindings by enabled state and scope breadth.")
+	authzBindingCounts := map[string]int{}
+	for _, binding := range authzBindings {
+		key := strconv.FormatBool(binding.Enabled) + "|" + authzBindingScope(binding)
+		authzBindingCounts[key]++
+	}
+	for key, count := range authzBindingCounts {
+		parts := strings.SplitN(key, "|", 2)
+		writeMetricSample(&b, "certctl_authz_bindings_total", map[string]string{
+			"enabled": parts[0],
+			"scope":   parts[1],
+		}, float64(count))
+	}
+
+	writeMetricHeader(&b, "certctl_subjects_total", "Locally tracked JWT subjects by status.")
+	subjectCounts := map[string]int{}
+	for _, subject := range subjects {
+		subjectCounts[subject.Status]++
+	}
+	for status, count := range subjectCounts {
+		writeMetricSample(&b, "certctl_subjects_total", map[string]string{"status": status}, float64(count))
+	}
+
 	writeMetricHeader(&b, "certctl_shares_total", "Total certificate shares by state.")
 	shareCounts := map[string]int{}
 	for _, sh := range shares {
@@ -527,6 +591,15 @@ func countExpiringPublicCerts(rows []storage.PublicCert, now time.Time, warnWind
 		}
 	}
 	return count
+}
+
+func authzBindingScope(binding storage.AuthzBinding) string {
+	resourceKind := strings.TrimSpace(binding.ResourceKind)
+	resourceRef := strings.TrimSpace(binding.ResourceRef)
+	if resourceKind == "" || resourceKind == "*" || resourceRef == "" || resourceRef == "*" {
+		return "wildcard"
+	}
+	return "scoped"
 }
 
 func countExpiringPrivateCerts(rows []storage.PrivateCert, now time.Time, warnWindow time.Duration) int {

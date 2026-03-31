@@ -182,6 +182,9 @@ go run . delete-auth-issuer --issuer https://sso.example.com/realms/certctl --fo
 go run . list-effective-authz --principal 'role:https://sso.example.com/realms/certctl:certctl_admin'
 go run . list-authz-bindings
 go run . list-authz-bindings --principal 'role:https://sso.example.com/realms/certctl:certctl_admin'
+go run . list-subjects --all
+go run . disable-subject --issuer https://sso.example.com/realms/certctl --subject user-123
+go run . enable-subject --issuer https://sso.example.com/realms/certctl --subject user-123
 go run . update-authz-binding --id <binding-id> --permission csr.approve
 go run . update-authz-binding --match-principal 'role:https://sso.example.com/realms/certctl:certctl_admin' --match-permission doctor.read --permission metrics.read
 go run . delete-authz-binding --principal 'role:https://sso.example.com/realms/certctl:certctl_admin' --permission doctor.read
@@ -200,7 +203,7 @@ go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt 
 go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt --tls-key-file /etc/certctl/tls/server.key --admin-username admin --admin-password env:CERTCTL_ADMIN_PASSWORD --metrics
 ```
 
-With `--admin-username` and `--admin-password`, the built-in server also exposes a small authenticated JSON admin API under `/admin/v1` for remote `doctor` and CSR queue actions. `--metrics` enables a Prometheus-style `/metrics` endpoint, using the same Basic auth when admin auth is enabled.
+With `--admin-username` and `--admin-password`, the built-in server also exposes a small authenticated JSON admin API under `/admin/v1` for remote `doctor` and CSR queue actions. `--metrics` enables a Prometheus-style `/metrics` endpoint, using the same Basic auth when admin auth is enabled. The metrics output includes certificate and CA status totals, CSR queue totals, pending and pickup-ready CSR counters, share totals, auth issuer/binding counts, and locally tracked JWT subject counts.
 
 The admin API can also use bearer tokens from trusted JWT/OIDC issuers configured in the local database. The auth model and claim mapping are documented in [`docs/AUTHZ_DESIGN.md`](docs/AUTHZ_DESIGN.md).
 
