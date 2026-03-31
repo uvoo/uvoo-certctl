@@ -8,7 +8,7 @@ A Cobra-based refactor of the original single-file ACME utility.
 - CSR guide: [`docs/CSR_REQUESTS.md`](docs/CSR_REQUESTS.md)
 - Admin runbook: [`docs/RUNBOOK.md`](docs/RUNBOOK.md)
 - Auth/authz design: [`docs/AUTHZ_DESIGN.md`](docs/AUTHZ_DESIGN.md)
-- Auth dev guide: [`docs/AUTH_DEV.md`](docs/AUTH_DEV.md)
+- Docker dev guide: [`docs/DOCKER_DEV.md`](docs/DOCKER_DEV.md)
 - Release process: [`docs/RELEASING.md`](docs/RELEASING.md)
 
 ## What changed
@@ -204,7 +204,7 @@ With `--admin-username` and `--admin-password`, the built-in server also exposes
 
 The admin API can also use bearer tokens from trusted JWT/OIDC issuers configured in the local database. The auth model and claim mapping are documented in [`docs/AUTHZ_DESIGN.md`](docs/AUTHZ_DESIGN.md).
 
-For local Keycloak testing and a one-command bearer-auth smoke path, see [`docs/AUTH_DEV.md`](docs/AUTH_DEV.md).
+For local Docker-based Keycloak and `certctl` smoke testing, including private CSR approval and optional public provider checks, see [`docs/DOCKER_DEV.md`](docs/DOCKER_DEV.md).
 
 Export safe metadata or a DB backup:
 

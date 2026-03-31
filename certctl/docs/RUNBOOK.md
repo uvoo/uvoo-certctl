@@ -178,6 +178,7 @@ Notes:
 - if you run behind a reverse proxy, allow the proxy source address
 - the built-in NACL checks the TCP client address, not forwarded-for headers
 - `/metrics` uses the same Basic auth when the admin API is enabled
+- for local end-to-end testing with Keycloak and the built-in server, use the Docker stack in [`DOCKER_DEV.md`](DOCKER_DEV.md)
 
 ## 6. Backup and restore
 

@@ -41,14 +41,14 @@ func init() {
 			}
 			matchedIssuer, hasMatchedIssuer := findAuthIssuerByIssuer(issuers, inspection.Issuer)
 			verifier := auth.NewVerifier(rootCfg.HTTPTimeout)
-			identity, err := verifier.Verify(cmd.Context(), token, issuers)
+			identity, verifyErr := verifier.Verify(cmd.Context(), token, issuers)
 			bindings, err := store.ListAuthzBindings(true)
 			if err != nil {
 				return err
 			}
 
 			payload := map[string]any{
-				"verified":              err == nil,
+				"verified":              verifyErr == nil,
 				"token_issuer":          emptyStringToNil(inspection.Issuer),
 				"token_subject":         emptyStringToNil(inspection.Subject),
 				"token_audiences":       inspection.Audiences,
@@ -74,7 +74,7 @@ func init() {
 				payload["required_claims"] = map[string]string{}
 			}
 
-			if err == nil {
+			if verifyErr == nil {
 				effectivePermissions := auth.EffectivePermissions(identity, bindings)
 				matching := make([]map[string]any, 0, len(bindings))
 				for _, permission := range effectivePermissions {
@@ -94,14 +94,14 @@ func init() {
 				payload["effective_permissions"] = effectivePermissions
 				payload["matching_bindings"] = matching
 			} else {
-				payload["error"] = err.Error()
+				payload["error"] = verifyErr.Error()
 			}
 
 			if jsonOut {
 				return printJSON(payload)
 			}
 
-			printKV("verified", fmt.Sprintf("%t", err == nil))
+			printKV("verified", fmt.Sprintf("%t", verifyErr == nil))
 			if inspection.Issuer != "" {
 				printKV("token_issuer", inspection.Issuer)
 			}
@@ -117,8 +117,8 @@ func init() {
 					printKV("required_claims", fmt.Sprintf("%v", matchedIssuer.RequiredClaims))
 				}
 			}
-			if err != nil {
-				printKV("error", err.Error())
+			if verifyErr != nil {
+				printKV("error", verifyErr.Error())
 				return nil
 			}
 			printKV("auth_method", identity.AuthMethod)
