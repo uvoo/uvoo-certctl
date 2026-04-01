@@ -311,6 +311,13 @@ func adminEffectiveAuthzPermission(r *http.Request) (auth.PermissionRequest, boo
 	return auth.PermissionRequest{Permission: "authz.read"}, true
 }
 
+func adminAuthIssuerPermission(r *http.Request) (auth.PermissionRequest, bool) {
+	if r.Method != http.MethodGet {
+		return auth.PermissionRequest{}, false
+	}
+	return auth.PermissionRequest{Permission: "auth_issuer.read"}, true
+}
+
 func metricsPermission(r *http.Request) (auth.PermissionRequest, bool) {
 	if r.Method != http.MethodGet {
 		return auth.PermissionRequest{}, false

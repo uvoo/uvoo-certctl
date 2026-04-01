@@ -241,6 +241,12 @@ curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   https://certctl.example.com:8443/admin/v1/effective-authz
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/doctor/auth
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/auth-issuers?probe=true
 ```
 
 For local Docker-based Keycloak and `certctl` smoke testing, including private CSR approval and optional public provider checks, see [`docs/DOCKER_DEV.md`](docs/DOCKER_DEV.md).

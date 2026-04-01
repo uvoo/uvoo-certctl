@@ -187,6 +187,7 @@ Initial set:
 
 - `doctor.read`
 - `authz.read`
+- `auth_issuer.read`
 - `metrics.read`
 - `csr.submit`
 - `csr.read`
@@ -254,7 +255,10 @@ No nested role expansion in v1.
 Initial built-in server mapping:
 
 - `GET /admin/v1/doctor` -> `doctor.read`
+- `GET /admin/v1/doctor/auth` -> `doctor.read`
 - `GET /admin/v1/effective-authz` -> `authz.read`
+- `GET /admin/v1/auth-issuers` -> `auth_issuer.read`
+- `GET /admin/v1/auth-issuers/{name}` -> `auth_issuer.read`
 - `GET /metrics` -> `metrics.read`
 - `POST /admin/v1/csr-requests` -> `csr.submit`
 - `GET /admin/v1/csr-requests` -> `csr.read`

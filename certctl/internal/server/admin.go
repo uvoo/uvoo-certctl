@@ -117,6 +117,54 @@ func (s *Server) handleAdminDoctor(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleAdminAuthDoctor(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	warnDays := s.cfg.AdminWarnDays
+	if raw := strings.TrimSpace(r.URL.Query().Get("warn_days")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "warn_days must be an integer")
+			return
+		}
+		warnDays = parsed
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	findings, err := ops.RunDoctorWithOptions(store, ops.DoctorOptions{
+		WarnDays: warnDays,
+		AuthIssuerProbe: func(issuer storage.AuthIssuer) error {
+			timeout := s.cfg.ProviderHTTPTimeout
+			if timeout <= 0 {
+				timeout = 10 * time.Second
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			defer cancel()
+			return s.authVerifier.CheckIssuerConnectivity(ctx, issuer)
+		},
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to run doctor")
+		return
+	}
+
+	authFindings := ops.AuthRelatedDoctorFindings(findings)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":    ops.DoctorStatus(authFindings),
+		"warn_days": warnDays,
+		"findings":  authFindings,
+	})
+}
+
 func (s *Server) handleAdminEffectiveAuthz(w http.ResponseWriter, r *http.Request) {
 	identity, ok := authIdentityFromRequest(r)
 	if !ok {
@@ -172,6 +220,80 @@ func (s *Server) handleAdminEffectiveAuthz(w http.ResponseWriter, r *http.Reques
 		"effective_permissions": effectivePermissions,
 		"matching_bindings":     matchingBindings,
 	})
+}
+
+func (s *Server) handleAdminAuthIssuers(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.URL.Path == "/admin/v1/auth-issuers" && r.Method == http.MethodGet:
+		s.handleAdminAuthIssuerList(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/auth-issuers/") && r.Method == http.MethodGet:
+		s.handleAdminAuthIssuerGet(w, r)
+		return
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+}
+
+func (s *Server) handleAdminAuthIssuerList(w http.ResponseWriter, r *http.Request) {
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rows, err := store.ListAuthIssuers(!parseBoolQuery(r, "all"))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list auth issuers")
+		return
+	}
+	nameFilter := strings.TrimSpace(r.URL.Query().Get("name"))
+	issuerFilter := strings.TrimSpace(r.URL.Query().Get("issuer"))
+	probe := parseBoolQuery(r, "probe")
+	payload := make([]map[string]any, 0, len(rows))
+	for _, rec := range rows {
+		if nameFilter != "" && rec.Name != nameFilter {
+			continue
+		}
+		if issuerFilter != "" && rec.Issuer != issuerFilter {
+			continue
+		}
+		payload = append(payload, s.authIssuerStatusPayload(rec, probe))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": payload,
+		"count": len(payload),
+	})
+}
+
+func (s *Server) handleAdminAuthIssuerGet(w http.ResponseWriter, r *http.Request) {
+	issuerID := adminAuthIssuerID(r.URL.Path)
+	if issuerID == "" {
+		writeError(w, http.StatusNotFound, "auth issuer not found")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rows, err := store.ListAuthIssuers(false)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list auth issuers")
+		return
+	}
+	for _, rec := range rows {
+		if rec.Name == issuerID || rec.Issuer == issuerID {
+			writeJSON(w, http.StatusOK, s.authIssuerStatusPayload(rec, parseBoolQuery(r, "probe")))
+			return
+		}
+	}
+	writeError(w, http.StatusNotFound, "auth issuer not found")
 }
 
 func (s *Server) handleAdminCSRRequests(w http.ResponseWriter, r *http.Request) {
@@ -1291,4 +1413,37 @@ func authIssuerPayload(rec storage.AuthIssuer) map[string]any {
 		"created_at":      formatTimeValue(rec.CreatedAt),
 		"updated_at":      formatTimeValue(rec.UpdatedAt),
 	}
+}
+
+func (s *Server) authIssuerStatusPayload(rec storage.AuthIssuer, probe bool) map[string]any {
+	payload := authIssuerPayload(rec)
+	status := "skipped"
+	var errMsg any
+	if probe && rec.Enabled {
+		timeout := s.cfg.ProviderHTTPTimeout
+		if timeout <= 0 {
+			timeout = 10 * time.Second
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		if err := s.authVerifier.CheckIssuerConnectivity(ctx, rec); err != nil {
+			status = "error"
+			errMsg = err.Error()
+		} else {
+			status = "ok"
+		}
+	} else if probe && !rec.Enabled {
+		status = "disabled"
+	}
+	payload["connectivity_status"] = status
+	payload["connectivity_error"] = errMsg
+	return payload
+}
+
+func adminAuthIssuerID(path string) string {
+	id := strings.TrimSpace(strings.TrimPrefix(path, "/admin/v1/auth-issuers/"))
+	if id == "" || strings.Contains(id, "/") {
+		return ""
+	}
+	return id
 }

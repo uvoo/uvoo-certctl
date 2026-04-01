@@ -49,7 +49,9 @@ This smoke path:
 - fetches a Keycloak access token
 - exercises first-login subject auto-approval
 - calls `/admin/v1/doctor`
+- calls `/admin/v1/doctor/auth`
 - calls `/admin/v1/effective-authz`
+- lists auth issuers over `/admin/v1/auth-issuers?probe=true`
 - lists and updates subjects over `/admin/v1/subjects`
 - lists and exercises temporary CRUD for subject auto-approval rules over `/admin/v1/subject-auto-approvals`
 - calls `/metrics` with dedicated metrics Basic auth

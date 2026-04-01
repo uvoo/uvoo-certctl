@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"certctl/internal/ops"
 	"certctl/internal/storage"
@@ -51,6 +52,98 @@ func TestAdminEffectiveAuthzForBasicAdmin(t *testing.T) {
 	body := rec.Body.String()
 	if !strings.Contains(body, `"superuser":true`) || !strings.Contains(body, `"effective_permissions":["*"]`) {
 		t.Fatalf("expected effective authz payload, got %s", body)
+	}
+}
+
+func TestAdminAuthDoctorFiltersFindings(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "certs.db")
+	store, err := storage.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateAuthzBinding(storage.AuthzBinding{
+		ID:         "binding-1",
+		Enabled:    true,
+		Principal:  "role:https://issuer.example:admins",
+		Permission: "doctor.read",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := New(Config{
+		DBPath:        dbPath,
+		AdminUsername: "admin",
+		AdminPassword: "admin-secret",
+		AdminWarnDays: 0,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/v1/doctor/auth", nil)
+	req.SetBasicAuth("admin", "admin-secret")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"check":"authz_binding_unknown_issuer"`) {
+		t.Fatalf("expected auth-only finding, got %s", body)
+	}
+	if strings.Contains(body, `"check":"public_active_count"`) {
+		t.Fatalf("expected auth-only doctor payload, got %s", body)
+	}
+}
+
+func TestAdminAuthIssuerListAndProbe(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "certs.db")
+	store, err := storage.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertAuthIssuer(storage.AuthIssuer{
+		ID:           "issuer-1",
+		Name:         "google-login",
+		Enabled:      true,
+		Issuer:       "https://accounts.google.com",
+		Audiences:    []string{"certctl"},
+		DiscoveryURL: "http://127.0.0.1:1/.well-known/openid-configuration",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := New(Config{
+		DBPath:              dbPath,
+		AdminUsername:       "admin",
+		AdminPassword:       "admin-secret",
+		ProviderHTTPTimeout: 50 * time.Millisecond,
+	})
+
+	listReq := httptest.NewRequest(http.MethodGet, "/admin/v1/auth-issuers", nil)
+	listReq.SetBasicAuth("admin", "admin-secret")
+	listRec := httptest.NewRecorder()
+	srv.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", listRec.Code, listRec.Body.String())
+	}
+	if !strings.Contains(listRec.Body.String(), `"google-login"`) {
+		t.Fatalf("expected listed auth issuer, got %s", listRec.Body.String())
+	}
+
+	probeReq := httptest.NewRequest(http.MethodGet, "/admin/v1/auth-issuers/google-login?probe=true", nil)
+	probeReq.SetBasicAuth("admin", "admin-secret")
+	probeRec := httptest.NewRecorder()
+	srv.ServeHTTP(probeRec, probeReq)
+	if probeRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", probeRec.Code, probeRec.Body.String())
+	}
+	probeBody := probeRec.Body.String()
+	if !strings.Contains(probeBody, `"connectivity_status":"error"`) {
+		t.Fatalf("expected probed issuer status, got %s", probeBody)
 	}
 }
 

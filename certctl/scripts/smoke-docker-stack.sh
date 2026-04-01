@@ -195,6 +195,9 @@ configure_auth() {
       --permission doctor.read >/dev/null
     certctl_exec create-authz-binding \
       --principal "local_group:docker-smoke-admin" \
+      --permission auth_issuer.read >/dev/null
+    certctl_exec create-authz-binding \
+      --principal "local_group:docker-smoke-admin" \
       --permission metrics.read >/dev/null
     certctl_exec create-authz-binding \
       --principal "local_group:docker-smoke-admin" \
@@ -217,6 +220,9 @@ configure_auth() {
   certctl_exec create-authz-binding \
     --principal "role:$ISSUER_URL:certctl_admin" \
     --permission doctor.read >/dev/null
+  certctl_exec create-authz-binding \
+    --principal "role:$ISSUER_URL:certctl_admin" \
+    --permission auth_issuer.read >/dev/null
   certctl_exec create-authz-binding \
     --principal "role:$ISSUER_URL:certctl_admin" \
     --permission metrics.read >/dev/null
@@ -321,6 +327,34 @@ payload = json.loads(sys.argv[1])
 assert "doctor.read" in payload["effective_permissions"], payload
 assert "authz.read" in payload["effective_permissions"], payload
 print("effective authz ok")
+PY
+
+  echo "Calling /admin/v1/doctor/auth with bearer auth..."
+  local auth_doctor_json
+  auth_doctor_json="$(curl -fsS "$CERTCTL_BASE_URL/admin/v1/doctor/auth" \
+    -H "Authorization: Bearer $ACCESS_TOKEN")"
+  python3 - <<'PY' "$auth_doctor_json"
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+assert payload["status"] in {"ok", "warn", "error"}, payload
+assert isinstance(payload["findings"], list), payload
+print("auth doctor ok")
+PY
+
+  echo "Listing auth issuers over the admin API with probe..."
+  local auth_issuers_json
+  auth_issuers_json="$(curl -fsS "$CERTCTL_BASE_URL/admin/v1/auth-issuers?probe=true" \
+    -H "Authorization: Bearer $ACCESS_TOKEN")"
+  python3 - <<'PY' "$auth_issuers_json" "$ISSUER_URL"
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+issuer = sys.argv[2]
+assert any(item["issuer"] == issuer for item in payload["items"]), payload
+print("auth issuer list ok")
 PY
 
   echo "Listing subjects over the admin API..."

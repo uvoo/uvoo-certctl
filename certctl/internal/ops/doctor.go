@@ -135,6 +135,28 @@ func DoctorStatus(findings []DoctorFinding) string {
 	return status
 }
 
+func FilterDoctorFindings(findings []DoctorFinding, keep func(DoctorFinding) bool) []DoctorFinding {
+	if keep == nil {
+		return append([]DoctorFinding(nil), findings...)
+	}
+	out := make([]DoctorFinding, 0, len(findings))
+	for _, finding := range findings {
+		if keep(finding) {
+			out = append(out, finding)
+		}
+	}
+	return out
+}
+
+func AuthRelatedDoctorFindings(findings []DoctorFinding) []DoctorFinding {
+	return FilterDoctorFindings(findings, func(finding DoctorFinding) bool {
+		check := strings.TrimSpace(finding.Check)
+		return strings.HasPrefix(check, "auth_") ||
+			strings.HasPrefix(check, "authz_") ||
+			strings.HasPrefix(check, "subject_auto_approval_")
+	})
+}
+
 func checkActiveLeafCounts(publicRows []storage.PublicCert, privateRows []storage.PrivateCert) []DoctorFinding {
 	var findings []DoctorFinding
 	publicCounts := map[string]int{}
