@@ -239,6 +239,17 @@ curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -d '{"issuer":"https://accounts.google.com","subject":"user-123","local_groups":["viewers"]}'
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/subjects/<subject-id>
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X PUT https://certctl.example.com:8443/admin/v1/subjects/<subject-id> \
+  -d '{"status":"active","local_groups":["employees"]}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -X DELETE https://certctl.example.com:8443/admin/v1/subjects/<subject-id>
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -H 'Content-Type: application/json' \
   -X PUT https://certctl.example.com:8443/admin/v1/subject-auto-approvals/google-employees \
   -d '{"issuer":"https://accounts.google.com","email_domain":"example.com","local_groups":["employees"]}'

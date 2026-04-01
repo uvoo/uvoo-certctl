@@ -274,8 +274,11 @@ Initial built-in server mapping:
 - `POST /admin/v1/csr-requests/{id}/approve` -> `csr.approve`
 - `POST /admin/v1/csr-requests/{id}/reject` -> `csr.reject`
 - `GET /admin/v1/subjects` -> `subject.read`
+- `GET /admin/v1/subjects/{id}` -> `subject.read`
 - `POST /admin/v1/subjects/approve` -> `subject.approve`
 - `POST /admin/v1/subjects/update` -> `subject.update`
+- `PUT /admin/v1/subjects/{id}` -> `subject.update`
+- `DELETE /admin/v1/subjects/{id}` -> `subject.update`
 - `GET /admin/v1/subject-auto-approvals` -> `subject_auto_approval.read`
 - `GET /admin/v1/subject-auto-approvals/{name}` -> `subject_auto_approval.read`
 - `PUT /admin/v1/subject-auto-approvals/{name}` -> `subject_auto_approval.write`

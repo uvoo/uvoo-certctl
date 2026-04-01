@@ -570,6 +570,17 @@ func TestAdminSubjectListApproveAndUpdateFlow(t *testing.T) {
 		t.Fatalf("expected listed subject, got %s", listRec.Body.String())
 	}
 
+	getReq := httptest.NewRequest(http.MethodGet, "/admin/v1/subjects/subject-1", nil)
+	getReq.SetBasicAuth("admin", "admin-secret")
+	getRec := httptest.NewRecorder()
+	srv.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", getRec.Code, getRec.Body.String())
+	}
+	if !strings.Contains(getRec.Body.String(), `"id":"subject-1"`) {
+		t.Fatalf("expected subject item response, got %s", getRec.Body.String())
+	}
+
 	approveReq := httptest.NewRequest(http.MethodPost, "/admin/v1/subjects/approve", strings.NewReader(`{
 		"issuer":"https://accounts.google.com",
 		"subject":"user-123",
@@ -602,6 +613,33 @@ func TestAdminSubjectListApproveAndUpdateFlow(t *testing.T) {
 	body := updateRec.Body.String()
 	if !strings.Contains(body, `"status":"disabled"`) || !strings.Contains(body, `"local_roles":["auditor"]`) {
 		t.Fatalf("expected updated subject response, got %s", body)
+	}
+
+	updateByIDReq := httptest.NewRequest(http.MethodPut, "/admin/v1/subjects/subject-1", strings.NewReader(`{
+		"status":"active",
+		"local_groups":["employees"]
+	}`))
+	updateByIDReq.Header.Set("Content-Type", "application/json")
+	updateByIDReq.SetBasicAuth("admin", "admin-secret")
+	updateByIDRec := httptest.NewRecorder()
+	srv.ServeHTTP(updateByIDRec, updateByIDReq)
+	if updateByIDRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", updateByIDRec.Code, updateByIDRec.Body.String())
+	}
+	updateByIDBody := updateByIDRec.Body.String()
+	if !strings.Contains(updateByIDBody, `"status":"active"`) || !strings.Contains(updateByIDBody, `"local_groups":["employees"]`) {
+		t.Fatalf("expected updated subject by id response, got %s", updateByIDBody)
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/admin/v1/subjects/subject-1", nil)
+	deleteReq.SetBasicAuth("admin", "admin-secret")
+	deleteRec := httptest.NewRecorder()
+	srv.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", deleteRec.Code, deleteRec.Body.String())
+	}
+	if !strings.Contains(deleteRec.Body.String(), `"deleted":true`) {
+		t.Fatalf("expected deleted subject response, got %s", deleteRec.Body.String())
 	}
 }
 

@@ -710,6 +710,15 @@ func (s *Server) handleAdminSubjects(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/admin/v1/subjects/update" && r.Method == http.MethodPost:
 		s.handleAdminSubjectUpdate(w, r)
 		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/subjects/") && r.Method == http.MethodGet:
+		s.handleAdminSubjectGet(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/subjects/") && r.Method == http.MethodPut:
+		s.handleAdminSubjectUpdateByID(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/subjects/") && r.Method == http.MethodDelete:
+		s.handleAdminSubjectDelete(w, r)
+		return
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -799,6 +808,28 @@ func (s *Server) handleAdminSubjectList(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+func (s *Server) handleAdminSubjectGet(w http.ResponseWriter, r *http.Request) {
+	id := adminSubjectID(r.URL.Path)
+	if id == "" {
+		writeError(w, http.StatusNotFound, "subject not found")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := store.GetSubjectByID(id)
+	if err != nil {
+		writeAdminStorageError(w, err, "subject")
+		return
+	}
+	writeJSON(w, http.StatusOK, subjectPayload(rec))
+}
+
 func (s *Server) handleAdminSubjectApprove(w http.ResponseWriter, r *http.Request) {
 	var body adminApproveSubjectRequest
 	if err := decodeJSONBody(r, &body); err != nil {
@@ -862,6 +893,79 @@ func (s *Server) handleAdminSubjectUpdate(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, subjectPayload(rec))
+}
+
+func (s *Server) handleAdminSubjectUpdateByID(w http.ResponseWriter, r *http.Request) {
+	id := adminSubjectID(r.URL.Path)
+	if id == "" {
+		writeError(w, http.StatusNotFound, "subject not found")
+		return
+	}
+
+	var body adminUpdateSubjectRequest
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if strings.TrimSpace(body.Status) == "" && body.LocalRoles == nil && body.LocalGroups == nil {
+		writeError(w, http.StatusBadRequest, "at least one of status, local_roles, or local_groups is required")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	current, err := store.GetSubjectByID(id)
+	if err != nil {
+		writeAdminStorageError(w, err, "subject")
+		return
+	}
+	rec, err := ops.UpdateSubject(store, ops.UpdateSubjectParams{
+		Issuer:       current.Issuer,
+		Subject:      current.Subject,
+		Status:       body.Status,
+		LocalRoles:   body.LocalRoles,
+		LocalGroups:  body.LocalGroups,
+		ChangeStatus: strings.TrimSpace(body.Status) != "",
+		ChangeRoles:  body.LocalRoles != nil,
+		ChangeGroups: body.LocalGroups != nil,
+	})
+	if err != nil {
+		writeAdminStorageError(w, err, "subject")
+		return
+	}
+	writeJSON(w, http.StatusOK, subjectPayload(rec))
+}
+
+func (s *Server) handleAdminSubjectDelete(w http.ResponseWriter, r *http.Request) {
+	id := adminSubjectID(r.URL.Path)
+	if id == "" {
+		writeError(w, http.StatusNotFound, "subject not found")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := ops.DeleteSubject(store, id)
+	if err != nil {
+		writeAdminStorageError(w, err, "subject")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":      rec.ID,
+		"issuer":  rec.Issuer,
+		"subject": rec.Subject,
+		"deleted": true,
+	})
 }
 
 func (s *Server) handleAdminSubjectAutoApprovalList(w http.ResponseWriter, r *http.Request) {
@@ -1964,6 +2068,14 @@ func adminSubjectAutoApprovalRuleName(path string) string {
 		return ""
 	}
 	return name
+}
+
+func adminSubjectID(path string) string {
+	id := strings.TrimSpace(strings.TrimPrefix(path, "/admin/v1/subjects/"))
+	if id == "" || strings.Contains(id, "/") {
+		return ""
+	}
+	return id
 }
 
 func compactStrings(values []string) []string {

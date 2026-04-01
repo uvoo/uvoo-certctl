@@ -60,7 +60,7 @@ This smoke path:
 - creates, updates, and deletes a temporary auth issuer over `/admin/v1/auth-issuers`
 - lists authz bindings over `/admin/v1/authz-bindings`
 - creates, updates, and deletes a temporary authz binding over `/admin/v1/authz-bindings`
-- lists and updates subjects over `/admin/v1/subjects`
+- lists, fetches, and updates subjects over `/admin/v1/subjects`
 - lists and exercises temporary CRUD for subject auto-approval rules over `/admin/v1/subject-auto-approvals`
 - calls `/metrics` with dedicated metrics Basic auth
 - calls `/metrics` with bearer auth

@@ -399,7 +399,18 @@ func adminSubjectItemPermission(r *http.Request) (auth.PermissionRequest, bool) 
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/update"):
 		return auth.PermissionRequest{Permission: "subject.update", ResourceKind: "subject", ResourceRef: "*"}, true
 	default:
-		return auth.PermissionRequest{}, false
+		id := adminSubjectID(r.URL.Path)
+		if id == "" {
+			return auth.PermissionRequest{}, false
+		}
+		switch r.Method {
+		case http.MethodGet:
+			return auth.PermissionRequest{Permission: "subject.read", ResourceKind: "subject", ResourceRef: id}, true
+		case http.MethodPut, http.MethodDelete:
+			return auth.PermissionRequest{Permission: "subject.update", ResourceKind: "subject", ResourceRef: id}, true
+		default:
+			return auth.PermissionRequest{}, false
+		}
 	}
 }
 

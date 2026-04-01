@@ -111,6 +111,18 @@ func UpdateSubject(store *storage.Store, params UpdateSubjectParams) (storage.Su
 	return rec, nil
 }
 
+func DeleteSubject(store *storage.Store, id string) (storage.Subject, error) {
+	rec, err := store.GetSubjectByID(id)
+	if err != nil {
+		return storage.Subject{}, err
+	}
+	if err := store.DeleteSubjectByID(id); err != nil {
+		return storage.Subject{}, err
+	}
+	LogAuditEvent(store, "delete_subject", "subject", rec.ID, rec.Issuer+" "+rec.Subject)
+	return rec, nil
+}
+
 type SubjectAutoApprovalRuleFilter struct {
 	EnabledOnly bool
 	Name        string

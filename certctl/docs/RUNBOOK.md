@@ -248,6 +248,17 @@ curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -d '{"issuer":"https://accounts.google.com","subject":"user-123","local_groups":["viewers"]}'
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/subjects/<subject-id>
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X PUT https://certctl.example.com:8443/admin/v1/subjects/<subject-id> \
+  -d '{"status":"active","local_groups":["employees"]}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -X DELETE https://certctl.example.com:8443/admin/v1/subjects/<subject-id>
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   https://certctl.example.com:8443/admin/v1/subject-auto-approvals
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
@@ -271,7 +282,7 @@ Notes:
 - the built-in NACL checks the TCP client address, not forwarded-for headers
 - `/metrics` can use its own Basic auth credentials with `--metrics-username` and `--metrics-password`
 - `/metrics` otherwise accepts the admin Basic auth or bearer auth
-- `/admin/v1/subjects` supports remote listing plus approve/update actions for locally tracked JWT subjects
+- `/admin/v1/subjects` supports remote listing, item get/update/delete by subject ID, plus approve/update actions for locally tracked JWT subjects
 - `/admin/v1/subject-auto-approvals` supports remote list/get/upsert/delete for subject auto-approval rules
 - `/admin/v1/effective-authz` shows the caller's current effective permissions and matching bindings
 - `/admin/v1/doctor/auth` returns only auth-related doctor findings

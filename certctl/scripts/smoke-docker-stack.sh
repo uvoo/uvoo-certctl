@@ -498,32 +498,47 @@ PY
   local subjects_json
   subjects_json="$(curl -fsS "$CERTCTL_BASE_URL/admin/v1/subjects" \
     -H "Authorization: Bearer $ACCESS_TOKEN")"
-  python3 - <<'PY' "$subjects_json" "$TOKEN_SUBJECT"
+  local current_subject_id
+  current_subject_id="$(python3 - <<'PY' "$subjects_json" "$TOKEN_SUBJECT"
 import json
 import sys
 
 payload = json.loads(sys.argv[1])
 subject = sys.argv[2]
-assert any(item["subject"] == subject for item in payload["items"]), payload
-print("subject list ok")
+match = next((item for item in payload["items"] if item["subject"] == subject), None)
+assert match, payload
+print(match["id"])
+PY
+)"
+
+  echo "Fetching the current subject over the admin API..."
+  local subject_get_json
+  subject_get_json="$(curl -fsS "$CERTCTL_BASE_URL/admin/v1/subjects/$current_subject_id" \
+    -H "Authorization: Bearer $ACCESS_TOKEN")"
+  python3 - <<'PY' "$subject_get_json" "$current_subject_id"
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+subject_id = sys.argv[2]
+assert payload["id"] == subject_id, payload
+print("subject get ok")
 PY
 
-  echo "Updating the current subject over the admin API..."
-  python3 - <<'PY' "$WORK_DIR/subject-update.json" "$ISSUER_URL" "$TOKEN_SUBJECT"
+  echo "Updating the current subject over the admin API by id..."
+  python3 - <<'PY' "$WORK_DIR/subject-update.json"
 import json
 import sys
 from pathlib import Path
 
-out_path, issuer, subject = sys.argv[1:]
+out_path = sys.argv[1]
 payload = {
-    "issuer": issuer,
-    "subject": subject,
     "local_roles": ["docker-smoke-verified"],
 }
 Path(out_path).write_text(json.dumps(payload))
 PY
   local subject_update_json
-  subject_update_json="$(curl -fsS -X POST "$CERTCTL_BASE_URL/admin/v1/subjects/update" \
+  subject_update_json="$(curl -fsS -X PUT "$CERTCTL_BASE_URL/admin/v1/subjects/$current_subject_id" \
     -H "Authorization: Bearer $ACCESS_TOKEN" \
     -H 'Content-Type: application/json' \
     --data-binary "@$WORK_DIR/subject-update.json")"
