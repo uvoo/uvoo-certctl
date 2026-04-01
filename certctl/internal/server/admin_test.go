@@ -467,6 +467,82 @@ func TestMetricsEndpointRequiresAuthWhenAdminEnabled(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.UpsertAuthIssuer(storage.AuthIssuer{
+		ID:        "issuer-1",
+		Name:      "google-login",
+		Enabled:   true,
+		Issuer:    "https://accounts.google.com",
+		Audiences: []string{"certctl"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertAuthIssuer(storage.AuthIssuer{
+		ID:        "issuer-2",
+		Name:      "keycloak-dev",
+		Enabled:   true,
+		Issuer:    "https://sso.example.com/realms/certctl",
+		Audiences: []string{"certctl"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertAuthIssuer(storage.AuthIssuer{
+		ID:        "issuer-3",
+		Name:      "disabled-issuer",
+		Enabled:   false,
+		Issuer:    "https://disabled.example.com/realms/certctl",
+		Audiences: []string{"certctl"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateAuthzBinding(storage.AuthzBinding{
+		ID:         "binding-1",
+		Enabled:    true,
+		Principal:  "role:https://sso.example.com/realms/certctl:certctl_admin",
+		Permission: "doctor.read",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateAuthzBinding(storage.AuthzBinding{
+		ID:         "binding-2",
+		Enabled:    true,
+		Principal:  "role:https://unknown.example.com/realms/certctl:unknown_admin",
+		Permission: "metrics.read",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateAuthzBinding(storage.AuthzBinding{
+		ID:          "binding-3",
+		Enabled:     true,
+		Principal:   "role:https://disabled.example.com/realms/certctl:legacy_admin",
+		Permission:  "subject.update",
+		ResourceRef: "*",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateAuthzBinding(storage.AuthzBinding{
+		ID:         "binding-4",
+		Enabled:    true,
+		Principal:  "superuser",
+		Permission: "*",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertSubjectAutoApprovalRule(storage.SubjectAutoApprovalRule{
+		ID:      "rule-1",
+		Name:    "broad-google",
+		Enabled: true,
+		Issuer:  "https://accounts.google.com",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertSubjectAutoApprovalRule(storage.SubjectAutoApprovalRule{
+		ID:      "rule-2",
+		Name:    "unknown-issuer-rule",
+		Enabled: true,
+		Issuer:  "https://missing.example.com/realms/certctl",
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -499,14 +575,28 @@ func TestMetricsEndpointRequiresAuthWhenAdminEnabled(t *testing.T) {
 		!strings.Contains(body, "certctl_pending_csr_requests_total") ||
 		!strings.Contains(body, "certctl_csr_requests_ready_for_pickup_total") ||
 		!strings.Contains(body, "certctl_auth_issuers_total") ||
+		!strings.Contains(body, "certctl_auth_issuer_binding_coverage_total") ||
 		!strings.Contains(body, "certctl_authz_bindings_total") ||
+		!strings.Contains(body, "certctl_authz_bindings_by_permission_total") ||
+		!strings.Contains(body, "certctl_authz_bindings_by_principal_kind_total") ||
+		!strings.Contains(body, "certctl_authz_bindings_risky_total") ||
 		!strings.Contains(body, "certctl_auth_requests_total") ||
 		!strings.Contains(body, "certctl_subject_auto_approval_rules_total") ||
+		!strings.Contains(body, "certctl_subject_auto_approval_rules_risky_total") ||
 		!strings.Contains(body, "certctl_subject_auto_approval_matches_total") ||
 		!strings.Contains(body, "certctl_pending_subjects_total") ||
 		!strings.Contains(body, "certctl_pending_subjects_older_than_days_total") ||
 		!strings.Contains(body, "certctl_subjects_total") {
 		t.Fatalf("expected metrics output, got %s", body)
+	}
+	if !strings.Contains(body, `state="enabled_without_bindings"`) ||
+		!strings.Contains(body, `state="disabled_referenced"`) ||
+		!strings.Contains(body, `state="unknown_referenced"`) ||
+		!strings.Contains(body, `principal_kind="superuser"`) ||
+		!strings.Contains(body, `risk="wildcard_permission"`) ||
+		!strings.Contains(body, `risk="broad"`) ||
+		!strings.Contains(body, `risk="unknown_issuer"`) {
+		t.Fatalf("expected auth summary labels in metrics output, got %s", body)
 	}
 }
 

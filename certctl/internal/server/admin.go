@@ -978,6 +978,12 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 		writeMetricSample(&b, "certctl_auth_issuers_total", map[string]string{"enabled": enabled}, float64(count))
 	}
 
+	writeMetricHeader(&b, "certctl_auth_issuer_binding_coverage_total", "Trusted auth issuer coverage by enabled binding relationships.")
+	authIssuerCoverage := summarizeAuthIssuerCoverage(authIssuers, authzBindings)
+	for state, count := range authIssuerCoverage {
+		writeMetricSample(&b, "certctl_auth_issuer_binding_coverage_total", map[string]string{"state": state}, float64(count))
+	}
+
 	writeMetricHeader(&b, "certctl_authz_bindings_total", "Authorization bindings by enabled state and scope breadth.")
 	authzBindingCounts := map[string]int{}
 	for _, binding := range authzBindings {
@@ -992,6 +998,34 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 		}, float64(count))
 	}
 
+	writeMetricHeader(&b, "certctl_authz_bindings_by_permission_total", "Authorization bindings by enabled state and permission.")
+	authzByPermission := summarizeAuthzBindingsByPermission(authzBindings)
+	for key, count := range authzByPermission {
+		parts := strings.SplitN(key, "|", 2)
+		labels := map[string]string{"enabled": parts[0], "permission": ""}
+		if len(parts) == 2 {
+			labels["permission"] = parts[1]
+		}
+		writeMetricSample(&b, "certctl_authz_bindings_by_permission_total", labels, float64(count))
+	}
+
+	writeMetricHeader(&b, "certctl_authz_bindings_by_principal_kind_total", "Authorization bindings by enabled state and principal kind.")
+	authzByPrincipalKind := summarizeAuthzBindingsByPrincipalKind(authzBindings)
+	for key, count := range authzByPrincipalKind {
+		parts := strings.SplitN(key, "|", 2)
+		labels := map[string]string{"enabled": parts[0], "principal_kind": ""}
+		if len(parts) == 2 {
+			labels["principal_kind"] = parts[1]
+		}
+		writeMetricSample(&b, "certctl_authz_bindings_by_principal_kind_total", labels, float64(count))
+	}
+
+	writeMetricHeader(&b, "certctl_authz_bindings_risky_total", "Enabled authorization bindings with risky authz characteristics.")
+	authzRiskCounts := summarizeRiskyAuthzBindings(authzBindings)
+	for risk, count := range authzRiskCounts {
+		writeMetricSample(&b, "certctl_authz_bindings_risky_total", map[string]string{"risk": risk}, float64(count))
+	}
+
 	writeMetricHeader(&b, "certctl_subject_auto_approval_rules_total", "Subject auto-approval rules by enabled state.")
 	subjectRuleCounts := map[string]int{}
 	for _, rule := range subjectAutoApprovalRules {
@@ -999,6 +1033,12 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 	}
 	for enabled, count := range subjectRuleCounts {
 		writeMetricSample(&b, "certctl_subject_auto_approval_rules_total", map[string]string{"enabled": enabled}, float64(count))
+	}
+
+	writeMetricHeader(&b, "certctl_subject_auto_approval_rules_risky_total", "Enabled subject auto-approval rules with risky auth relationships.")
+	subjectRuleRiskCounts := summarizeRiskySubjectAutoApprovalRules(authIssuers, subjectAutoApprovalRules)
+	for risk, count := range subjectRuleRiskCounts {
+		writeMetricSample(&b, "certctl_subject_auto_approval_rules_risky_total", map[string]string{"risk": risk}, float64(count))
 	}
 
 	writeMetricHeader(&b, "certctl_auth_requests_total", "Admin and metrics authentication attempts by result and auth method since process start.")
@@ -1094,6 +1134,160 @@ func authzBindingScope(binding storage.AuthzBinding) string {
 		return "wildcard"
 	}
 	return "scoped"
+}
+
+func summarizeAuthIssuerCoverage(issuers []storage.AuthIssuer, bindings []storage.AuthzBinding) map[string]int {
+	counts := map[string]int{}
+	issuerEnabledBindings := map[string]bool{}
+	knownIssuers := map[string]storage.AuthIssuer{}
+
+	for _, issuer := range issuers {
+		knownIssuers[issuer.Issuer] = issuer
+	}
+	for _, binding := range bindings {
+		if !binding.Enabled {
+			continue
+		}
+		issuer, ok := bindingPrincipalIssuer(binding.Principal)
+		if !ok {
+			continue
+		}
+		if rec, exists := knownIssuers[issuer]; exists {
+			issuerEnabledBindings[rec.Issuer] = true
+			if !rec.Enabled {
+				counts["disabled_referenced"]++
+			}
+		} else {
+			counts["unknown_referenced"]++
+		}
+	}
+	for _, issuer := range issuers {
+		if !issuer.Enabled {
+			continue
+		}
+		if issuerEnabledBindings[issuer.Issuer] {
+			counts["enabled_with_bindings"]++
+		} else {
+			counts["enabled_without_bindings"]++
+		}
+	}
+	return counts
+}
+
+func summarizeAuthzBindingsByPermission(bindings []storage.AuthzBinding) map[string]int {
+	counts := map[string]int{}
+	for _, binding := range bindings {
+		key := strconv.FormatBool(binding.Enabled) + "|" + strings.TrimSpace(binding.Permission)
+		counts[key]++
+	}
+	return counts
+}
+
+func summarizeAuthzBindingsByPrincipalKind(bindings []storage.AuthzBinding) map[string]int {
+	counts := map[string]int{}
+	for _, binding := range bindings {
+		key := strconv.FormatBool(binding.Enabled) + "|" + bindingPrincipalKind(binding.Principal)
+		counts[key]++
+	}
+	return counts
+}
+
+func summarizeRiskyAuthzBindings(bindings []storage.AuthzBinding) map[string]int {
+	counts := map[string]int{}
+	for _, binding := range bindings {
+		if !binding.Enabled {
+			continue
+		}
+		if strings.TrimSpace(binding.Permission) == "*" {
+			counts["wildcard_permission"]++
+		}
+		if strings.TrimSpace(binding.Principal) == "superuser" {
+			counts["superuser"]++
+		}
+		if isScopedMutationPermission(binding.Permission) && strings.TrimSpace(binding.ResourceKind) == "" {
+			counts["unscoped_mutation"]++
+		}
+		if isScopedMutationPermission(binding.Permission) && strings.TrimSpace(binding.ResourceRef) == "*" {
+			counts["wildcard_scope"]++
+		}
+	}
+	return counts
+}
+
+func summarizeRiskySubjectAutoApprovalRules(issuers []storage.AuthIssuer, rules []storage.SubjectAutoApprovalRule) map[string]int {
+	counts := map[string]int{}
+	knownIssuers := map[string]storage.AuthIssuer{}
+	for _, issuer := range issuers {
+		knownIssuers[issuer.Issuer] = issuer
+	}
+	for _, rule := range rules {
+		if !rule.Enabled {
+			continue
+		}
+		rec, ok := knownIssuers[rule.Issuer]
+		if !ok {
+			counts["unknown_issuer"]++
+			continue
+		}
+		if !rec.Enabled {
+			counts["disabled_issuer"]++
+		}
+		if strings.TrimSpace(rule.EmailDomain) == "" && len(rule.RequiredRoles) == 0 && len(rule.RequiredGroups) == 0 {
+			counts["broad"]++
+		}
+	}
+	return counts
+}
+
+func bindingPrincipalIssuer(principal string) (string, bool) {
+	for _, prefix := range []string{"sub:", "role:", "group:"} {
+		if !strings.HasPrefix(principal, prefix) {
+			continue
+		}
+		remainder := strings.TrimPrefix(principal, prefix)
+		if !strings.Contains(remainder, "://") {
+			return "", false
+		}
+		idx := strings.LastIndex(remainder, ":")
+		if idx <= 0 || idx == len(remainder)-1 {
+			return "", false
+		}
+		issuer := strings.TrimSpace(remainder[:idx])
+		if issuer == "" {
+			return "", false
+		}
+		return issuer, true
+	}
+	return "", false
+}
+
+func bindingPrincipalKind(principal string) string {
+	principal = strings.TrimSpace(principal)
+	switch {
+	case principal == "superuser":
+		return "superuser"
+	case strings.HasPrefix(principal, "sub:"):
+		return "sub"
+	case strings.HasPrefix(principal, "role:"):
+		return "role"
+	case strings.HasPrefix(principal, "group:"):
+		return "group"
+	case strings.HasPrefix(principal, "local_role:"):
+		return "local_role"
+	case strings.HasPrefix(principal, "local_group:"):
+		return "local_group"
+	default:
+		return "other"
+	}
+}
+
+func isScopedMutationPermission(permission string) bool {
+	switch strings.TrimSpace(permission) {
+	case "csr.approve", "csr.reject", "csr.submit", "subject.approve", "subject.update", "subject_auto_approval.write":
+		return true
+	default:
+		return false
+	}
 }
 
 func countExpiringPrivateCerts(rows []storage.PrivateCert, now time.Time, warnWindow time.Duration) int {

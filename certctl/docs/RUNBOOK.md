@@ -242,7 +242,7 @@ Notes:
 - `/admin/v1/effective-authz` shows the caller's current effective permissions and matching bindings
 - `/admin/v1/doctor/auth` returns only auth-related doctor findings
 - `/admin/v1/auth-issuers` lists trusted auth issuers and can include live connectivity probe status with `?probe=true`
-- `/metrics` includes low-cardinality counts for CSR backlog, pickup-ready requests, configured auth issuers and bindings, auth request outcomes, subject auto-approval rules and matches, pending-subject counts, and locally tracked JWT subjects
+- `/metrics` includes low-cardinality counts for CSR backlog, pickup-ready requests, configured auth issuers and bindings, issuer binding coverage, binding permission and principal-kind mix, risky authz and subject auto-approval counts, auth request outcomes, subject auto-approval rules and matches, pending-subject counts, and locally tracked JWT subjects
 - for local end-to-end testing with Keycloak and the built-in server, use the Docker stack in [`DOCKER_DEV.md`](DOCKER_DEV.md)
 
 ## 6. Backup and restore
