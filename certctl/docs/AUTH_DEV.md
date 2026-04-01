@@ -98,6 +98,18 @@ curl -sS http://127.0.0.1:18081/metrics \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
+For a dedicated metrics Basic auth fallback:
+
+```bash
+certctl serve-certs \
+  --listen 127.0.0.1:18081 \
+  --nacl 127.0.0.0/8,::1/128 \
+  --admin-warn-days 0 \
+  --metrics \
+  --metrics-username metrics \
+  --metrics-password env:CERTCTL_METRICS_PASSWORD
+```
+
 ## One-command smoke path
 
 ```bash

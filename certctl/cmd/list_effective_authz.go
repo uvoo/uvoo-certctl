@@ -46,6 +46,9 @@ func init() {
 			}
 			var matchedIssuer any
 			var subjectRecord any
+			var subjectStatus any
+			var subjectStatusReason any
+			var matchingAutoApprovalRules []string
 			if bearerToken != "" {
 				mode = "bearer_token"
 				token, err := util.ResolveSecretValue(bearerToken, "CERTCTL_BEARER_TOKEN")
@@ -68,25 +71,39 @@ func init() {
 				if err != nil {
 					return err
 				}
-				if subjectRec, err := store.GetSubject(identity.Issuer, identity.Subject); err == nil {
-					identity = auth.ApplySubjectRecord(identity, subjectRec)
-					subjectRecord = subjectPayload(subjectRec)
+				rules, err := store.ListSubjectAutoApprovalRules(true)
+				if err != nil {
+					return err
 				}
+				var subjectRecPtr *storage.Subject
+				if subjectRec, err := store.GetSubject(identity.Issuer, identity.Subject); err == nil {
+					subjectRecord = subjectPayload(subjectRec)
+					subjectRecCopy := subjectRec
+					subjectRecPtr = &subjectRecCopy
+				}
+				preview := auth.PreviewSubjectAccess(identity, subjectRecPtr, rules)
+				identity = preview.Identity
+				subjectStatus = preview.Status
+				subjectStatusReason = preview.Reason
+				matchingAutoApprovalRules = preview.MatchedRuleNames
 			}
 
 			effectivePermissions := auth.EffectivePermissions(identity, bindings)
 			matchingBindings := collectMatchingBindings(identity, bindings, effectivePermissions)
 			payload := map[string]any{
-				"input_mode":            mode,
-				"matched_issuer":        matchedIssuer,
-				"subject_record":        subjectRecord,
-				"principals":            identity.Principals,
-				"roles":                 identity.Roles,
-				"groups":                identity.Groups,
-				"local_roles":           identity.LocalRoles,
-				"local_groups":          identity.LocalGroups,
-				"effective_permissions": effectivePermissions,
-				"matching_bindings":     matchingBindings,
+				"input_mode":                   mode,
+				"matched_issuer":               matchedIssuer,
+				"subject_record":               subjectRecord,
+				"subject_status":               subjectStatus,
+				"subject_status_reason":        subjectStatusReason,
+				"matching_auto_approval_rules": matchingAutoApprovalRules,
+				"principals":                   identity.Principals,
+				"roles":                        identity.Roles,
+				"groups":                       identity.Groups,
+				"local_roles":                  identity.LocalRoles,
+				"local_groups":                 identity.LocalGroups,
+				"effective_permissions":        effectivePermissions,
+				"matching_bindings":            matchingBindings,
 			}
 
 			if jsonOut {
@@ -97,6 +114,13 @@ func init() {
 			if matchedIssuer != nil {
 				printKV("matched_issuer", fmt.Sprintf("%v", matchedIssuer.(map[string]any)["issuer"]))
 			}
+			if subjectStatus != nil {
+				printKV("subject_status", fmt.Sprintf("%v", subjectStatus))
+			}
+			if subjectStatusReason != nil {
+				printKV("subject_status_reason", fmt.Sprintf("%v", subjectStatusReason))
+			}
+			printStringList("matching_auto_approval_rules", matchingAutoApprovalRules)
 			printStringList("principals", identity.Principals)
 			printStringList("roles", identity.Roles)
 			printStringList("groups", identity.Groups)

@@ -1,6 +1,48 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SKIP_CLEANUP=0
+ONLY_CLEANUP=0
+
+usage() {
+  cat <<'EOF'
+Usage: ./scripts/smoke-docker-stack.sh [--skip-cleanup] [--only-cleanup] [--help]
+
+Options:
+  --skip-cleanup  Leave the docker stack and temp work directory in place on exit.
+  --only-cleanup  Only tear down the configured docker-compose project and exit.
+  --help          Show this help text.
+
+Notes:
+  - Use PROJECT_NAME=... with --skip-cleanup and --only-cleanup if you want to
+    tear down the same stack later.
+  - KEEP_STACK=1 still works and leaves containers up, but --skip-cleanup also
+    preserves the temporary work directory for manual inspection.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --skip-cleanup)
+      SKIP_CLEANUP=1
+      shift
+      ;;
+    --only-cleanup)
+      ONLY_CLEANUP=1
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-$ROOT_DIR/dev/docker/docker-compose.yml}"
 PROJECT_NAME="${PROJECT_NAME:-certctl-smoke-$(date +%s)}"
@@ -45,13 +87,27 @@ certctl_exec() {
   compose exec -T "$CERTCTL_SERVICE" certctl --db "$DB_PATH_IN_CONTAINER" "$@"
 }
 
+cleanup_stack() {
+  compose down -v >/dev/null 2>&1 || true
+}
+
 cleanup() {
+  if [[ "$SKIP_CLEANUP" == "1" ]]; then
+    return 0
+  fi
   if [[ "$KEEP_STACK" != "1" ]]; then
-    compose down -v >/dev/null 2>&1 || true
+    cleanup_stack
   fi
   rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
+
+if [[ "$ONLY_CLEANUP" == "1" ]]; then
+  echo "Cleaning up docker stack for project: $PROJECT_NAME"
+  cleanup_stack
+  rm -rf "$WORK_DIR"
+  exit 0
+fi
 
 wait_for_url() {
   local url="$1"

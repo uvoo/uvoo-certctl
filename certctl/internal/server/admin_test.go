@@ -254,9 +254,34 @@ func TestMetricsEndpointRequiresAuthWhenAdminEnabled(t *testing.T) {
 		!strings.Contains(body, "certctl_csr_requests_ready_for_pickup_total") ||
 		!strings.Contains(body, "certctl_auth_issuers_total") ||
 		!strings.Contains(body, "certctl_authz_bindings_total") ||
+		!strings.Contains(body, "certctl_auth_requests_total") ||
 		!strings.Contains(body, "certctl_subject_auto_approval_rules_total") ||
+		!strings.Contains(body, "certctl_subject_auto_approval_matches_total") ||
 		!strings.Contains(body, "certctl_subjects_total") {
 		t.Fatalf("expected metrics output, got %s", body)
+	}
+}
+
+func TestMetricsEndpointAllowsDedicatedMetricsBasicAuth(t *testing.T) {
+	srv := New(Config{
+		DBPath:          filepath.Join(t.TempDir(), "certs.db"),
+		AdminUsername:   "admin",
+		AdminPassword:   "admin-secret",
+		MetricsUsername: "metrics",
+		MetricsPassword: "metrics-secret",
+		AdminWarnDays:   30,
+		EnableMetrics:   true,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req.SetBasicAuth("metrics", "metrics-secret")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `certctl_auth_requests_total{auth_method="basic_metrics",result="allowed"} 1`) {
+		t.Fatalf("expected metrics auth counter for dedicated metrics basic auth, got %s", rec.Body.String())
 	}
 }
 

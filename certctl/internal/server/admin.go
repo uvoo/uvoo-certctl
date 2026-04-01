@@ -380,7 +380,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	defer store.Close()
 
-	payload, err := buildMetrics(store, s.cfg.AdminWarnDays)
+	payload, err := buildMetrics(store, s.cfg.AdminWarnDays, s.authResultSnapshot(), s.autoApprovalSnapshot())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to build metrics")
 		return
@@ -390,7 +390,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(payload))
 }
 
-func buildMetrics(store *storage.Store, warnDays int) (string, error) {
+func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int, autoApprovals map[string]int) (string, error) {
 	publicRows, err := store.List("", true)
 	if err != nil {
 		return "", err
@@ -544,6 +544,21 @@ func buildMetrics(store *storage.Store, warnDays int) (string, error) {
 	}
 	for enabled, count := range subjectRuleCounts {
 		writeMetricSample(&b, "certctl_subject_auto_approval_rules_total", map[string]string{"enabled": enabled}, float64(count))
+	}
+
+	writeMetricHeader(&b, "certctl_auth_requests_total", "Admin and metrics authentication attempts by result and auth method since process start.")
+	for key, count := range authResults {
+		parts := strings.SplitN(key, "|", 2)
+		labels := map[string]string{"result": parts[0], "auth_method": "unknown"}
+		if len(parts) == 2 && parts[1] != "" {
+			labels["auth_method"] = parts[1]
+		}
+		writeMetricSample(&b, "certctl_auth_requests_total", labels, float64(count))
+	}
+
+	writeMetricHeader(&b, "certctl_subject_auto_approval_matches_total", "Subject auto-approval rule matches since process start.")
+	for ruleName, count := range autoApprovals {
+		writeMetricSample(&b, "certctl_subject_auto_approval_matches_total", map[string]string{"rule": ruleName}, float64(count))
 	}
 
 	writeMetricHeader(&b, "certctl_subjects_total", "Locally tracked JWT subjects by status.")

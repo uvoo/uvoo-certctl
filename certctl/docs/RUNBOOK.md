@@ -183,6 +183,17 @@ certctl serve-certs \
   --admin-username admin \
   --admin-password env:CERTCTL_ADMIN_PASSWORD \
   --metrics
+
+certctl serve-certs \
+  --listen :8443 \
+  --tls-cert-file server.crt \
+  --tls-key-file server.key \
+  --csr-submit-password env:CERTCTL_CSR_SUBMIT_PASSWORD \
+  --admin-username admin \
+  --admin-password env:CERTCTL_ADMIN_PASSWORD \
+  --metrics \
+  --metrics-username metrics \
+  --metrics-password env:CERTCTL_METRICS_PASSWORD
 ```
 
 Useful remote checks:
@@ -193,6 +204,9 @@ curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   https://certctl.example.com:8443/metrics
+
+curl -sS -u metrics:"$CERTCTL_METRICS_PASSWORD" \
+  https://certctl.example.com:8443/metrics
 ```
 
 Notes:
@@ -201,8 +215,9 @@ Notes:
 - loopback is not included by default
 - if you run behind a reverse proxy, allow the proxy source address
 - the built-in NACL checks the TCP client address, not forwarded-for headers
-- `/metrics` uses the same Basic auth when the admin API is enabled
-- `/metrics` includes low-cardinality counts for CSR backlog, pickup-ready requests, configured auth issuers and bindings, subject auto-approval rules, and locally tracked JWT subjects
+- `/metrics` can use its own Basic auth credentials with `--metrics-username` and `--metrics-password`
+- `/metrics` otherwise accepts the admin Basic auth or bearer auth
+- `/metrics` includes low-cardinality counts for CSR backlog, pickup-ready requests, configured auth issuers and bindings, auth request outcomes, subject auto-approval rules and matches, and locally tracked JWT subjects
 - for local end-to-end testing with Keycloak and the built-in server, use the Docker stack in [`DOCKER_DEV.md`](DOCKER_DEV.md)
 
 ## 6. Backup and restore

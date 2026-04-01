@@ -12,6 +12,15 @@ type SubjectAutoApprovalMatch struct {
 	LocalGroups []string
 }
 
+type SubjectAccessPreview struct {
+	Status             string
+	Reason             string
+	MatchedRuleNames   []string
+	MatchedLocalRoles  []string
+	MatchedLocalGroups []string
+	Identity           Identity
+}
+
 func MatchSubjectAutoApprovalRules(identity Identity, rules []storage.SubjectAutoApprovalRule) SubjectAutoApprovalMatch {
 	var match SubjectAutoApprovalMatch
 	for _, rule := range rules {
@@ -38,6 +47,48 @@ func MatchSubjectAutoApprovalRules(identity Identity, rules []storage.SubjectAut
 	match.LocalRoles = uniqueStrings(match.LocalRoles...)
 	match.LocalGroups = uniqueStrings(match.LocalGroups...)
 	return match
+}
+
+func PreviewSubjectAccess(identity Identity, subject *storage.Subject, rules []storage.SubjectAutoApprovalRule) SubjectAccessPreview {
+	preview := SubjectAccessPreview{
+		Status:   storage.SubjectStatusPending,
+		Reason:   "pending_local_approval",
+		Identity: identity,
+	}
+	if subject != nil {
+		preview.Status = subject.Status
+		preview.Identity = ApplySubjectRecord(identity, *subject)
+		switch subject.Status {
+		case storage.SubjectStatusDisabled:
+			preview.Reason = "disabled"
+			return preview
+		case storage.SubjectStatusActive:
+			preview.Reason = "active"
+			return preview
+		default:
+			preview.Reason = "pending_local_approval"
+		}
+	}
+
+	match := MatchSubjectAutoApprovalRules(identity, rules)
+	preview.MatchedRuleNames = append([]string(nil), match.RuleNames...)
+	preview.MatchedLocalRoles = append([]string(nil), match.LocalRoles...)
+	preview.MatchedLocalGroups = append([]string(nil), match.LocalGroups...)
+	if len(match.RuleNames) == 0 {
+		return preview
+	}
+
+	preview.Status = storage.SubjectStatusActive
+	preview.Reason = "auto_approved"
+	if subject != nil {
+		preview.Identity.LocalRoles = uniqueStrings(append(append([]string(nil), subject.LocalRoles...), match.LocalRoles...)...)
+		preview.Identity.LocalGroups = uniqueStrings(append(append([]string(nil), subject.LocalGroups...), match.LocalGroups...)...)
+	} else {
+		preview.Identity.LocalRoles = uniqueStrings(match.LocalRoles...)
+		preview.Identity.LocalGroups = uniqueStrings(match.LocalGroups...)
+	}
+	preview.Identity.Principals = uniqueStrings(append(append([]string(nil), identity.Principals...), localPrincipals(preview.Identity.LocalRoles, preview.Identity.LocalGroups)...)...)
+	return preview
 }
 
 func matchesEmailDomain(email, domain string) bool {

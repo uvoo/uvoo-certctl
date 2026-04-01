@@ -30,6 +30,8 @@ type Config struct {
 	CSRMinInterval          time.Duration
 	AdminUsername           string
 	AdminPassword           string
+	MetricsUsername         string
+	MetricsPassword         string
 	AdminWarnDays           int
 	DefaultIntermediateName string
 	ProviderHTTPTimeout     time.Duration
@@ -41,6 +43,8 @@ type Server struct {
 	mux           *http.ServeMux
 	mu            sync.Mutex
 	csrLastSubmit map[string]time.Time
+	authResults   map[string]int
+	autoApprovals map[string]int
 	allowNets     []*net.IPNet
 	configErr     error
 	authVerifier  *auth.Verifier
@@ -51,6 +55,8 @@ func New(cfg Config) *Server {
 		cfg:           cfg,
 		mux:           http.NewServeMux(),
 		csrLastSubmit: map[string]time.Time{},
+		authResults:   map[string]int{},
+		autoApprovals: map[string]int{},
 		authVerifier:  auth.NewVerifier(cfg.ProviderHTTPTimeout),
 	}
 	if s.cfg.CSRMaxBodyBytes <= 0 {
@@ -69,7 +75,7 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("/admin/v1/csr-requests", s.requireAdminPermission(s.handleAdminCSRRequests, adminCSRCollectionPermission))
 	s.mux.HandleFunc("/admin/v1/csr-requests/", s.requireAdminPermission(s.handleAdminCSRRequests, adminCSRItemPermission))
 	if s.cfg.EnableMetrics {
-		s.mux.Handle("/metrics", s.requireAdminPermission(s.handleMetrics, metricsPermission))
+		s.mux.Handle("/metrics", s.requireMetricsPermission(s.handleMetrics, metricsPermission))
 	}
 
 	return s
@@ -110,6 +116,53 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mux.ServeHTTP(w, r)
+}
+
+func (s *Server) incrementAuthResult(result, authMethod string) {
+	result = strings.TrimSpace(result)
+	authMethod = strings.TrimSpace(authMethod)
+	if result == "" {
+		return
+	}
+	if authMethod == "" {
+		authMethod = "unknown"
+	}
+	key := result + "|" + authMethod
+	s.mu.Lock()
+	s.authResults[key]++
+	s.mu.Unlock()
+}
+
+func (s *Server) incrementAutoApprovalRules(ruleNames []string) {
+	s.mu.Lock()
+	for _, ruleName := range ruleNames {
+		ruleName = strings.TrimSpace(ruleName)
+		if ruleName == "" {
+			continue
+		}
+		s.autoApprovals[ruleName]++
+	}
+	s.mu.Unlock()
+}
+
+func (s *Server) authResultSnapshot() map[string]int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]int, len(s.authResults))
+	for key, value := range s.authResults {
+		out[key] = value
+	}
+	return out
+}
+
+func (s *Server) autoApprovalSnapshot() map[string]int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]int, len(s.autoApprovals))
+	for key, value := range s.autoApprovals {
+		out[key] = value
+	}
+	return out
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

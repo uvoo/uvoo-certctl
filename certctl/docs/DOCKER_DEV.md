@@ -61,6 +61,18 @@ To keep the stack running after the script exits:
 KEEP_STACK=1 ./scripts/smoke-docker-stack.sh
 ```
 
+To keep both the stack and the temporary work directory around for manual inspection:
+
+```bash
+PROJECT_NAME=certctl-dev ./scripts/smoke-docker-stack.sh --skip-cleanup
+```
+
+To tear down a kept stack later:
+
+```bash
+PROJECT_NAME=certctl-dev ./scripts/smoke-docker-stack.sh --only-cleanup
+```
+
 If those local ports are already in use, override them:
 
 ```bash

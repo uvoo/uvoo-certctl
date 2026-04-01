@@ -18,7 +18,7 @@ RUN CGO_ENABLED=0 go build -trimpath \
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates \
+  && apt-get install -y --no-install-recommends sqlite3 ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /out/certctl /usr/local/bin/certctl
