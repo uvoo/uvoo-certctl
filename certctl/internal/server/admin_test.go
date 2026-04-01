@@ -287,6 +287,77 @@ func TestAdminAuthzBindingListAndGet(t *testing.T) {
 	}
 }
 
+func TestAdminAuthzBindingCreateUpdateAndDelete(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "certs.db")
+	srv := New(Config{
+		DBPath:        dbPath,
+		AdminUsername: "admin",
+		AdminPassword: "admin-secret",
+	})
+
+	createReq := httptest.NewRequest(http.MethodPost, "/admin/v1/authz-bindings", strings.NewReader(`{
+		"principal":"role:https://sso.example.com/realms/certctl:certctl_admin",
+		"permission":"doctor.read",
+		"resource_kind":"subject",
+		"resource_ref":"*"
+	}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.SetBasicAuth("admin", "admin-secret")
+	createRec := httptest.NewRecorder()
+	srv.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", createRec.Code, createRec.Body.String())
+	}
+
+	var created struct {
+		ID         string `json:"id"`
+		Principal  string `json:"principal"`
+		Permission string `json:"permission"`
+	}
+	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.ID == "" || created.Permission != "doctor.read" {
+		t.Fatalf("unexpected create payload: %+v", created)
+	}
+
+	updateReq := httptest.NewRequest(http.MethodPut, "/admin/v1/authz-bindings/"+created.ID, strings.NewReader(`{
+		"permission":"metrics.read",
+		"enabled":false
+	}`))
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateReq.SetBasicAuth("admin", "admin-secret")
+	updateRec := httptest.NewRecorder()
+	srv.ServeHTTP(updateRec, updateReq)
+	if updateRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", updateRec.Code, updateRec.Body.String())
+	}
+	updateBody := updateRec.Body.String()
+	if !strings.Contains(updateBody, `"permission":"metrics.read"`) || !strings.Contains(updateBody, `"enabled":false`) {
+		t.Fatalf("expected updated authz binding payload, got %s", updateBody)
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/admin/v1/authz-bindings/"+created.ID, nil)
+	deleteReq.SetBasicAuth("admin", "admin-secret")
+	deleteRec := httptest.NewRecorder()
+	srv.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", deleteRec.Code, deleteRec.Body.String())
+	}
+	if !strings.Contains(deleteRec.Body.String(), `"deleted":true`) {
+		t.Fatalf("expected deleted payload, got %s", deleteRec.Body.String())
+	}
+
+	store, err := storage.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := store.GetAuthzBindingByID(created.ID); err == nil {
+		t.Fatalf("expected authz binding to be deleted")
+	}
+}
+
 func TestAdminCSRSubmitListAndRejectFlow(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "certs.db")
 	srv := New(Config{

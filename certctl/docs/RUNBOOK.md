@@ -86,6 +86,19 @@ curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -X DELETE 'https://certctl.example.com:8443/admin/v1/auth-issuers/keycloak-prod?force=true'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X POST https://certctl.example.com:8443/admin/v1/authz-bindings \
+  -d '{"principal":"role:https://sso.example.com/realms/certctl:certctl_admin","permission":"subject.read","resource_kind":"subject","resource_ref":"*"}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X PUT https://certctl.example.com:8443/admin/v1/authz-bindings/<binding-id> \
+  -d '{"permission":"subject.update","enabled":true}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -X DELETE https://certctl.example.com:8443/admin/v1/authz-bindings/<binding-id>
 ```
 
 Recommended routine:
@@ -263,7 +276,7 @@ Notes:
 - `/admin/v1/effective-authz` shows the caller's current effective permissions and matching bindings
 - `/admin/v1/doctor/auth` returns only auth-related doctor findings
 - `/admin/v1/auth-issuers` supports remote list, create, update, delete, and live connectivity probe status with `?probe=true`
-- `/admin/v1/authz-bindings` provides a remote read-only list and item view for current authz bindings
+- `/admin/v1/authz-bindings` supports remote list, create, update, delete, and item inspection for current authz bindings
 - `/metrics` includes low-cardinality counts for CSR backlog, pickup-ready requests, configured auth issuers and bindings, cached auth issuer connectivity states, doctor findings by severity and check, issuer binding coverage, binding permission and principal-kind mix, risky authz and subject auto-approval counts, auth request outcomes, subject auto-approval rules and matches, pending-subject counts, and locally tracked JWT subjects
 - for local end-to-end testing with Keycloak and the built-in server, use the Docker stack in [`DOCKER_DEV.md`](DOCKER_DEV.md)
 

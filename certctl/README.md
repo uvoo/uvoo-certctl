@@ -257,6 +257,19 @@ curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -X DELETE 'https://certctl.example.com:8443/admin/v1/auth-issuers/keycloak-prod?force=true'
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X POST https://certctl.example.com:8443/admin/v1/authz-bindings \
+  -d '{"principal":"role:https://sso.example.com/realms/certctl:certctl_admin","permission":"subject.read","resource_kind":"subject","resource_ref":"*"}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X PUT https://certctl.example.com:8443/admin/v1/authz-bindings/<binding-id> \
+  -d '{"permission":"subject.update","enabled":true}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -X DELETE https://certctl.example.com:8443/admin/v1/authz-bindings/<binding-id>
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   https://certctl.example.com:8443/admin/v1/effective-authz
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \

@@ -305,10 +305,27 @@ func adminDoctorPermission(r *http.Request) (auth.PermissionRequest, bool) {
 }
 
 func adminEffectiveAuthzPermission(r *http.Request) (auth.PermissionRequest, bool) {
-	if r.Method != http.MethodGet {
-		return auth.PermissionRequest{}, false
+	switch {
+	case r.URL.Path == "/admin/v1/effective-authz" && r.Method == http.MethodGet:
+		return auth.PermissionRequest{Permission: "authz.read"}, true
+	case r.URL.Path == "/admin/v1/authz-bindings" && r.Method == http.MethodGet:
+		return auth.PermissionRequest{Permission: "authz.read", ResourceKind: "authz_binding", ResourceRef: "*"}, true
+	case r.URL.Path == "/admin/v1/authz-bindings" && r.Method == http.MethodPost:
+		return auth.PermissionRequest{Permission: "authz.write", ResourceKind: "authz_binding", ResourceRef: "*"}, true
+	default:
+		id := adminAuthzBindingID(r.URL.Path)
+		if id == "" {
+			return auth.PermissionRequest{}, false
+		}
+		switch r.Method {
+		case http.MethodGet:
+			return auth.PermissionRequest{Permission: "authz.read", ResourceKind: "authz_binding", ResourceRef: id}, true
+		case http.MethodPut, http.MethodDelete:
+			return auth.PermissionRequest{Permission: "authz.write", ResourceKind: "authz_binding", ResourceRef: id}, true
+		default:
+			return auth.PermissionRequest{}, false
+		}
 	}
-	return auth.PermissionRequest{Permission: "authz.read"}, true
 }
 
 func adminAuthIssuerPermission(r *http.Request) (auth.PermissionRequest, bool) {

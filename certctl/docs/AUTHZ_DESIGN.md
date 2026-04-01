@@ -263,7 +263,10 @@ Initial built-in server mapping:
 - `PUT /admin/v1/auth-issuers/{name}` -> `auth_issuer.write`
 - `DELETE /admin/v1/auth-issuers/{name}` -> `auth_issuer.write`
 - `GET /admin/v1/authz-bindings` -> `authz.read`
+- `POST /admin/v1/authz-bindings` -> `authz.write`
 - `GET /admin/v1/authz-bindings/{id}` -> `authz.read`
+- `PUT /admin/v1/authz-bindings/{id}` -> `authz.write`
+- `DELETE /admin/v1/authz-bindings/{id}` -> `authz.write`
 - `GET /metrics` -> `metrics.read`
 - `POST /admin/v1/csr-requests` -> `csr.submit`
 - `GET /admin/v1/csr-requests` -> `csr.read`

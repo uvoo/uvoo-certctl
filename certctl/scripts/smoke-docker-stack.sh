@@ -207,6 +207,9 @@ configure_auth() {
       --permission authz.read >/dev/null
     certctl_exec create-authz-binding \
       --principal "local_group:docker-smoke-admin" \
+      --permission authz.write >/dev/null
+    certctl_exec create-authz-binding \
+      --principal "local_group:docker-smoke-admin" \
       --permission subject.read >/dev/null
     certctl_exec create-authz-binding \
       --principal "local_group:docker-smoke-admin" \
@@ -235,6 +238,9 @@ configure_auth() {
   certctl_exec create-authz-binding \
     --principal "role:$ISSUER_URL:certctl_admin" \
     --permission authz.read >/dev/null
+  certctl_exec create-authz-binding \
+    --principal "role:$ISSUER_URL:certctl_admin" \
+    --permission authz.write >/dev/null
   certctl_exec create-authz-binding \
     --principal "role:$ISSUER_URL:certctl_admin" \
     --permission subject.read >/dev/null
@@ -431,6 +437,62 @@ payload = json.loads(sys.argv[1])
 assert payload["count"] >= 1, payload
 print("authz binding list ok")
 PY
+
+  echo "Creating, updating, and deleting a temporary authz binding over the admin API..."
+  python3 - <<'PY' "$WORK_DIR/temp-authz-binding.json" "$ISSUER_URL"
+import json
+import sys
+from pathlib import Path
+
+out_path, issuer = sys.argv[1:]
+Path(out_path).write_text(json.dumps({
+    "principal": f"role:{issuer}:certctl_admin",
+    "permission": "subject.read",
+    "resource_kind": "subject",
+    "resource_ref": "*",
+}))
+PY
+  local temp_authz_binding_json
+  temp_authz_binding_json="$(curl -fsS -X POST "$CERTCTL_BASE_URL/admin/v1/authz-bindings" \
+    -H "Authorization: Bearer $ACCESS_TOKEN" \
+    -H 'Content-Type: application/json' \
+    --data-binary "@$WORK_DIR/temp-authz-binding.json")"
+  local temp_authz_binding_id
+  temp_authz_binding_id="$(python3 - <<'PY' "$temp_authz_binding_json"
+import json
+import sys
+payload = json.loads(sys.argv[1])
+assert payload["permission"] == "subject.read", payload
+print(payload["id"])
+PY
+)"
+
+  python3 - <<'PY' "$WORK_DIR/temp-authz-binding-update.json"
+import json
+import sys
+from pathlib import Path
+
+Path(sys.argv[1]).write_text(json.dumps({
+    "permission": "subject.update",
+    "enabled": False,
+}))
+PY
+  local temp_authz_binding_update_json
+  temp_authz_binding_update_json="$(curl -fsS -X PUT "$CERTCTL_BASE_URL/admin/v1/authz-bindings/$temp_authz_binding_id" \
+    -H "Authorization: Bearer $ACCESS_TOKEN" \
+    -H 'Content-Type: application/json' \
+    --data-binary "@$WORK_DIR/temp-authz-binding-update.json")"
+  python3 - <<'PY' "$temp_authz_binding_update_json"
+import json
+import sys
+payload = json.loads(sys.argv[1])
+assert payload["permission"] == "subject.update", payload
+assert payload["enabled"] is False, payload
+print("authz binding update ok")
+PY
+
+  curl -fsS -X DELETE "$CERTCTL_BASE_URL/admin/v1/authz-bindings/$temp_authz_binding_id" \
+    -H "Authorization: Bearer $ACCESS_TOKEN" >/dev/null
 
   echo "Listing subjects over the admin API..."
   local subjects_json

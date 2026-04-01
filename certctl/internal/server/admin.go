@@ -100,6 +100,22 @@ type adminUpdateAuthIssuerRequest struct {
 	GroupsClaims   []string          `json:"groups_claims"`
 }
 
+type adminCreateAuthzBindingRequest struct {
+	Principal    string `json:"principal"`
+	Permission   string `json:"permission"`
+	ResourceKind string `json:"resource_kind"`
+	ResourceRef  string `json:"resource_ref"`
+	Enabled      *bool  `json:"enabled"`
+}
+
+type adminUpdateAuthzBindingRequest struct {
+	Principal    *string `json:"principal"`
+	Permission   *string `json:"permission"`
+	ResourceKind *string `json:"resource_kind"`
+	ResourceRef  *string `json:"resource_ref"`
+	Enabled      *bool   `json:"enabled"`
+}
+
 func (s *Server) handleAdminDoctor(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -280,8 +296,17 @@ func (s *Server) handleAdminAuthzBindings(w http.ResponseWriter, r *http.Request
 	case r.URL.Path == "/admin/v1/authz-bindings" && r.Method == http.MethodGet:
 		s.handleAdminAuthzBindingList(w, r)
 		return
+	case r.URL.Path == "/admin/v1/authz-bindings" && r.Method == http.MethodPost:
+		s.handleAdminAuthzBindingCreate(w, r)
+		return
 	case strings.HasPrefix(r.URL.Path, "/admin/v1/authz-bindings/") && r.Method == http.MethodGet:
 		s.handleAdminAuthzBindingGet(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/authz-bindings/") && r.Method == http.MethodPut:
+		s.handleAdminAuthzBindingUpdate(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/authz-bindings/") && r.Method == http.MethodDelete:
+		s.handleAdminAuthzBindingDelete(w, r)
 		return
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -545,6 +570,110 @@ func (s *Server) handleAdminAuthzBindingGet(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writeJSON(w, http.StatusOK, authzBindingPayload(rec))
+}
+
+func (s *Server) handleAdminAuthzBindingCreate(w http.ResponseWriter, r *http.Request) {
+	var body adminCreateAuthzBindingRequest
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	rec, err := buildAdminAuthzBinding(body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	if err := store.CreateAuthzBinding(rec); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	rec, err = store.GetAuthzBindingByID(rec.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load authz binding")
+		return
+	}
+	ops.LogAuditEvent(store, "create_authz_binding", "authz_binding", rec.ID, fmt.Sprintf("created authz binding %s", rec.ID))
+	writeJSON(w, http.StatusCreated, authzBindingPayload(rec))
+}
+
+func (s *Server) handleAdminAuthzBindingUpdate(w http.ResponseWriter, r *http.Request) {
+	id := adminAuthzBindingID(r.URL.Path)
+	if id == "" {
+		writeError(w, http.StatusNotFound, "authz binding not found")
+		return
+	}
+
+	var body adminUpdateAuthzBindingRequest
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := store.GetAuthzBindingByID(id)
+	if err != nil {
+		writeAdminStorageError(w, err, "authz binding")
+		return
+	}
+	if err := applyAdminAuthzBindingUpdate(&rec, body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := store.UpdateAuthzBinding(rec); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	rec, err = store.GetAuthzBindingByID(rec.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load authz binding")
+		return
+	}
+	ops.LogAuditEvent(store, "update_authz_binding", "authz_binding", rec.ID, fmt.Sprintf("updated authz binding %s", rec.ID))
+	writeJSON(w, http.StatusOK, authzBindingPayload(rec))
+}
+
+func (s *Server) handleAdminAuthzBindingDelete(w http.ResponseWriter, r *http.Request) {
+	id := adminAuthzBindingID(r.URL.Path)
+	if id == "" {
+		writeError(w, http.StatusNotFound, "authz binding not found")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := store.GetAuthzBindingByID(id)
+	if err != nil {
+		writeAdminStorageError(w, err, "authz binding")
+		return
+	}
+	if err := store.DeleteAuthzBinding(id); err != nil {
+		writeAdminStorageError(w, err, "authz binding")
+		return
+	}
+	ops.LogAuditEvent(store, "delete_authz_binding", "authz_binding", rec.ID, fmt.Sprintf("deleted authz binding %s", rec.ID))
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":      rec.ID,
+		"deleted": true,
+	})
 }
 
 func (s *Server) handleAdminCSRRequests(w http.ResponseWriter, r *http.Request) {
@@ -1963,6 +2092,57 @@ func authzBindingReferencesIssuer(binding storage.AuthzBinding, issuer string) b
 		}
 	}
 	return false
+}
+
+func buildAdminAuthzBinding(body adminCreateAuthzBindingRequest) (storage.AuthzBinding, error) {
+	principal := strings.TrimSpace(body.Principal)
+	permission := strings.TrimSpace(body.Permission)
+	if principal == "" {
+		return storage.AuthzBinding{}, fmt.Errorf("principal is required")
+	}
+	if permission == "" {
+		return storage.AuthzBinding{}, fmt.Errorf("permission is required")
+	}
+	enabled := true
+	if body.Enabled != nil {
+		enabled = *body.Enabled
+	}
+	return storage.AuthzBinding{
+		ID:           util.NewID(),
+		Enabled:      enabled,
+		Principal:    principal,
+		Permission:   permission,
+		ResourceKind: strings.TrimSpace(body.ResourceKind),
+		ResourceRef:  strings.TrimSpace(body.ResourceRef),
+	}, nil
+}
+
+func applyAdminAuthzBindingUpdate(rec *storage.AuthzBinding, body adminUpdateAuthzBindingRequest) error {
+	if rec == nil {
+		return fmt.Errorf("authz binding is required")
+	}
+	if body.Principal != nil {
+		rec.Principal = strings.TrimSpace(*body.Principal)
+	}
+	if body.Permission != nil {
+		rec.Permission = strings.TrimSpace(*body.Permission)
+	}
+	if body.ResourceKind != nil {
+		rec.ResourceKind = strings.TrimSpace(*body.ResourceKind)
+	}
+	if body.ResourceRef != nil {
+		rec.ResourceRef = strings.TrimSpace(*body.ResourceRef)
+	}
+	if body.Enabled != nil {
+		rec.Enabled = *body.Enabled
+	}
+	if strings.TrimSpace(rec.Principal) == "" {
+		return fmt.Errorf("principal is required")
+	}
+	if strings.TrimSpace(rec.Permission) == "" {
+		return fmt.Errorf("permission is required")
+	}
+	return nil
 }
 
 func subjectPayload(rec storage.Subject) map[string]any {
