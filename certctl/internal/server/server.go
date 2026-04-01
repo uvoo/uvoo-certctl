@@ -74,6 +74,10 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("/admin/v1/doctor", s.requireAdminPermission(s.handleAdminDoctor, adminDoctorPermission))
 	s.mux.HandleFunc("/admin/v1/csr-requests", s.requireAdminPermission(s.handleAdminCSRRequests, adminCSRCollectionPermission))
 	s.mux.HandleFunc("/admin/v1/csr-requests/", s.requireAdminPermission(s.handleAdminCSRRequests, adminCSRItemPermission))
+	s.mux.HandleFunc("/admin/v1/subjects", s.requireAdminPermission(s.handleAdminSubjects, adminSubjectCollectionPermission))
+	s.mux.HandleFunc("/admin/v1/subjects/", s.requireAdminPermission(s.handleAdminSubjects, adminSubjectItemPermission))
+	s.mux.HandleFunc("/admin/v1/subject-auto-approvals", s.requireAdminPermission(s.handleAdminSubjectAutoApprovals, adminSubjectAutoApprovalCollectionPermission))
+	s.mux.HandleFunc("/admin/v1/subject-auto-approvals/", s.requireAdminPermission(s.handleAdminSubjectAutoApprovals, adminSubjectAutoApprovalItemPermission))
 	if s.cfg.EnableMetrics {
 		s.mux.Handle("/metrics", s.requireMetricsPermission(s.handleMetrics, metricsPermission))
 	}
@@ -392,6 +396,13 @@ func maxViewsReached(sh storage.CertShare) bool {
 func formatTime(t time.Time) string {
 	if t.IsZero() {
 		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
+func formatTimeValue(t time.Time) any {
+	if t.IsZero() {
+		return nil
 	}
 	return t.UTC().Format(time.RFC3339)
 }

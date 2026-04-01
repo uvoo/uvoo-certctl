@@ -44,6 +44,31 @@ type adminRejectCSRRequest struct {
 	Reason string `json:"reason"`
 }
 
+type adminApproveSubjectRequest struct {
+	Issuer      string   `json:"issuer"`
+	Subject     string   `json:"subject"`
+	LocalRoles  []string `json:"local_roles"`
+	LocalGroups []string `json:"local_groups"`
+}
+
+type adminUpdateSubjectRequest struct {
+	Issuer      string   `json:"issuer"`
+	Subject     string   `json:"subject"`
+	Status      string   `json:"status"`
+	LocalRoles  []string `json:"local_roles"`
+	LocalGroups []string `json:"local_groups"`
+}
+
+type adminUpsertSubjectAutoApprovalRuleRequest struct {
+	Enabled        *bool    `json:"enabled"`
+	Issuer         string   `json:"issuer"`
+	EmailDomain    string   `json:"email_domain"`
+	RequiredRoles  []string `json:"required_roles"`
+	RequiredGroups []string `json:"required_groups"`
+	LocalRoles     []string `json:"local_roles"`
+	LocalGroups    []string `json:"local_groups"`
+}
+
 func (s *Server) handleAdminDoctor(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -114,6 +139,43 @@ func (s *Server) handleAdminCSRRequests(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+func (s *Server) handleAdminSubjects(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.URL.Path == "/admin/v1/subjects" && r.Method == http.MethodGet:
+		s.handleAdminSubjectList(w, r)
+		return
+	case r.URL.Path == "/admin/v1/subjects/approve" && r.Method == http.MethodPost:
+		s.handleAdminSubjectApprove(w, r)
+		return
+	case r.URL.Path == "/admin/v1/subjects/update" && r.Method == http.MethodPost:
+		s.handleAdminSubjectUpdate(w, r)
+		return
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+}
+
+func (s *Server) handleAdminSubjectAutoApprovals(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.URL.Path == "/admin/v1/subject-auto-approvals" && r.Method == http.MethodGet:
+		s.handleAdminSubjectAutoApprovalList(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/subject-auto-approvals/") && r.Method == http.MethodGet:
+		s.handleAdminSubjectAutoApprovalGet(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/subject-auto-approvals/") && r.Method == http.MethodPut:
+		s.handleAdminSubjectAutoApprovalUpsert(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/subject-auto-approvals/") && r.Method == http.MethodDelete:
+		s.handleAdminSubjectAutoApprovalDelete(w, r)
+		return
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+}
+
 func (s *Server) handleAdminCSRList(w http.ResponseWriter, r *http.Request) {
 	store, err := storage.Open(s.cfg.DBPath)
 	if err != nil {
@@ -143,6 +205,219 @@ func (s *Server) handleAdminCSRList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items": payload,
 		"count": len(payload),
+	})
+}
+
+func (s *Server) handleAdminSubjectList(w http.ResponseWriter, r *http.Request) {
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rows, err := ops.ListSubjects(store, ops.SubjectFilter{
+		ActiveOnly: !parseBoolQuery(r, "all"),
+		Issuer:     strings.TrimSpace(r.URL.Query().Get("issuer")),
+		Subject:    strings.TrimSpace(r.URL.Query().Get("subject")),
+		Status:     strings.TrimSpace(r.URL.Query().Get("status")),
+		LocalRole:  strings.TrimSpace(r.URL.Query().Get("local_role")),
+		LocalGroup: strings.TrimSpace(r.URL.Query().Get("local_group")),
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list subjects")
+		return
+	}
+
+	payload := make([]map[string]any, 0, len(rows))
+	for _, rec := range rows {
+		payload = append(payload, subjectPayload(rec))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": payload,
+		"count": len(payload),
+	})
+}
+
+func (s *Server) handleAdminSubjectApprove(w http.ResponseWriter, r *http.Request) {
+	var body adminApproveSubjectRequest
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := ops.ApproveSubject(
+		store,
+		body.Issuer,
+		body.Subject,
+		body.LocalRoles,
+		body.LocalGroups,
+		body.LocalRoles != nil,
+		body.LocalGroups != nil,
+	)
+	if err != nil {
+		writeAdminStorageError(w, err, "subject")
+		return
+	}
+	writeJSON(w, http.StatusOK, subjectPayload(rec))
+}
+
+func (s *Server) handleAdminSubjectUpdate(w http.ResponseWriter, r *http.Request) {
+	var body adminUpdateSubjectRequest
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if strings.TrimSpace(body.Status) == "" && body.LocalRoles == nil && body.LocalGroups == nil {
+		writeError(w, http.StatusBadRequest, "at least one of status, local_roles, or local_groups is required")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := ops.UpdateSubject(store, ops.UpdateSubjectParams{
+		Issuer:       body.Issuer,
+		Subject:      body.Subject,
+		Status:       body.Status,
+		LocalRoles:   body.LocalRoles,
+		LocalGroups:  body.LocalGroups,
+		ChangeStatus: strings.TrimSpace(body.Status) != "",
+		ChangeRoles:  body.LocalRoles != nil,
+		ChangeGroups: body.LocalGroups != nil,
+	})
+	if err != nil {
+		writeAdminStorageError(w, err, "subject")
+		return
+	}
+	writeJSON(w, http.StatusOK, subjectPayload(rec))
+}
+
+func (s *Server) handleAdminSubjectAutoApprovalList(w http.ResponseWriter, r *http.Request) {
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rows, err := ops.ListSubjectAutoApprovalRules(store, ops.SubjectAutoApprovalRuleFilter{
+		EnabledOnly: !parseBoolQuery(r, "all"),
+		Name:        strings.TrimSpace(r.URL.Query().Get("name")),
+		Issuer:      strings.TrimSpace(r.URL.Query().Get("issuer")),
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list subject auto approval rules")
+		return
+	}
+
+	payload := make([]map[string]any, 0, len(rows))
+	for _, rec := range rows {
+		payload = append(payload, subjectAutoApprovalRulePayload(rec))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": payload,
+		"count": len(payload),
+	})
+}
+
+func (s *Server) handleAdminSubjectAutoApprovalGet(w http.ResponseWriter, r *http.Request) {
+	name := adminSubjectAutoApprovalRuleName(r.URL.Path)
+	if name == "" {
+		writeError(w, http.StatusNotFound, "subject auto approval rule not found")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := store.GetSubjectAutoApprovalRuleByName(name)
+	if err != nil {
+		writeAdminStorageError(w, err, "subject auto approval rule")
+		return
+	}
+	writeJSON(w, http.StatusOK, subjectAutoApprovalRulePayload(rec))
+}
+
+func (s *Server) handleAdminSubjectAutoApprovalUpsert(w http.ResponseWriter, r *http.Request) {
+	name := adminSubjectAutoApprovalRuleName(r.URL.Path)
+	if name == "" {
+		writeError(w, http.StatusNotFound, "subject auto approval rule not found")
+		return
+	}
+
+	var body adminUpsertSubjectAutoApprovalRuleRequest
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	enabled := true
+	if body.Enabled != nil {
+		enabled = *body.Enabled
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := ops.UpsertSubjectAutoApprovalRule(store, ops.UpsertSubjectAutoApprovalRuleParams{
+		Name:           name,
+		Enabled:        enabled,
+		Issuer:         body.Issuer,
+		EmailDomain:    body.EmailDomain,
+		RequiredRoles:  body.RequiredRoles,
+		RequiredGroups: body.RequiredGroups,
+		LocalRoles:     body.LocalRoles,
+		LocalGroups:    body.LocalGroups,
+	})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, subjectAutoApprovalRulePayload(rec))
+}
+
+func (s *Server) handleAdminSubjectAutoApprovalDelete(w http.ResponseWriter, r *http.Request) {
+	name := adminSubjectAutoApprovalRuleName(r.URL.Path)
+	if name == "" {
+		writeError(w, http.StatusNotFound, "subject auto approval rule not found")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := ops.DeleteSubjectAutoApprovalRule(store, name)
+	if err != nil {
+		writeAdminStorageError(w, err, "subject auto approval rule")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"name":    rec.Name,
+		"issuer":  rec.Issuer,
+		"deleted": true,
 	})
 }
 
@@ -842,4 +1117,58 @@ func intToNil(v int) any {
 		return nil
 	}
 	return v
+}
+
+func writeAdminStorageError(w http.ResponseWriter, err error, noun string) {
+	if err == nil {
+		return
+	}
+	if err == sql.ErrNoRows || strings.Contains(strings.ToLower(err.Error()), "not found") {
+		writeError(w, http.StatusNotFound, noun+" not found")
+		return
+	}
+	writeError(w, http.StatusBadRequest, err.Error())
+}
+
+func adminSubjectAutoApprovalRuleName(path string) string {
+	name := strings.TrimSpace(strings.TrimPrefix(path, "/admin/v1/subject-auto-approvals/"))
+	if name == "" || strings.Contains(name, "/") {
+		return ""
+	}
+	return name
+}
+
+func subjectPayload(rec storage.Subject) map[string]any {
+	return map[string]any{
+		"id":            rec.ID,
+		"issuer":        rec.Issuer,
+		"subject":       rec.Subject,
+		"status":        rec.Status,
+		"username":      emptyStringToNil(rec.Username),
+		"email":         emptyStringToNil(rec.Email),
+		"roles":         rec.Roles,
+		"groups":        rec.Groups,
+		"local_roles":   rec.LocalRoles,
+		"local_groups":  rec.LocalGroups,
+		"auth_count":    rec.AuthCount,
+		"first_seen_at": formatTimeValue(rec.FirstSeenAt),
+		"last_seen_at":  formatTimeValue(rec.LastSeenAt),
+		"updated_at":    formatTimeValue(rec.UpdatedAt),
+	}
+}
+
+func subjectAutoApprovalRulePayload(rec storage.SubjectAutoApprovalRule) map[string]any {
+	return map[string]any{
+		"id":              rec.ID,
+		"name":            rec.Name,
+		"enabled":         rec.Enabled,
+		"issuer":          rec.Issuer,
+		"email_domain":    emptyStringToNil(rec.EmailDomain),
+		"required_roles":  rec.RequiredRoles,
+		"required_groups": rec.RequiredGroups,
+		"local_roles":     rec.LocalRoles,
+		"local_groups":    rec.LocalGroups,
+		"created_at":      formatTimeValue(rec.CreatedAt),
+		"updated_at":      formatTimeValue(rec.UpdatedAt),
+	}
 }

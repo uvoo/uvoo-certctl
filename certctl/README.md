@@ -215,13 +215,30 @@ go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt 
 go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt --tls-key-file /etc/certctl/tls/server.key --admin-username admin --admin-password env:CERTCTL_ADMIN_PASSWORD --metrics --metrics-username metrics --metrics-password env:CERTCTL_METRICS_PASSWORD
 ```
 
-With `--admin-username` and `--admin-password`, the built-in server also exposes a small authenticated JSON admin API under `/admin/v1` for remote `doctor` and CSR queue actions. `--metrics` enables a Prometheus-style `/metrics` endpoint. If `--metrics-username` and `--metrics-password` are set, `/metrics` uses that dedicated Basic auth pair; otherwise it accepts the admin Basic auth or bearer auth. The metrics output includes certificate and CA status totals, CSR queue totals, pending and pickup-ready CSR counters, share totals, auth issuer/binding counts, auth request outcomes, subject auto-approval rule matches, pending-subject counts, and locally tracked JWT subject counts.
+With `--admin-username` and `--admin-password`, the built-in server also exposes a small authenticated JSON admin API under `/admin/v1` for remote `doctor`, CSR queue, subject, and subject auto-approval actions. `--metrics` enables a Prometheus-style `/metrics` endpoint. If `--metrics-username` and `--metrics-password` are set, `/metrics` uses that dedicated Basic auth pair; otherwise it accepts the admin Basic auth or bearer auth. The metrics output includes certificate and CA status totals, CSR queue totals, pending and pickup-ready CSR counters, share totals, auth issuer/binding counts, auth request outcomes, subject auto-approval rule matches, pending-subject counts, and locally tracked JWT subject counts.
 
 The admin API can also use bearer tokens from trusted JWT/OIDC issuers configured in the local database. The auth model and claim mapping are documented in [`docs/AUTHZ_DESIGN.md`](docs/AUTHZ_DESIGN.md).
 
 New JWT subjects are tracked locally on first successful token verification and begin in `pending` state until an operator approves them, unless a matching subject auto-approval rule activates them and assigns local roles or groups.
 
 `explain-authz` and `list-effective-authz --bearer-token ...` now also show local subject status, matching subject auto-approval rules, and the predicted local roles/groups that would apply to that token.
+
+Remote admin examples:
+
+```bash
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/subjects?status=pending
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X POST https://certctl.example.com:8443/admin/v1/subjects/approve \
+  -d '{"issuer":"https://accounts.google.com","subject":"user-123","local_groups":["viewers"]}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X PUT https://certctl.example.com:8443/admin/v1/subject-auto-approvals/google-employees \
+  -d '{"issuer":"https://accounts.google.com","email_domain":"example.com","local_groups":["employees"]}'
+```
 
 For local Docker-based Keycloak and `certctl` smoke testing, including private CSR approval and optional public provider checks, see [`docs/DOCKER_DEV.md`](docs/DOCKER_DEV.md).
 

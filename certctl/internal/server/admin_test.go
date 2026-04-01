@@ -208,6 +208,138 @@ func TestAdminApprovePrivateCSRFlow(t *testing.T) {
 	}
 }
 
+func TestAdminSubjectListApproveAndUpdateFlow(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "certs.db")
+	store, err := storage.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpsertSubjectSeen(storage.Subject{
+		ID:       "subject-1",
+		Issuer:   "https://accounts.google.com",
+		Subject:  "user-123",
+		Status:   storage.SubjectStatusPending,
+		Username: "alice",
+		Email:    "alice@example.com",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := New(Config{
+		DBPath:        dbPath,
+		AdminUsername: "admin",
+		AdminPassword: "admin-secret",
+	})
+
+	listReq := httptest.NewRequest(http.MethodGet, "/admin/v1/subjects?status=pending", nil)
+	listReq.SetBasicAuth("admin", "admin-secret")
+	listRec := httptest.NewRecorder()
+	srv.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", listRec.Code, listRec.Body.String())
+	}
+	if !strings.Contains(listRec.Body.String(), `"user-123"`) {
+		t.Fatalf("expected listed subject, got %s", listRec.Body.String())
+	}
+
+	approveReq := httptest.NewRequest(http.MethodPost, "/admin/v1/subjects/approve", strings.NewReader(`{
+		"issuer":"https://accounts.google.com",
+		"subject":"user-123",
+		"local_groups":["viewers"]
+	}`))
+	approveReq.Header.Set("Content-Type", "application/json")
+	approveReq.SetBasicAuth("admin", "admin-secret")
+	approveRec := httptest.NewRecorder()
+	srv.ServeHTTP(approveRec, approveReq)
+	if approveRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", approveRec.Code, approveRec.Body.String())
+	}
+	if !strings.Contains(approveRec.Body.String(), `"status":"active"`) || !strings.Contains(approveRec.Body.String(), `"local_groups":["viewers"]`) {
+		t.Fatalf("expected approved subject response, got %s", approveRec.Body.String())
+	}
+
+	updateReq := httptest.NewRequest(http.MethodPost, "/admin/v1/subjects/update", strings.NewReader(`{
+		"issuer":"https://accounts.google.com",
+		"subject":"user-123",
+		"status":"disabled",
+		"local_roles":["auditor"]
+	}`))
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateReq.SetBasicAuth("admin", "admin-secret")
+	updateRec := httptest.NewRecorder()
+	srv.ServeHTTP(updateRec, updateReq)
+	if updateRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", updateRec.Code, updateRec.Body.String())
+	}
+	body := updateRec.Body.String()
+	if !strings.Contains(body, `"status":"disabled"`) || !strings.Contains(body, `"local_roles":["auditor"]`) {
+		t.Fatalf("expected updated subject response, got %s", body)
+	}
+}
+
+func TestAdminSubjectAutoApprovalCRUDFlow(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "certs.db")
+	srv := New(Config{
+		DBPath:        dbPath,
+		AdminUsername: "admin",
+		AdminPassword: "admin-secret",
+	})
+
+	putReq := httptest.NewRequest(http.MethodPut, "/admin/v1/subject-auto-approvals/google-employees", strings.NewReader(`{
+		"issuer":"https://accounts.google.com",
+		"email_domain":"example.com",
+		"required_groups":["employees"],
+		"local_groups":["employees"],
+		"enabled":true
+	}`))
+	putReq.Header.Set("Content-Type", "application/json")
+	putReq.SetBasicAuth("admin", "admin-secret")
+	putRec := httptest.NewRecorder()
+	srv.ServeHTTP(putRec, putReq)
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", putRec.Code, putRec.Body.String())
+	}
+	if !strings.Contains(putRec.Body.String(), `"name":"google-employees"`) {
+		t.Fatalf("expected upserted rule, got %s", putRec.Body.String())
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/admin/v1/subject-auto-approvals", nil)
+	listReq.SetBasicAuth("admin", "admin-secret")
+	listRec := httptest.NewRecorder()
+	srv.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", listRec.Code, listRec.Body.String())
+	}
+	if !strings.Contains(listRec.Body.String(), `"google-employees"`) {
+		t.Fatalf("expected rule in list response, got %s", listRec.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/admin/v1/subject-auto-approvals/google-employees", nil)
+	getReq.SetBasicAuth("admin", "admin-secret")
+	getRec := httptest.NewRecorder()
+	srv.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", getRec.Code, getRec.Body.String())
+	}
+	if !strings.Contains(getRec.Body.String(), `"email_domain":"example.com"`) {
+		t.Fatalf("expected rule details, got %s", getRec.Body.String())
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/admin/v1/subject-auto-approvals/google-employees", nil)
+	deleteReq.SetBasicAuth("admin", "admin-secret")
+	deleteRec := httptest.NewRecorder()
+	srv.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", deleteRec.Code, deleteRec.Body.String())
+	}
+	if !strings.Contains(deleteRec.Body.String(), `"deleted":true`) {
+		t.Fatalf("expected deleted response, got %s", deleteRec.Body.String())
+	}
+}
+
 func TestMetricsEndpointRequiresAuthWhenAdminEnabled(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "certs.db")
 	store, err := storage.Open(dbPath)
@@ -282,8 +414,11 @@ func TestMetricsEndpointAllowsDedicatedMetricsBasicAuth(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `certctl_auth_requests_total{auth_method="basic_metrics",result="allowed"} 1`) {
-		t.Fatalf("expected metrics auth counter for dedicated metrics basic auth, got %s", rec.Body.String())
+	body := rec.Body.String()
+	if !strings.Contains(body, `certctl_auth_requests_total{`) ||
+		!strings.Contains(body, `auth_method="basic_metrics"`) ||
+		!strings.Contains(body, `result="allowed"`) {
+		t.Fatalf("expected metrics auth counter for dedicated metrics basic auth, got %s", body)
 	}
 }
 

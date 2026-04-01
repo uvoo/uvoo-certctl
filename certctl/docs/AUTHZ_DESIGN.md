@@ -191,6 +191,11 @@ Initial set:
 - `csr.read`
 - `csr.approve`
 - `csr.reject`
+- `subject.read`
+- `subject.approve`
+- `subject.update`
+- `subject_auto_approval.read`
+- `subject_auto_approval.write`
 
 Future additions:
 
@@ -254,6 +259,13 @@ Initial built-in server mapping:
 - `GET /admin/v1/csr-requests/{id}` -> `csr.read`
 - `POST /admin/v1/csr-requests/{id}/approve` -> `csr.approve`
 - `POST /admin/v1/csr-requests/{id}/reject` -> `csr.reject`
+- `GET /admin/v1/subjects` -> `subject.read`
+- `POST /admin/v1/subjects/approve` -> `subject.approve`
+- `POST /admin/v1/subjects/update` -> `subject.update`
+- `GET /admin/v1/subject-auto-approvals` -> `subject_auto_approval.read`
+- `GET /admin/v1/subject-auto-approvals/{name}` -> `subject_auto_approval.read`
+- `PUT /admin/v1/subject-auto-approvals/{name}` -> `subject_auto_approval.write`
+- `DELETE /admin/v1/subject-auto-approvals/{name}` -> `subject_auto_approval.write`
 
 For later routes, keep the same pattern: one explicit permission per action.
 

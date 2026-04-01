@@ -338,3 +338,43 @@ func adminCSRItemPermission(r *http.Request) (auth.PermissionRequest, bool) {
 		return auth.PermissionRequest{}, false
 	}
 }
+
+func adminSubjectCollectionPermission(r *http.Request) (auth.PermissionRequest, bool) {
+	if r.Method != http.MethodGet {
+		return auth.PermissionRequest{}, false
+	}
+	return auth.PermissionRequest{Permission: "subject.read", ResourceKind: "subject", ResourceRef: "*"}, true
+}
+
+func adminSubjectItemPermission(r *http.Request) (auth.PermissionRequest, bool) {
+	switch {
+	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/approve"):
+		return auth.PermissionRequest{Permission: "subject.approve", ResourceKind: "subject", ResourceRef: "*"}, true
+	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/update"):
+		return auth.PermissionRequest{Permission: "subject.update", ResourceKind: "subject", ResourceRef: "*"}, true
+	default:
+		return auth.PermissionRequest{}, false
+	}
+}
+
+func adminSubjectAutoApprovalCollectionPermission(r *http.Request) (auth.PermissionRequest, bool) {
+	if r.Method != http.MethodGet {
+		return auth.PermissionRequest{}, false
+	}
+	return auth.PermissionRequest{Permission: "subject_auto_approval.read", ResourceKind: "subject_auto_approval_rule", ResourceRef: "*"}, true
+}
+
+func adminSubjectAutoApprovalItemPermission(r *http.Request) (auth.PermissionRequest, bool) {
+	name := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/admin/v1/subject-auto-approvals/"))
+	if name == "" {
+		return auth.PermissionRequest{}, false
+	}
+	switch r.Method {
+	case http.MethodGet:
+		return auth.PermissionRequest{Permission: "subject_auto_approval.read", ResourceKind: "subject_auto_approval_rule", ResourceRef: name}, true
+	case http.MethodPut, http.MethodDelete:
+		return auth.PermissionRequest{Permission: "subject_auto_approval.write", ResourceKind: "subject_auto_approval_rule", ResourceRef: name}, true
+	default:
+		return auth.PermissionRequest{}, false
+	}
+}
