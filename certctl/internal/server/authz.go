@@ -312,10 +312,25 @@ func adminEffectiveAuthzPermission(r *http.Request) (auth.PermissionRequest, boo
 }
 
 func adminAuthIssuerPermission(r *http.Request) (auth.PermissionRequest, bool) {
-	if r.Method != http.MethodGet {
-		return auth.PermissionRequest{}, false
+	switch {
+	case r.URL.Path == "/admin/v1/auth-issuers" && r.Method == http.MethodGet:
+		return auth.PermissionRequest{Permission: "auth_issuer.read", ResourceKind: "auth_issuer", ResourceRef: "*"}, true
+	case r.URL.Path == "/admin/v1/auth-issuers" && r.Method == http.MethodPost:
+		return auth.PermissionRequest{Permission: "auth_issuer.write", ResourceKind: "auth_issuer", ResourceRef: "*"}, true
+	default:
+		id := adminAuthIssuerID(r.URL.Path)
+		if id == "" {
+			return auth.PermissionRequest{}, false
+		}
+		switch r.Method {
+		case http.MethodGet:
+			return auth.PermissionRequest{Permission: "auth_issuer.read", ResourceKind: "auth_issuer", ResourceRef: id}, true
+		case http.MethodPut, http.MethodDelete:
+			return auth.PermissionRequest{Permission: "auth_issuer.write", ResourceKind: "auth_issuer", ResourceRef: id}, true
+		default:
+			return auth.PermissionRequest{}, false
+		}
 	}
-	return auth.PermissionRequest{Permission: "auth_issuer.read"}, true
 }
 
 func metricsPermission(r *http.Request) (auth.PermissionRequest, bool) {

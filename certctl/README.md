@@ -217,9 +217,9 @@ go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt 
 go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt --tls-key-file /etc/certctl/tls/server.key --admin-username admin --admin-password env:CERTCTL_ADMIN_PASSWORD --metrics --metrics-username metrics --metrics-password env:CERTCTL_METRICS_PASSWORD
 ```
 
-With `--admin-username` and `--admin-password`, the built-in server also exposes a small authenticated JSON admin API under `/admin/v1` for remote `doctor`, CSR queue, subject, and subject auto-approval actions. `--metrics` enables a Prometheus-style `/metrics` endpoint. If `--metrics-username` and `--metrics-password` are set, `/metrics` uses that dedicated Basic auth pair; otherwise it accepts the admin Basic auth or bearer auth. The metrics output includes certificate and CA status totals, CSR queue totals, pending and pickup-ready CSR counters, share totals, auth issuer/binding counts, auth issuer binding coverage, authz binding permission and principal-kind summaries, risky authz and subject-auto-approval counts, auth request outcomes, subject auto-approval rule matches, pending-subject counts, and locally tracked JWT subject counts.
+With `--admin-username` and `--admin-password`, the built-in server also exposes a small authenticated JSON admin API under `/admin/v1` for remote `doctor`, CSR queue, subject, subject auto-approval, and auth issuer actions. `--metrics` enables a Prometheus-style `/metrics` endpoint. If `--metrics-username` and `--metrics-password` are set, `/metrics` uses that dedicated Basic auth pair; otherwise it accepts the admin Basic auth or bearer auth. The metrics output includes certificate and CA status totals, CSR queue totals, pending and pickup-ready CSR counters, share totals, auth issuer/binding counts, auth issuer binding coverage, authz binding permission and principal-kind summaries, risky authz and subject-auto-approval counts, auth request outcomes, subject auto-approval rule matches, pending-subject counts, and locally tracked JWT subject counts.
 
-Useful remote read-only auth/admin paths include `/admin/v1/doctor/auth`, `/admin/v1/effective-authz`, `/admin/v1/auth-issuers`, and `/admin/v1/authz-bindings`. The metrics output also includes `certctl_auth_issuers_connectivity_status_total` from cached issuer probe results and `certctl_doctor_findings_total` for low-cardinality alerting by severity and check.
+Useful remote auth/admin paths include `/admin/v1/doctor/auth`, `/admin/v1/effective-authz`, `/admin/v1/auth-issuers`, and `/admin/v1/authz-bindings`. The metrics output also includes `certctl_auth_issuers_connectivity_status_total` from cached issuer probe results and `certctl_doctor_findings_total` for low-cardinality alerting by severity and check.
 
 The admin API can also use bearer tokens from trusted JWT/OIDC issuers configured in the local database. The auth model and claim mapping are documented in [`docs/AUTHZ_DESIGN.md`](docs/AUTHZ_DESIGN.md).
 
@@ -242,6 +242,19 @@ curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -H 'Content-Type: application/json' \
   -X PUT https://certctl.example.com:8443/admin/v1/subject-auto-approvals/google-employees \
   -d '{"issuer":"https://accounts.google.com","email_domain":"example.com","local_groups":["employees"]}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X POST https://certctl.example.com:8443/admin/v1/auth-issuers \
+  -d '{"name":"keycloak-dev","issuer":"https://sso.example.com/realms/certctl","audiences":["certctl"],"required_claims":{"azp":"certctl"},"discovery_url":"https://sso.example.com/realms/certctl/.well-known/openid-configuration","roles_claims":["realm_access.roles"],"groups_claims":["groups"]}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X PUT https://certctl.example.com:8443/admin/v1/auth-issuers/keycloak-dev \
+  -d '{"name":"keycloak-prod","enabled":true}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -X DELETE 'https://certctl.example.com:8443/admin/v1/auth-issuers/keycloak-prod?force=true'
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   https://certctl.example.com:8443/admin/v1/effective-authz

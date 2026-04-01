@@ -13,6 +13,7 @@ import (
 	"certctl/internal/auth"
 	"certctl/internal/ops"
 	"certctl/internal/storage"
+	"certctl/internal/util"
 )
 
 const (
@@ -68,6 +69,35 @@ type adminUpsertSubjectAutoApprovalRuleRequest struct {
 	RequiredGroups []string `json:"required_groups"`
 	LocalRoles     []string `json:"local_roles"`
 	LocalGroups    []string `json:"local_groups"`
+}
+
+type adminCreateAuthIssuerRequest struct {
+	Name           string            `json:"name"`
+	Issuer         string            `json:"issuer"`
+	Audiences      []string          `json:"audiences"`
+	RequiredClaims map[string]string `json:"required_claims"`
+	DiscoveryURL   string            `json:"discovery_url"`
+	JWKSURL        string            `json:"jwks_url"`
+	Enabled        *bool             `json:"enabled"`
+	SubjectClaim   string            `json:"subject_claim"`
+	UsernameClaim  string            `json:"username_claim"`
+	EmailClaim     string            `json:"email_claim"`
+	RolesClaims    []string          `json:"roles_claims"`
+	GroupsClaims   []string          `json:"groups_claims"`
+}
+
+type adminUpdateAuthIssuerRequest struct {
+	Name           *string           `json:"name"`
+	Audiences      []string          `json:"audiences"`
+	RequiredClaims map[string]string `json:"required_claims"`
+	DiscoveryURL   *string           `json:"discovery_url"`
+	JWKSURL        *string           `json:"jwks_url"`
+	Enabled        *bool             `json:"enabled"`
+	SubjectClaim   *string           `json:"subject_claim"`
+	UsernameClaim  *string           `json:"username_claim"`
+	EmailClaim     *string           `json:"email_claim"`
+	RolesClaims    []string          `json:"roles_claims"`
+	GroupsClaims   []string          `json:"groups_claims"`
 }
 
 func (s *Server) handleAdminDoctor(w http.ResponseWriter, r *http.Request) {
@@ -227,8 +257,17 @@ func (s *Server) handleAdminAuthIssuers(w http.ResponseWriter, r *http.Request) 
 	case r.URL.Path == "/admin/v1/auth-issuers" && r.Method == http.MethodGet:
 		s.handleAdminAuthIssuerList(w, r)
 		return
+	case r.URL.Path == "/admin/v1/auth-issuers" && r.Method == http.MethodPost:
+		s.handleAdminAuthIssuerCreate(w, r)
+		return
 	case strings.HasPrefix(r.URL.Path, "/admin/v1/auth-issuers/") && r.Method == http.MethodGet:
 		s.handleAdminAuthIssuerGet(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/auth-issuers/") && r.Method == http.MethodPut:
+		s.handleAdminAuthIssuerUpdate(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/auth-issuers/") && r.Method == http.MethodDelete:
+		s.handleAdminAuthIssuerDelete(w, r)
 		return
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -308,6 +347,153 @@ func (s *Server) handleAdminAuthIssuerGet(w http.ResponseWriter, r *http.Request
 		}
 	}
 	writeError(w, http.StatusNotFound, "auth issuer not found")
+}
+
+func (s *Server) handleAdminAuthIssuerCreate(w http.ResponseWriter, r *http.Request) {
+	var body adminCreateAuthIssuerRequest
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	rec, err := buildAdminAuthIssuer(body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	if existing, err := store.GetAuthIssuerByIssuer(rec.Issuer); err == nil {
+		writeError(w, http.StatusConflict, fmt.Sprintf("auth issuer %s already exists", existing.Issuer))
+		return
+	} else if err != sql.ErrNoRows {
+		writeError(w, http.StatusInternalServerError, "failed to check auth issuer")
+		return
+	}
+
+	if err := store.UpsertAuthIssuer(rec); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	rec, err = store.GetAuthIssuerByIssuer(rec.Issuer)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load auth issuer")
+		return
+	}
+	ops.LogAuditEvent(store, "create_auth_issuer", "auth_issuer", rec.Issuer, fmt.Sprintf("created auth issuer %s", rec.Name))
+	writeJSON(w, http.StatusCreated, authIssuerPayload(rec))
+}
+
+func (s *Server) handleAdminAuthIssuerUpdate(w http.ResponseWriter, r *http.Request) {
+	issuerID := adminAuthIssuerID(r.URL.Path)
+	if issuerID == "" {
+		writeError(w, http.StatusNotFound, "auth issuer not found")
+		return
+	}
+
+	var body adminUpdateAuthIssuerRequest
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := findAdminAuthIssuer(store, issuerID)
+	if err != nil {
+		writeAdminStorageError(w, err, "auth issuer")
+		return
+	}
+	if err := applyAdminAuthIssuerUpdate(&rec, body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := store.UpsertAuthIssuer(rec); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	rec, err = store.GetAuthIssuerByIssuer(rec.Issuer)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load auth issuer")
+		return
+	}
+	ops.LogAuditEvent(store, "update_auth_issuer", "auth_issuer", rec.Issuer, fmt.Sprintf("updated auth issuer %s", rec.Name))
+	writeJSON(w, http.StatusOK, authIssuerPayload(rec))
+}
+
+func (s *Server) handleAdminAuthIssuerDelete(w http.ResponseWriter, r *http.Request) {
+	issuerID := adminAuthIssuerID(r.URL.Path)
+	if issuerID == "" {
+		writeError(w, http.StatusNotFound, "auth issuer not found")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := findAdminAuthIssuer(store, issuerID)
+	if err != nil {
+		writeAdminStorageError(w, err, "auth issuer")
+		return
+	}
+
+	bindings, err := store.ListAuthzBindings(false)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load authz bindings")
+		return
+	}
+	var refs []string
+	for _, binding := range bindings {
+		if authzBindingReferencesIssuer(binding, rec.Issuer) {
+			refs = append(refs, binding.ID)
+		}
+	}
+	force := parseBoolQuery(r, "force")
+	if len(refs) > 0 && !force {
+		writeError(w, http.StatusConflict, fmt.Sprintf("auth issuer %s is still referenced by authz bindings: %s", rec.Issuer, strings.Join(refs, ", ")))
+		return
+	}
+	if force {
+		for _, bindingID := range refs {
+			if err := store.DeleteAuthzBinding(bindingID); err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to delete referenced authz binding")
+				return
+			}
+			ops.LogAuditEvent(store, "delete_authz_binding", "authz_binding", bindingID, fmt.Sprintf("deleted authz binding %s during forced auth issuer deletion", bindingID))
+		}
+	}
+	if err := store.DeleteAuthIssuer(rec.Issuer); err != nil {
+		writeAdminStorageError(w, err, "auth issuer")
+		return
+	}
+	summary := fmt.Sprintf("deleted auth issuer %s", rec.Name)
+	if len(refs) > 0 {
+		summary = fmt.Sprintf("deleted auth issuer %s and %d referenced authz binding(s)", rec.Name, len(refs))
+	}
+	ops.LogAuditEvent(store, "delete_auth_issuer", "auth_issuer", rec.Issuer, summary)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":                  rec.ID,
+		"name":                rec.Name,
+		"issuer":              rec.Issuer,
+		"deleted":             true,
+		"forced":              force,
+		"deleted_binding_ids": refs,
+	})
 }
 
 func (s *Server) handleAdminAuthzBindingList(w http.ResponseWriter, r *http.Request) {
@@ -1649,6 +1835,134 @@ func adminSubjectAutoApprovalRuleName(path string) string {
 		return ""
 	}
 	return name
+}
+
+func compactStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if v := strings.TrimSpace(value); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+func normalizedRequiredClaims(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := map[string]string{}
+	for key, value := range values {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key == "" || value == "" {
+			continue
+		}
+		out[key] = value
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func buildAdminAuthIssuer(body adminCreateAuthIssuerRequest) (storage.AuthIssuer, error) {
+	name := strings.TrimSpace(body.Name)
+	issuer := strings.TrimSpace(body.Issuer)
+	if name == "" {
+		return storage.AuthIssuer{}, fmt.Errorf("name is required")
+	}
+	if issuer == "" {
+		return storage.AuthIssuer{}, fmt.Errorf("issuer is required")
+	}
+	enabled := true
+	if body.Enabled != nil {
+		enabled = *body.Enabled
+	}
+	return storage.AuthIssuer{
+		ID:             util.NewID(),
+		Name:           name,
+		Enabled:        enabled,
+		Issuer:         issuer,
+		Audiences:      compactStrings(body.Audiences),
+		RequiredClaims: normalizedRequiredClaims(body.RequiredClaims),
+		DiscoveryURL:   strings.TrimSpace(body.DiscoveryURL),
+		JWKSURL:        strings.TrimSpace(body.JWKSURL),
+		SubjectClaim:   strings.TrimSpace(body.SubjectClaim),
+		UsernameClaim:  strings.TrimSpace(body.UsernameClaim),
+		EmailClaim:     strings.TrimSpace(body.EmailClaim),
+		RolesClaims:    compactStrings(body.RolesClaims),
+		GroupsClaims:   compactStrings(body.GroupsClaims),
+	}, nil
+}
+
+func findAdminAuthIssuer(store *storage.Store, id string) (storage.AuthIssuer, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return storage.AuthIssuer{}, sql.ErrNoRows
+	}
+	rows, err := store.ListAuthIssuers(false)
+	if err != nil {
+		return storage.AuthIssuer{}, err
+	}
+	for _, rec := range rows {
+		if rec.Name == id || rec.Issuer == id {
+			return rec, nil
+		}
+	}
+	return storage.AuthIssuer{}, sql.ErrNoRows
+}
+
+func applyAdminAuthIssuerUpdate(rec *storage.AuthIssuer, body adminUpdateAuthIssuerRequest) error {
+	if rec == nil {
+		return fmt.Errorf("auth issuer is required")
+	}
+	if body.Name != nil {
+		rec.Name = strings.TrimSpace(*body.Name)
+	}
+	if body.Audiences != nil {
+		rec.Audiences = compactStrings(body.Audiences)
+	}
+	if body.RequiredClaims != nil {
+		rec.RequiredClaims = normalizedRequiredClaims(body.RequiredClaims)
+	}
+	if body.DiscoveryURL != nil {
+		rec.DiscoveryURL = strings.TrimSpace(*body.DiscoveryURL)
+	}
+	if body.JWKSURL != nil {
+		rec.JWKSURL = strings.TrimSpace(*body.JWKSURL)
+	}
+	if body.Enabled != nil {
+		rec.Enabled = *body.Enabled
+	}
+	if body.SubjectClaim != nil {
+		rec.SubjectClaim = strings.TrimSpace(*body.SubjectClaim)
+	}
+	if body.UsernameClaim != nil {
+		rec.UsernameClaim = strings.TrimSpace(*body.UsernameClaim)
+	}
+	if body.EmailClaim != nil {
+		rec.EmailClaim = strings.TrimSpace(*body.EmailClaim)
+	}
+	if body.RolesClaims != nil {
+		rec.RolesClaims = compactStrings(body.RolesClaims)
+	}
+	if body.GroupsClaims != nil {
+		rec.GroupsClaims = compactStrings(body.GroupsClaims)
+	}
+	if strings.TrimSpace(rec.Name) == "" {
+		return fmt.Errorf("name is required")
+	}
+	return nil
+}
+
+func authzBindingReferencesIssuer(binding storage.AuthzBinding, issuer string) bool {
+	for _, prefix := range []string{"sub:", "role:", "group:"} {
+		if strings.HasPrefix(binding.Principal, prefix+issuer+":") {
+			return true
+		}
+	}
+	return false
 }
 
 func subjectPayload(rec storage.Subject) map[string]any {

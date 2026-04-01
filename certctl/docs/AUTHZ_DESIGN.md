@@ -258,7 +258,10 @@ Initial built-in server mapping:
 - `GET /admin/v1/doctor/auth` -> `doctor.read`
 - `GET /admin/v1/effective-authz` -> `authz.read`
 - `GET /admin/v1/auth-issuers` -> `auth_issuer.read`
+- `POST /admin/v1/auth-issuers` -> `auth_issuer.write`
 - `GET /admin/v1/auth-issuers/{name}` -> `auth_issuer.read`
+- `PUT /admin/v1/auth-issuers/{name}` -> `auth_issuer.write`
+- `DELETE /admin/v1/auth-issuers/{name}` -> `auth_issuer.write`
 - `GET /admin/v1/authz-bindings` -> `authz.read`
 - `GET /admin/v1/authz-bindings/{id}` -> `authz.read`
 - `GET /metrics` -> `metrics.read`

@@ -198,6 +198,9 @@ configure_auth() {
       --permission auth_issuer.read >/dev/null
     certctl_exec create-authz-binding \
       --principal "local_group:docker-smoke-admin" \
+      --permission auth_issuer.write >/dev/null
+    certctl_exec create-authz-binding \
+      --principal "local_group:docker-smoke-admin" \
       --permission metrics.read >/dev/null
     certctl_exec create-authz-binding \
       --principal "local_group:docker-smoke-admin" \
@@ -223,6 +226,9 @@ configure_auth() {
   certctl_exec create-authz-binding \
     --principal "role:$ISSUER_URL:certctl_admin" \
     --permission auth_issuer.read >/dev/null
+  certctl_exec create-authz-binding \
+    --principal "role:$ISSUER_URL:certctl_admin" \
+    --permission auth_issuer.write >/dev/null
   certctl_exec create-authz-binding \
     --principal "role:$ISSUER_URL:certctl_admin" \
     --permission metrics.read >/dev/null
@@ -356,6 +362,62 @@ issuer = sys.argv[2]
 assert any(item["issuer"] == issuer for item in payload["items"]), payload
 print("auth issuer list ok")
 PY
+
+  echo "Creating, updating, and deleting a temporary auth issuer over the admin API..."
+  python3 - <<'PY' "$WORK_DIR/temp-auth-issuer.json"
+import json
+import sys
+from pathlib import Path
+
+Path(sys.argv[1]).write_text(json.dumps({
+    "name": "docker-smoke-temp",
+    "issuer": "https://issuer.invalid/docker-smoke",
+    "audiences": ["certctl"],
+    "required_claims": {"azp": "certctl"},
+    "enabled": True,
+}))
+PY
+  local temp_auth_issuer_json
+  temp_auth_issuer_json="$(curl -fsS -X POST "$CERTCTL_BASE_URL/admin/v1/auth-issuers" \
+    -H "Authorization: Bearer $ACCESS_TOKEN" \
+    -H 'Content-Type: application/json' \
+    --data-binary "@$WORK_DIR/temp-auth-issuer.json")"
+  python3 - <<'PY' "$temp_auth_issuer_json"
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+assert payload["name"] == "docker-smoke-temp", payload
+print("auth issuer create ok")
+PY
+
+  python3 - <<'PY' "$WORK_DIR/temp-auth-issuer-update.json"
+import json
+import sys
+from pathlib import Path
+
+Path(sys.argv[1]).write_text(json.dumps({
+    "name": "docker-smoke-temp-updated",
+    "enabled": False,
+}))
+PY
+  local temp_auth_issuer_update_json
+  temp_auth_issuer_update_json="$(curl -fsS -X PUT "$CERTCTL_BASE_URL/admin/v1/auth-issuers/docker-smoke-temp" \
+    -H "Authorization: Bearer $ACCESS_TOKEN" \
+    -H 'Content-Type: application/json' \
+    --data-binary "@$WORK_DIR/temp-auth-issuer-update.json")"
+  python3 - <<'PY' "$temp_auth_issuer_update_json"
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+assert payload["name"] == "docker-smoke-temp-updated", payload
+assert payload["enabled"] is False, payload
+print("auth issuer update ok")
+PY
+
+  curl -fsS -X DELETE "$CERTCTL_BASE_URL/admin/v1/auth-issuers/docker-smoke-temp-updated" \
+    -H "Authorization: Bearer $ACCESS_TOKEN" >/dev/null
 
   echo "Listing authz bindings over the admin API..."
   local authz_bindings_json

@@ -147,6 +147,99 @@ func TestAdminAuthIssuerListAndProbe(t *testing.T) {
 	}
 }
 
+func TestAdminAuthIssuerCreateUpdateAndDelete(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "certs.db")
+	srv := New(Config{
+		DBPath:        dbPath,
+		AdminUsername: "admin",
+		AdminPassword: "admin-secret",
+	})
+
+	createReq := httptest.NewRequest(http.MethodPost, "/admin/v1/auth-issuers", strings.NewReader(`{
+		"name":"keycloak-dev",
+		"issuer":"http://localhost:18080/realms/certctl",
+		"audiences":["certctl"],
+		"required_claims":{"azp":"certctl"},
+		"discovery_url":"http://keycloak:8080/realms/certctl/.well-known/openid-configuration",
+		"roles_claims":["realm_access.roles"],
+		"groups_claims":["groups"]
+	}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.SetBasicAuth("admin", "admin-secret")
+	createRec := httptest.NewRecorder()
+	srv.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", createRec.Code, createRec.Body.String())
+	}
+	if !strings.Contains(createRec.Body.String(), `"name":"keycloak-dev"`) {
+		t.Fatalf("expected created auth issuer payload, got %s", createRec.Body.String())
+	}
+
+	updateReq := httptest.NewRequest(http.MethodPut, "/admin/v1/auth-issuers/keycloak-dev", strings.NewReader(`{
+		"name":"keycloak-local",
+		"enabled":false,
+		"jwks_url":"http://keycloak:8080/realms/certctl/protocol/openid-connect/certs"
+	}`))
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateReq.SetBasicAuth("admin", "admin-secret")
+	updateRec := httptest.NewRecorder()
+	srv.ServeHTTP(updateRec, updateReq)
+	if updateRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", updateRec.Code, updateRec.Body.String())
+	}
+	updateBody := updateRec.Body.String()
+	if !strings.Contains(updateBody, `"name":"keycloak-local"`) || !strings.Contains(updateBody, `"enabled":false`) {
+		t.Fatalf("expected updated auth issuer payload, got %s", updateBody)
+	}
+
+	store, err := storage.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateAuthzBinding(storage.AuthzBinding{
+		ID:         "binding-issuer-1",
+		Enabled:    true,
+		Principal:  "role:http://localhost:18080/realms/certctl:certctl_admin",
+		Permission: "doctor.read",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/admin/v1/auth-issuers/keycloak-local", nil)
+	deleteReq.SetBasicAuth("admin", "admin-secret")
+	deleteRec := httptest.NewRecorder()
+	srv.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", deleteRec.Code, deleteRec.Body.String())
+	}
+
+	deleteForceReq := httptest.NewRequest(http.MethodDelete, "/admin/v1/auth-issuers/keycloak-local?force=true", nil)
+	deleteForceReq.SetBasicAuth("admin", "admin-secret")
+	deleteForceRec := httptest.NewRecorder()
+	srv.ServeHTTP(deleteForceRec, deleteForceReq)
+	if deleteForceRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", deleteForceRec.Code, deleteForceRec.Body.String())
+	}
+	if !strings.Contains(deleteForceRec.Body.String(), `"deleted":true`) || !strings.Contains(deleteForceRec.Body.String(), `"forced":true`) {
+		t.Fatalf("expected forced delete payload, got %s", deleteForceRec.Body.String())
+	}
+
+	store, err = storage.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := store.GetAuthIssuerByIssuer("http://localhost:18080/realms/certctl"); err == nil {
+		t.Fatalf("expected auth issuer to be deleted")
+	}
+	if _, err := store.GetAuthzBindingByID("binding-issuer-1"); err == nil {
+		t.Fatalf("expected referenced authz binding to be deleted")
+	}
+}
+
 func TestAdminAuthzBindingListAndGet(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "certs.db")
 	store, err := storage.Open(dbPath)

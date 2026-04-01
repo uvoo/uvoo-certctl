@@ -71,6 +71,23 @@ certctl create-auth-issuer --preset keycloak --name keycloak-login --issuer http
 certctl create-auth-issuer --preset aws-cognito --name cognito-login --issuer https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example --audience <app-client-id>
 ```
 
+Remote issuer management is also available over the admin API:
+
+```bash
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X POST https://certctl.example.com:8443/admin/v1/auth-issuers \
+  -d '{"name":"keycloak-dev","issuer":"https://sso.example.com/realms/certctl","audiences":["certctl"],"required_claims":{"azp":"certctl"},"discovery_url":"https://sso.example.com/realms/certctl/.well-known/openid-configuration","roles_claims":["realm_access.roles"],"groups_claims":["groups"]}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X PUT https://certctl.example.com:8443/admin/v1/auth-issuers/keycloak-dev \
+  -d '{"name":"keycloak-prod","enabled":true}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -X DELETE 'https://certctl.example.com:8443/admin/v1/auth-issuers/keycloak-prod?force=true'
+```
+
 Recommended routine:
 
 - `--warn-days 30` for normal operations
@@ -245,7 +262,7 @@ Notes:
 - `/admin/v1/subject-auto-approvals` supports remote list/get/upsert/delete for subject auto-approval rules
 - `/admin/v1/effective-authz` shows the caller's current effective permissions and matching bindings
 - `/admin/v1/doctor/auth` returns only auth-related doctor findings
-- `/admin/v1/auth-issuers` lists trusted auth issuers and can include live connectivity probe status with `?probe=true`
+- `/admin/v1/auth-issuers` supports remote list, create, update, delete, and live connectivity probe status with `?probe=true`
 - `/admin/v1/authz-bindings` provides a remote read-only list and item view for current authz bindings
 - `/metrics` includes low-cardinality counts for CSR backlog, pickup-ready requests, configured auth issuers and bindings, cached auth issuer connectivity states, doctor findings by severity and check, issuer binding coverage, binding permission and principal-kind mix, risky authz and subject auto-approval counts, auth request outcomes, subject auto-approval rules and matches, pending-subject counts, and locally tracked JWT subjects
 - for local end-to-end testing with Keycloak and the built-in server, use the Docker stack in [`DOCKER_DEV.md`](DOCKER_DEV.md)
