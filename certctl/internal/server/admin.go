@@ -102,7 +102,7 @@ func (s *Server) handleAdminDoctor(w http.ResponseWriter, r *http.Request) {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
-			return s.authVerifier.CheckIssuerConnectivity(ctx, issuer)
+			return s.probeAuthIssuer(ctx, issuer)
 		},
 	})
 	if err != nil {
@@ -149,7 +149,7 @@ func (s *Server) handleAdminAuthDoctor(w http.ResponseWriter, r *http.Request) {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
-			return s.authVerifier.CheckIssuerConnectivity(ctx, issuer)
+			return s.probeAuthIssuer(ctx, issuer)
 		},
 	})
 	if err != nil {
@@ -236,6 +236,20 @@ func (s *Server) handleAdminAuthIssuers(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+func (s *Server) handleAdminAuthzBindings(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.URL.Path == "/admin/v1/authz-bindings" && r.Method == http.MethodGet:
+		s.handleAdminAuthzBindingList(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/authz-bindings/") && r.Method == http.MethodGet:
+		s.handleAdminAuthzBindingGet(w, r)
+		return
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+}
+
 func (s *Server) handleAdminAuthIssuerList(w http.ResponseWriter, r *http.Request) {
 	store, err := storage.Open(s.cfg.DBPath)
 	if err != nil {
@@ -294,6 +308,57 @@ func (s *Server) handleAdminAuthIssuerGet(w http.ResponseWriter, r *http.Request
 		}
 	}
 	writeError(w, http.StatusNotFound, "auth issuer not found")
+}
+
+func (s *Server) handleAdminAuthzBindingList(w http.ResponseWriter, r *http.Request) {
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rows, err := store.ListAuthzBindingsFiltered(!parseBoolQuery(r, "all"), storage.AuthzBindingFilter{
+		ID:           strings.TrimSpace(r.URL.Query().Get("id")),
+		Principal:    strings.TrimSpace(r.URL.Query().Get("principal")),
+		Permission:   strings.TrimSpace(r.URL.Query().Get("permission")),
+		ResourceKind: strings.TrimSpace(r.URL.Query().Get("resource_kind")),
+		ResourceRef:  strings.TrimSpace(r.URL.Query().Get("resource_ref")),
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list authz bindings")
+		return
+	}
+	payload := make([]map[string]any, 0, len(rows))
+	for _, rec := range rows {
+		payload = append(payload, authzBindingPayload(rec))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": payload,
+		"count": len(payload),
+	})
+}
+
+func (s *Server) handleAdminAuthzBindingGet(w http.ResponseWriter, r *http.Request) {
+	id := adminAuthzBindingID(r.URL.Path)
+	if id == "" {
+		writeError(w, http.StatusNotFound, "authz binding not found")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := store.GetAuthzBindingByID(id)
+	if err != nil {
+		writeAdminStorageError(w, err, "authz binding")
+		return
+	}
+	writeJSON(w, http.StatusOK, authzBindingPayload(rec))
 }
 
 func (s *Server) handleAdminCSRRequests(w http.ResponseWriter, r *http.Request) {
@@ -835,7 +900,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	defer store.Close()
 
-	payload, err := buildMetrics(store, s.cfg.AdminWarnDays, s.authResultSnapshot(), s.autoApprovalSnapshot())
+	payload, err := buildMetrics(store, s.cfg.AdminWarnDays, s.authResultSnapshot(), s.autoApprovalSnapshot(), s.issuerProbeSnapshot())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to build metrics")
 		return
@@ -845,7 +910,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(payload))
 }
 
-func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int, autoApprovals map[string]int) (string, error) {
+func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int, autoApprovals map[string]int, issuerProbes map[string]issuerProbeStatus) (string, error) {
 	publicRows, err := store.List("", true)
 	if err != nil {
 		return "", err
@@ -976,6 +1041,12 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 	}
 	for enabled, count := range authIssuerCounts {
 		writeMetricSample(&b, "certctl_auth_issuers_total", map[string]string{"enabled": enabled}, float64(count))
+	}
+
+	writeMetricHeader(&b, "certctl_auth_issuers_connectivity_status_total", "Trusted auth issuers by cached connectivity status.")
+	authIssuerConnectivity := summarizeAuthIssuerConnectivityStatus(authIssuers, issuerProbes)
+	for status, count := range authIssuerConnectivity {
+		writeMetricSample(&b, "certctl_auth_issuers_connectivity_status_total", map[string]string{"status": status}, float64(count))
 	}
 
 	writeMetricHeader(&b, "certctl_auth_issuer_binding_coverage_total", "Trusted auth issuer coverage by enabled binding relationships.")
@@ -1112,6 +1183,38 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 		}, float64(countStalePendingSubjects(subjects, now, warnWindow)))
 	}
 
+	doctorFindings, err := ops.RunDoctorWithOptions(store, ops.DoctorOptions{
+		WarnDays: warnDays,
+		Now:      now,
+		AuthIssuerProbe: func(issuer storage.AuthIssuer) error {
+			if !issuer.Enabled {
+				return nil
+			}
+			if probe, ok := issuerProbes[issuer.Issuer]; ok {
+				if probe.Status == "error" {
+					if strings.TrimSpace(probe.Message) != "" {
+						return fmt.Errorf("%s", probe.Message)
+					}
+					return fmt.Errorf("cached connectivity error")
+				}
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	writeMetricHeader(&b, "certctl_doctor_findings_total", "Doctor findings by severity and check.")
+	doctorCounts := summarizeDoctorFindings(doctorFindings)
+	for key, count := range doctorCounts {
+		parts := strings.SplitN(key, "|", 2)
+		labels := map[string]string{"severity": parts[0], "check": ""}
+		if len(parts) == 2 {
+			labels["check"] = parts[1]
+		}
+		writeMetricSample(&b, "certctl_doctor_findings_total", labels, float64(count))
+	}
+
 	return b.String(), nil
 }
 
@@ -1235,6 +1338,38 @@ func summarizeRiskySubjectAutoApprovalRules(issuers []storage.AuthIssuer, rules 
 		if strings.TrimSpace(rule.EmailDomain) == "" && len(rule.RequiredRoles) == 0 && len(rule.RequiredGroups) == 0 {
 			counts["broad"]++
 		}
+	}
+	return counts
+}
+
+func summarizeAuthIssuerConnectivityStatus(issuers []storage.AuthIssuer, probes map[string]issuerProbeStatus) map[string]int {
+	counts := map[string]int{}
+	for _, issuer := range issuers {
+		if !issuer.Enabled {
+			counts["disabled"]++
+			continue
+		}
+		if probe, ok := probes[issuer.Issuer]; ok {
+			switch probe.Status {
+			case "ok":
+				counts["ok"]++
+			case "error":
+				counts["error"]++
+			default:
+				counts["unknown"]++
+			}
+			continue
+		}
+		counts["unknown"]++
+	}
+	return counts
+}
+
+func summarizeDoctorFindings(findings []ops.DoctorFinding) map[string]int {
+	counts := map[string]int{}
+	for _, finding := range findings {
+		key := strings.TrimSpace(finding.Severity) + "|" + strings.TrimSpace(finding.Check)
+		counts[key]++
 	}
 	return counts
 }
@@ -1636,6 +1771,14 @@ func (s *Server) authIssuerStatusPayload(rec storage.AuthIssuer, probe bool) map
 
 func adminAuthIssuerID(path string) string {
 	id := strings.TrimSpace(strings.TrimPrefix(path, "/admin/v1/auth-issuers/"))
+	if id == "" || strings.Contains(id, "/") {
+		return ""
+	}
+	return id
+}
+
+func adminAuthzBindingID(path string) string {
+	id := strings.TrimSpace(strings.TrimPrefix(path, "/admin/v1/authz-bindings/"))
 	if id == "" || strings.Contains(id, "/") {
 		return ""
 	}

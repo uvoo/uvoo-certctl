@@ -14,13 +14,15 @@ type doctorStore = ops.DoctorStore
 func init() {
 	var jsonOut bool
 	var warnDays int
+	var authOnly bool
 
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Run read-only validation checks against the certificate database",
 		Example: `  certctl doctor
   certctl doctor --json
-  certctl doctor --warn-days 14`,
+  certctl doctor --warn-days 14
+  certctl doctor --auth-only --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {
@@ -32,12 +34,16 @@ func init() {
 			if err != nil {
 				return err
 			}
+			if authOnly {
+				findings = ops.AuthRelatedDoctorFindings(findings)
+			}
 
 			status := ops.DoctorStatus(findings)
 			if jsonOut {
 				return printJSON(map[string]any{
-					"status":   status,
-					"findings": findings,
+					"status":    status,
+					"auth_only": authOnly,
+					"findings":  findings,
 				})
 			}
 
@@ -55,6 +61,7 @@ func init() {
 	}
 
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
+	cmd.Flags().BoolVar(&authOnly, "auth-only", false, "only include auth-related validation findings")
 	cmd.Flags().IntVar(&warnDays, "warn-days", 30, "warn when active certificates, CAs, shares, or pending CSRs are within this many days of expiry or staleness")
 	rootCmd.AddCommand(cmd)
 }

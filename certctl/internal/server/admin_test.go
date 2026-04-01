@@ -147,6 +147,53 @@ func TestAdminAuthIssuerListAndProbe(t *testing.T) {
 	}
 }
 
+func TestAdminAuthzBindingListAndGet(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "certs.db")
+	store, err := storage.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateAuthzBinding(storage.AuthzBinding{
+		ID:         "binding-1",
+		Enabled:    true,
+		Principal:  "role:https://sso.example.com/realms/certctl:certctl_admin",
+		Permission: "doctor.read",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := New(Config{
+		DBPath:        dbPath,
+		AdminUsername: "admin",
+		AdminPassword: "admin-secret",
+	})
+
+	listReq := httptest.NewRequest(http.MethodGet, "/admin/v1/authz-bindings?principal=role:https://sso.example.com/realms/certctl:certctl_admin", nil)
+	listReq.SetBasicAuth("admin", "admin-secret")
+	listRec := httptest.NewRecorder()
+	srv.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", listRec.Code, listRec.Body.String())
+	}
+	if !strings.Contains(listRec.Body.String(), `"binding-1"`) {
+		t.Fatalf("expected listed authz binding, got %s", listRec.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/admin/v1/authz-bindings/binding-1", nil)
+	getReq.SetBasicAuth("admin", "admin-secret")
+	getRec := httptest.NewRecorder()
+	srv.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", getRec.Code, getRec.Body.String())
+	}
+	if !strings.Contains(getRec.Body.String(), `"permission":"doctor.read"`) {
+		t.Fatalf("expected authz binding details, got %s", getRec.Body.String())
+	}
+}
+
 func TestAdminCSRSubmitListAndRejectFlow(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "certs.db")
 	srv := New(Config{
@@ -554,6 +601,8 @@ func TestMetricsEndpointRequiresAuthWhenAdminEnabled(t *testing.T) {
 		AdminWarnDays: 30,
 		EnableMetrics: true,
 	})
+	srv.recordIssuerProbe("https://accounts.google.com", nil)
+	srv.recordIssuerProbe("https://sso.example.com/realms/certctl", assertErr("probe failed"))
 
 	unauthReq := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	unauthRec := httptest.NewRecorder()
@@ -575,11 +624,13 @@ func TestMetricsEndpointRequiresAuthWhenAdminEnabled(t *testing.T) {
 		!strings.Contains(body, "certctl_pending_csr_requests_total") ||
 		!strings.Contains(body, "certctl_csr_requests_ready_for_pickup_total") ||
 		!strings.Contains(body, "certctl_auth_issuers_total") ||
+		!strings.Contains(body, "certctl_auth_issuers_connectivity_status_total") ||
 		!strings.Contains(body, "certctl_auth_issuer_binding_coverage_total") ||
 		!strings.Contains(body, "certctl_authz_bindings_total") ||
 		!strings.Contains(body, "certctl_authz_bindings_by_permission_total") ||
 		!strings.Contains(body, "certctl_authz_bindings_by_principal_kind_total") ||
 		!strings.Contains(body, "certctl_authz_bindings_risky_total") ||
+		!strings.Contains(body, "certctl_doctor_findings_total") ||
 		!strings.Contains(body, "certctl_auth_requests_total") ||
 		!strings.Contains(body, "certctl_subject_auto_approval_rules_total") ||
 		!strings.Contains(body, "certctl_subject_auto_approval_rules_risky_total") ||
@@ -590,8 +641,12 @@ func TestMetricsEndpointRequiresAuthWhenAdminEnabled(t *testing.T) {
 		t.Fatalf("expected metrics output, got %s", body)
 	}
 	if !strings.Contains(body, `state="enabled_without_bindings"`) ||
+		!strings.Contains(body, `status="ok"`) ||
+		!strings.Contains(body, `status="error"`) ||
+		!strings.Contains(body, `status="disabled"`) ||
 		!strings.Contains(body, `state="disabled_referenced"`) ||
 		!strings.Contains(body, `state="unknown_referenced"`) ||
+		!strings.Contains(body, `check="auth_issuer_discovery"`) ||
 		!strings.Contains(body, `principal_kind="superuser"`) ||
 		!strings.Contains(body, `risk="wildcard_permission"`) ||
 		!strings.Contains(body, `risk="broad"`) ||
@@ -633,4 +688,16 @@ func quoteJSON(t *testing.T, v string) string {
 		t.Fatal(err)
 	}
 	return string(buf)
+}
+
+func assertErr(msg string) error {
+	return &testError{msg: msg}
+}
+
+type testError struct {
+	msg string
+}
+
+func (e *testError) Error() string {
+	return e.msg
 }

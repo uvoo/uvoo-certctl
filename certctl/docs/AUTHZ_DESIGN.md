@@ -259,6 +259,8 @@ Initial built-in server mapping:
 - `GET /admin/v1/effective-authz` -> `authz.read`
 - `GET /admin/v1/auth-issuers` -> `auth_issuer.read`
 - `GET /admin/v1/auth-issuers/{name}` -> `auth_issuer.read`
+- `GET /admin/v1/authz-bindings` -> `authz.read`
+- `GET /admin/v1/authz-bindings/{id}` -> `authz.read`
 - `GET /metrics` -> `metrics.read`
 - `POST /admin/v1/csr-requests` -> `csr.submit`
 - `GET /admin/v1/csr-requests` -> `csr.read`

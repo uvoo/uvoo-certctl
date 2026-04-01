@@ -357,6 +357,19 @@ assert any(item["issuer"] == issuer for item in payload["items"]), payload
 print("auth issuer list ok")
 PY
 
+  echo "Listing authz bindings over the admin API..."
+  local authz_bindings_json
+  authz_bindings_json="$(curl -fsS "$CERTCTL_BASE_URL/admin/v1/authz-bindings" \
+    -H "Authorization: Bearer $ACCESS_TOKEN")"
+  python3 - <<'PY' "$authz_bindings_json"
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+assert payload["count"] >= 1, payload
+print("authz binding list ok")
+PY
+
   echo "Listing subjects over the admin API..."
   local subjects_json
   subjects_json="$(curl -fsS "$CERTCTL_BASE_URL/admin/v1/subjects" \
