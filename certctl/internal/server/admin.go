@@ -563,12 +563,18 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 
 	writeMetricHeader(&b, "certctl_subjects_total", "Locally tracked JWT subjects by status.")
 	subjectCounts := map[string]int{}
+	pendingSubjects := 0
 	for _, subject := range subjects {
 		subjectCounts[subject.Status]++
+		if subject.Status == storage.SubjectStatusPending {
+			pendingSubjects++
+		}
 	}
 	for status, count := range subjectCounts {
 		writeMetricSample(&b, "certctl_subjects_total", map[string]string{"status": status}, float64(count))
 	}
+	writeMetricHeader(&b, "certctl_pending_subjects_total", "Locally tracked JWT subjects that are still pending approval.")
+	writeMetricSample(&b, "certctl_pending_subjects_total", nil, float64(pendingSubjects))
 
 	writeMetricHeader(&b, "certctl_shares_total", "Total certificate shares by state.")
 	shareCounts := map[string]int{}
@@ -604,6 +610,11 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 		writeMetricSample(&b, "certctl_pending_csr_requests_older_than_days_total", map[string]string{
 			"days": strconv.Itoa(warnDays),
 		}, float64(countStalePendingCSRs(csrRows, now, warnWindow)))
+
+		writeMetricHeader(&b, "certctl_pending_subjects_older_than_days_total", "Pending JWT subjects older than the configured warning window.")
+		writeMetricSample(&b, "certctl_pending_subjects_older_than_days_total", map[string]string{
+			"days": strconv.Itoa(warnDays),
+		}, float64(countStalePendingSubjects(subjects, now, warnWindow)))
 	}
 
 	return b.String(), nil
@@ -670,6 +681,19 @@ func countStalePendingCSRs(rows []storage.CSRRequest, now time.Time, warnWindow 
 	count := 0
 	for _, row := range rows {
 		if row.Status == storage.CSRStatusPending && !row.CreatedAt.IsZero() && now.Sub(row.CreatedAt) >= warnWindow {
+			count++
+		}
+	}
+	return count
+}
+
+func countStalePendingSubjects(rows []storage.Subject, now time.Time, warnWindow time.Duration) int {
+	count := 0
+	for _, row := range rows {
+		if row.Status != storage.SubjectStatusPending || row.FirstSeenAt.IsZero() {
+			continue
+		}
+		if now.Sub(row.FirstSeenAt) >= warnWindow {
 			count++
 		}
 	}

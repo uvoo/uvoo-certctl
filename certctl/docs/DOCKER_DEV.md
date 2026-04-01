@@ -49,7 +49,8 @@ This smoke path:
 - fetches a Keycloak access token
 - exercises first-login subject auto-approval
 - calls `/admin/v1/doctor`
-- calls `/metrics`
+- calls `/metrics` with dedicated metrics Basic auth
+- calls `/metrics` with bearer auth
 - creates a private root and intermediate CA
 - submits a private CSR over HTTP
 - approves it over the admin API
@@ -161,6 +162,8 @@ They reuse `scripts/smoke-docker-stack.sh`. Public runs need the matching reposi
 - `PUBLIC_WRITE_TEST=1` enables the provider TXT write/delete precursor check
 - `CERTCTL_BASE_URL` overrides the local `certctl` server URL
 - `ISSUER_URL` overrides the local Keycloak issuer URL
+- `METRICS_USERNAME` overrides the dedicated `/metrics` Basic auth username used by the smoke
+- `METRICS_PASSWORD` overrides the dedicated `/metrics` Basic auth password used by the smoke
 
 ## Useful follow-up commands
 

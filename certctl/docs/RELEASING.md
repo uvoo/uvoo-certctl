@@ -37,7 +37,7 @@ For routine admin operations outside the release flow, see [`RUNBOOK.md`](RUNBOO
 ## 2. Build release archives
 
 ```bash
-VERSION=v0.2.0 ./scripts/build-release.sh
+VERSION=v0.4.0 ./scripts/build-release.sh
 ```
 
 This writes:
@@ -65,20 +65,20 @@ Signing the checksum manifest is usually enough. It gives users an authenticity 
 Dry-run the release flow first:
 
 ```bash
-./scripts/draft-release.sh v0.2.0 --notes-file docs/RELEASE_NOTES_v0.2.0.md --dry-run
+./scripts/draft-release.sh v0.4.0 --notes-file docs/RELEASE_NOTES_v0.4.0.md --dry-run
 ```
 
 Then create the real draft:
 
 ```bash
-./scripts/draft-release.sh v0.2.0 --notes-file docs/RELEASE_NOTES_v0.2.0.md
+./scripts/draft-release.sh v0.4.0 --notes-file docs/RELEASE_NOTES_v0.4.0.md
 ```
 
 With checksum signing:
 
 ```bash
-./scripts/draft-release.sh v0.2.0 \
-  --notes-file docs/RELEASE_NOTES_v0.2.0.md \
+./scripts/draft-release.sh v0.4.0 \
+  --notes-file docs/RELEASE_NOTES_v0.4.0.md \
   --sign-checksums \
   --gpg-key-id you@example.com
 ```

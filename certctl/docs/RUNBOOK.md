@@ -217,7 +217,7 @@ Notes:
 - the built-in NACL checks the TCP client address, not forwarded-for headers
 - `/metrics` can use its own Basic auth credentials with `--metrics-username` and `--metrics-password`
 - `/metrics` otherwise accepts the admin Basic auth or bearer auth
-- `/metrics` includes low-cardinality counts for CSR backlog, pickup-ready requests, configured auth issuers and bindings, auth request outcomes, subject auto-approval rules and matches, and locally tracked JWT subjects
+- `/metrics` includes low-cardinality counts for CSR backlog, pickup-ready requests, configured auth issuers and bindings, auth request outcomes, subject auto-approval rules and matches, pending-subject counts, and locally tracked JWT subjects
 - for local end-to-end testing with Keycloak and the built-in server, use the Docker stack in [`DOCKER_DEV.md`](DOCKER_DEV.md)
 
 ## 6. Backup and restore

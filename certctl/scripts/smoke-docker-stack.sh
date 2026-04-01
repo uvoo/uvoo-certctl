@@ -59,6 +59,8 @@ CLIENT_ID="${CLIENT_ID:-certctl}"
 USERNAME="${USERNAME:-alice}"
 PASSWORD="${PASSWORD:-alicepass}"
 CSR_SUBMIT_PASSWORD="${CSR_SUBMIT_PASSWORD:-submit-secret}"
+METRICS_USERNAME="${METRICS_USERNAME:-metrics}"
+METRICS_PASSWORD="${METRICS_PASSWORD:-metrics-secret}"
 SMOKE_AUTO_APPROVE_JWT_SUBJECT="${SMOKE_AUTO_APPROVE_JWT_SUBJECT:-1}"
 SMOKE_PRIVATE_CA="${SMOKE_PRIVATE_CA:-1}"
 SMOKE_PUBLIC_CERT="${SMOKE_PUBLIC_CERT:-0}"
@@ -262,12 +264,18 @@ assert obj["status"] == "ok", obj
 print("doctor ok")
 PY
 
-  echo "Calling /metrics with bearer auth..."
+  echo "Calling /metrics with dedicated metrics basic auth..."
   local metrics
+  metrics="$(curl -fsS "$CERTCTL_BASE_URL/metrics" \
+    -u "$METRICS_USERNAME:$METRICS_PASSWORD")"
+  grep -q 'certctl_certificates_total' <<<"$metrics"
+  grep -q 'certctl_csr_requests_total' <<<"$metrics"
+  grep -q 'certctl_auth_requests_total{auth_method="basic_metrics",result="allowed"}' <<<"$metrics"
+
+  echo "Calling /metrics with bearer auth..."
   metrics="$(curl -fsS "$CERTCTL_BASE_URL/metrics" \
     -H "Authorization: Bearer $ACCESS_TOKEN")"
   grep -q 'certctl_certificates_total' <<<"$metrics"
-  grep -q 'certctl_csr_requests_total' <<<"$metrics"
 }
 
 run_private_csr_smoke() {
