@@ -380,7 +380,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	defer store.Close()
 
-	payload, err := buildMetrics(store, s.cfg.AdminWarnDays)
+	payload, err := buildMetrics(store, s.cfg.AdminWarnDays, s.authResultSnapshot(), s.autoApprovalSnapshot())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to build metrics")
 		return
@@ -390,7 +390,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(payload))
 }
 
-func buildMetrics(store *storage.Store, warnDays int) (string, error) {
+func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int, autoApprovals map[string]int) (string, error) {
 	publicRows, err := store.List("", true)
 	if err != nil {
 		return "", err
@@ -412,6 +412,10 @@ func buildMetrics(store *storage.Store, warnDays int) (string, error) {
 		return "", err
 	}
 	authzBindings, err := store.ListAuthzBindings(false)
+	if err != nil {
+		return "", err
+	}
+	subjectAutoApprovalRules, err := store.ListSubjectAutoApprovalRules(false)
 	if err != nil {
 		return "", err
 	}
@@ -533,14 +537,44 @@ func buildMetrics(store *storage.Store, warnDays int) (string, error) {
 		}, float64(count))
 	}
 
+	writeMetricHeader(&b, "certctl_subject_auto_approval_rules_total", "Subject auto-approval rules by enabled state.")
+	subjectRuleCounts := map[string]int{}
+	for _, rule := range subjectAutoApprovalRules {
+		subjectRuleCounts[strconv.FormatBool(rule.Enabled)]++
+	}
+	for enabled, count := range subjectRuleCounts {
+		writeMetricSample(&b, "certctl_subject_auto_approval_rules_total", map[string]string{"enabled": enabled}, float64(count))
+	}
+
+	writeMetricHeader(&b, "certctl_auth_requests_total", "Admin and metrics authentication attempts by result and auth method since process start.")
+	for key, count := range authResults {
+		parts := strings.SplitN(key, "|", 2)
+		labels := map[string]string{"result": parts[0], "auth_method": "unknown"}
+		if len(parts) == 2 && parts[1] != "" {
+			labels["auth_method"] = parts[1]
+		}
+		writeMetricSample(&b, "certctl_auth_requests_total", labels, float64(count))
+	}
+
+	writeMetricHeader(&b, "certctl_subject_auto_approval_matches_total", "Subject auto-approval rule matches since process start.")
+	for ruleName, count := range autoApprovals {
+		writeMetricSample(&b, "certctl_subject_auto_approval_matches_total", map[string]string{"rule": ruleName}, float64(count))
+	}
+
 	writeMetricHeader(&b, "certctl_subjects_total", "Locally tracked JWT subjects by status.")
 	subjectCounts := map[string]int{}
+	pendingSubjects := 0
 	for _, subject := range subjects {
 		subjectCounts[subject.Status]++
+		if subject.Status == storage.SubjectStatusPending {
+			pendingSubjects++
+		}
 	}
 	for status, count := range subjectCounts {
 		writeMetricSample(&b, "certctl_subjects_total", map[string]string{"status": status}, float64(count))
 	}
+	writeMetricHeader(&b, "certctl_pending_subjects_total", "Locally tracked JWT subjects that are still pending approval.")
+	writeMetricSample(&b, "certctl_pending_subjects_total", nil, float64(pendingSubjects))
 
 	writeMetricHeader(&b, "certctl_shares_total", "Total certificate shares by state.")
 	shareCounts := map[string]int{}
@@ -576,6 +610,11 @@ func buildMetrics(store *storage.Store, warnDays int) (string, error) {
 		writeMetricSample(&b, "certctl_pending_csr_requests_older_than_days_total", map[string]string{
 			"days": strconv.Itoa(warnDays),
 		}, float64(countStalePendingCSRs(csrRows, now, warnWindow)))
+
+		writeMetricHeader(&b, "certctl_pending_subjects_older_than_days_total", "Pending JWT subjects older than the configured warning window.")
+		writeMetricSample(&b, "certctl_pending_subjects_older_than_days_total", map[string]string{
+			"days": strconv.Itoa(warnDays),
+		}, float64(countStalePendingSubjects(subjects, now, warnWindow)))
 	}
 
 	return b.String(), nil
@@ -642,6 +681,19 @@ func countStalePendingCSRs(rows []storage.CSRRequest, now time.Time, warnWindow 
 	count := 0
 	for _, row := range rows {
 		if row.Status == storage.CSRStatusPending && !row.CreatedAt.IsZero() && now.Sub(row.CreatedAt) >= warnWindow {
+			count++
+		}
+	}
+	return count
+}
+
+func countStalePendingSubjects(rows []storage.Subject, now time.Time, warnWindow time.Duration) int {
+	count := 0
+	for _, row := range rows {
+		if row.Status != storage.SubjectStatusPending || row.FirstSeenAt.IsZero() {
+			continue
+		}
+		if now.Sub(row.FirstSeenAt) >= warnWindow {
 			count++
 		}
 	}

@@ -46,27 +46,37 @@ func init() {
 			if err != nil {
 				return err
 			}
+			rules, err := store.ListSubjectAutoApprovalRules(true)
+			if err != nil {
+				return err
+			}
 
 			payload := map[string]any{
-				"verified":              verifyErr == nil,
-				"token_issuer":          emptyStringToNil(inspection.Issuer),
-				"token_subject":         emptyStringToNil(inspection.Subject),
-				"token_audiences":       inspection.Audiences,
-				"matched_issuer":        nil,
-				"subject_record":        nil,
-				"auth_method":           nil,
-				"issuer":                nil,
-				"subject":               nil,
-				"username":              nil,
-				"email":                 nil,
-				"roles":                 []string{},
-				"groups":                []string{},
-				"local_roles":           []string{},
-				"local_groups":          []string{},
-				"principals":            []string{},
-				"effective_permissions": []string{},
-				"matching_bindings":     []map[string]any{},
-				"error":                 nil,
+				"verified":                            verifyErr == nil,
+				"token_issuer":                        emptyStringToNil(inspection.Issuer),
+				"token_subject":                       emptyStringToNil(inspection.Subject),
+				"token_audiences":                     inspection.Audiences,
+				"matched_issuer":                      nil,
+				"subject_record":                      nil,
+				"subject_status":                      nil,
+				"subject_status_reason":               nil,
+				"matching_auto_approval_rules":        []string{},
+				"matching_auto_approval_local_roles":  []string{},
+				"matching_auto_approval_local_groups": []string{},
+				"would_be_allowed_now":                false,
+				"auth_method":                         nil,
+				"issuer":                              nil,
+				"subject":                             nil,
+				"username":                            nil,
+				"email":                               nil,
+				"roles":                               []string{},
+				"groups":                              []string{},
+				"local_roles":                         []string{},
+				"local_groups":                        []string{},
+				"principals":                          []string{},
+				"effective_permissions":               []string{},
+				"matching_bindings":                   []map[string]any{},
+				"error":                               nil,
 			}
 			if hasMatchedIssuer {
 				payload["matched_issuer"] = authIssuerPayload(matchedIssuer)
@@ -78,10 +88,14 @@ func init() {
 			}
 
 			if verifyErr == nil {
+				var subjectRecPtr *storage.Subject
 				if subjectRec, err := store.GetSubject(identity.Issuer, identity.Subject); err == nil {
-					identity = auth.ApplySubjectRecord(identity, subjectRec)
 					payload["subject_record"] = subjectPayload(subjectRec)
+					subjectRecCopy := subjectRec
+					subjectRecPtr = &subjectRecCopy
 				}
+				preview := auth.PreviewSubjectAccess(identity, subjectRecPtr, rules)
+				identity = preview.Identity
 				effectivePermissions := auth.EffectivePermissions(identity, bindings)
 				matching := make([]map[string]any, 0, len(bindings))
 				for _, permission := range effectivePermissions {
@@ -99,6 +113,12 @@ func init() {
 				payload["groups"] = identity.Groups
 				payload["local_roles"] = identity.LocalRoles
 				payload["local_groups"] = identity.LocalGroups
+				payload["subject_status"] = preview.Status
+				payload["subject_status_reason"] = preview.Reason
+				payload["matching_auto_approval_rules"] = preview.MatchedRuleNames
+				payload["matching_auto_approval_local_roles"] = preview.MatchedLocalRoles
+				payload["matching_auto_approval_local_groups"] = preview.MatchedLocalGroups
+				payload["would_be_allowed_now"] = preview.Status == storage.SubjectStatusActive
 				payload["principals"] = identity.Principals
 				payload["effective_permissions"] = effectivePermissions
 				payload["matching_bindings"] = matching
@@ -130,6 +150,15 @@ func init() {
 				printKV("error", verifyErr.Error())
 				return nil
 			}
+			if payload["subject_status"] != nil {
+				printKV("subject_status", fmt.Sprintf("%v", payload["subject_status"]))
+			}
+			if payload["subject_status_reason"] != nil {
+				printKV("subject_status_reason", fmt.Sprintf("%v", payload["subject_status_reason"]))
+			}
+			if rules, ok := payload["matching_auto_approval_rules"].([]string); ok {
+				printStringList("matching_auto_approval_rules", rules)
+			}
 			printKV("auth_method", identity.AuthMethod)
 			printKV("issuer", identity.Issuer)
 			printKV("subject", identity.Subject)
@@ -144,6 +173,7 @@ func init() {
 			printStringList("local_roles", identity.LocalRoles)
 			printStringList("local_groups", identity.LocalGroups)
 			printStringList("principals", identity.Principals)
+			printKV("would_be_allowed_now", fmt.Sprintf("%t", payload["would_be_allowed_now"].(bool)))
 			printStringList("effective_permissions", auth.EffectivePermissions(identity, bindings))
 			return nil
 		},

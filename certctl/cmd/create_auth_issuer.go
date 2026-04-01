@@ -34,7 +34,9 @@ func init() {
     --audience certctl \
     --discovery-url https://sso.example.com/realms/certctl/.well-known/openid-configuration \
     --roles-claim realm_access.roles
-  certctl create-auth-issuer --preset google --name google-login --audience <client-id>`,
+  certctl create-auth-issuer --preset google --name google-login --audience <client-id>
+  certctl create-auth-issuer --preset keycloak --name keycloak-local --issuer https://sso.example.com/realms/certctl --audience certctl
+  certctl create-auth-issuer --preset aws-cognito --name cognito-dev --issuer https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example --audience <app-client-id>`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if preset != "" {
 				rec, ok := authProviderPresetByName(strings.TrimSpace(preset))

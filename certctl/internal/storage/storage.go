@@ -121,6 +121,20 @@ type AuthzBindingFilter struct {
 	ResourceRef  string
 }
 
+type SubjectAutoApprovalRule struct {
+	ID             string
+	Name           string
+	Enabled        bool
+	Issuer         string
+	EmailDomain    string
+	RequiredRoles  []string
+	RequiredGroups []string
+	LocalRoles     []string
+	LocalGroups    []string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
 type Subject struct {
 	ID          string
 	Issuer      string
@@ -1191,6 +1205,9 @@ func ensureSchema(db *sql.DB) error {
 	if err := ensureSubjectsSchema(db); err != nil {
 		return err
 	}
+	if err := ensureSubjectAutoApprovalRulesSchema(db); err != nil {
+		return err
+	}
 	if err := ensureAuditEventsSchema(db); err != nil {
 		return err
 	}
@@ -1486,6 +1503,37 @@ func ensureSubjectsSchema(db *sql.DB) error {
 	stmts := []string{
 		`CREATE INDEX IF NOT EXISTS idx_subjects_status_last_seen ON subjects(status, last_seen_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_subjects_issuer_subject ON subjects(issuer, subject)`,
+	}
+	for _, stmt := range stmts {
+		if _, err := db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureSubjectAutoApprovalRulesSchema(db *sql.DB) error {
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS subject_auto_approval_rules (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL UNIQUE,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			issuer TEXT NOT NULL,
+			email_domain TEXT,
+			required_roles_json TEXT NOT NULL DEFAULT '[]',
+			required_groups_json TEXT NOT NULL DEFAULT '[]',
+			local_roles_json TEXT NOT NULL DEFAULT '[]',
+			local_groups_json TEXT NOT NULL DEFAULT '[]',
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+			updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+		)
+	`)
+	if err != nil {
+		return err
+	}
+	stmts := []string{
+		`CREATE INDEX IF NOT EXISTS idx_subject_auto_approval_rules_enabled_issuer ON subject_auto_approval_rules(enabled, issuer)`,
+		`CREATE INDEX IF NOT EXISTS idx_subject_auto_approval_rules_enabled_name ON subject_auto_approval_rules(enabled, name)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := db.Exec(stmt); err != nil {
@@ -2199,6 +2247,36 @@ func scanAuthzBinding(row scanner, rec *AuthzBinding) error {
 	rec.Enabled = enabled != 0
 	rec.ResourceKind = resourceKind.String
 	rec.ResourceRef = resourceRef.String
+	rec.CreatedAt = parseRFC3339Null(createdAt)
+	rec.UpdatedAt = parseRFC3339Null(updatedAt)
+	return nil
+}
+
+func scanSubjectAutoApprovalRule(row scanner, rec *SubjectAutoApprovalRule) error {
+	var enabled int
+	var emailDomain, requiredRolesJSON, requiredGroupsJSON, localRolesJSON, localGroupsJSON string
+	var createdAt, updatedAt sql.NullString
+	if err := row.Scan(
+		&rec.ID,
+		&rec.Name,
+		&enabled,
+		&rec.Issuer,
+		&emailDomain,
+		&requiredRolesJSON,
+		&requiredGroupsJSON,
+		&localRolesJSON,
+		&localGroupsJSON,
+		&createdAt,
+		&updatedAt,
+	); err != nil {
+		return err
+	}
+	rec.Enabled = enabled != 0
+	rec.EmailDomain = strings.TrimSpace(emailDomain)
+	rec.RequiredRoles = parseJSONArrayStrings(requiredRolesJSON)
+	rec.RequiredGroups = parseJSONArrayStrings(requiredGroupsJSON)
+	rec.LocalRoles = parseJSONArrayStrings(localRolesJSON)
+	rec.LocalGroups = parseJSONArrayStrings(localGroupsJSON)
 	rec.CreatedAt = parseRFC3339Null(createdAt)
 	rec.UpdatedAt = parseRFC3339Null(updatedAt)
 	return nil
@@ -2929,6 +3007,101 @@ func (s *Store) ListAuthzBindings(enabledOnly bool) ([]AuthzBinding, error) {
 	return out, rows.Err()
 }
 
+func (s *Store) UpsertSubjectAutoApprovalRule(rec SubjectAutoApprovalRule) error {
+	if strings.TrimSpace(rec.ID) == "" {
+		return fmt.Errorf("subject auto approval rule id is required")
+	}
+	if strings.TrimSpace(rec.Name) == "" {
+		return fmt.Errorf("subject auto approval rule name is required")
+	}
+	if strings.TrimSpace(rec.Issuer) == "" {
+		return fmt.Errorf("subject auto approval rule issuer is required")
+	}
+	rec.EmailDomain = normalizeEmailDomain(rec.EmailDomain)
+	rec.RequiredRoles = uniqueSortedStrings(rec.RequiredRoles)
+	rec.RequiredGroups = uniqueSortedStrings(rec.RequiredGroups)
+	rec.LocalRoles = uniqueSortedStrings(rec.LocalRoles)
+	rec.LocalGroups = uniqueSortedStrings(rec.LocalGroups)
+	rec.CreatedAt = defaultCreatedAt(rec.CreatedAt)
+	rec.UpdatedAt = time.Now().UTC()
+
+	_, err := s.db.Exec(`
+		INSERT INTO subject_auto_approval_rules
+		(id, name, enabled, issuer, email_domain, required_roles_json, required_groups_json, local_roles_json, local_groups_json, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(name) DO UPDATE SET
+			enabled = excluded.enabled,
+			issuer = excluded.issuer,
+			email_domain = excluded.email_domain,
+			required_roles_json = excluded.required_roles_json,
+			required_groups_json = excluded.required_groups_json,
+			local_roles_json = excluded.local_roles_json,
+			local_groups_json = excluded.local_groups_json,
+			updated_at = excluded.updated_at
+	`,
+		rec.ID,
+		rec.Name,
+		boolToInt(rec.Enabled),
+		rec.Issuer,
+		nullIfEmpty(rec.EmailDomain),
+		marshalJSONArrayStrings(rec.RequiredRoles),
+		marshalJSONArrayStrings(rec.RequiredGroups),
+		marshalJSONArrayStrings(rec.LocalRoles),
+		marshalJSONArrayStrings(rec.LocalGroups),
+		timeOrNil(rec.CreatedAt),
+		timeOrNil(rec.UpdatedAt),
+	)
+	return err
+}
+
+func (s *Store) GetSubjectAutoApprovalRuleByName(name string) (SubjectAutoApprovalRule, error) {
+	var rec SubjectAutoApprovalRule
+	err := scanSubjectAutoApprovalRule(s.db.QueryRow(`
+		SELECT id, name, enabled, issuer, COALESCE(email_domain, ''), required_roles_json, required_groups_json, local_roles_json, local_groups_json, created_at, updated_at
+		FROM subject_auto_approval_rules
+		WHERE name = ?
+		LIMIT 1
+	`, name), &rec)
+	return rec, err
+}
+
+func (s *Store) ListSubjectAutoApprovalRules(enabledOnly bool) ([]SubjectAutoApprovalRule, error) {
+	query := `
+		SELECT id, name, enabled, issuer, COALESCE(email_domain, ''), required_roles_json, required_groups_json, local_roles_json, local_groups_json, created_at, updated_at
+		FROM subject_auto_approval_rules
+	`
+	if enabledOnly {
+		query += ` WHERE enabled = 1`
+	}
+	query += ` ORDER BY issuer, name`
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []SubjectAutoApprovalRule
+	for rows.Next() {
+		var rec SubjectAutoApprovalRule
+		if err := scanSubjectAutoApprovalRule(rows, &rec); err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeleteSubjectAutoApprovalRule(name string) error {
+	res, err := s.db.Exec(`
+		DELETE FROM subject_auto_approval_rules
+		WHERE name = ?
+	`, name)
+	if err != nil {
+		return err
+	}
+	return ensureRowsAffected(res, "subject auto approval rule not found")
+}
+
 func (s *Store) UpsertSubjectSeen(rec Subject) (Subject, error) {
 	if strings.TrimSpace(rec.ID) == "" {
 		return Subject{}, fmt.Errorf("subject id is required")
@@ -3034,6 +3207,12 @@ func (s *Store) UpdateSubjectApproval(issuer, subject string, status string, loc
 		return err
 	}
 	return ensureRowsAffected(res, "subject not found")
+}
+
+func normalizeEmailDomain(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.TrimPrefix(value, "@")
+	return value
 }
 
 func (s *Store) SetAuthIssuerEnabled(issuer string, enabled bool) error {

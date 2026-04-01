@@ -164,6 +164,70 @@ func TestAuthCommandsJSON(t *testing.T) {
 	if !strings.Contains(out, `"metrics.read"`) {
 		t.Fatalf("expected updated authz binding output, got %s", out)
 	}
+
+	out, err = runRootCommandForTest(
+		"--db", dbPath,
+		"create-subject-auto-approval",
+		"--name", "issuer-admins",
+		"--issuer", issuerURL,
+		"--email-domain", "example.com",
+		"--local-group", "employees",
+		"--json",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"email_domain": "example.com"`) {
+		t.Fatalf("expected subject auto approval output, got %s", out)
+	}
+
+	out, err = runRootCommandForTest(
+		"--db", dbPath,
+		"list-subject-auto-approvals",
+		"--json",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"issuer-admins"`) {
+		t.Fatalf("expected listed subject auto approval, got %s", out)
+	}
+
+	store, err := storage.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpsertSubjectSeen(storage.Subject{
+		ID:       "subject-1",
+		Issuer:   issuerURL,
+		Subject:  "user-1",
+		Status:   storage.SubjectStatusPending,
+		Username: "alice",
+		Email:    "alice@example.com",
+	}); err != nil {
+		_ = store.Close()
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err = runRootCommandForTest(
+		"--db", dbPath,
+		"update-subject",
+		"--issuer", issuerURL,
+		"--subject", "user-1",
+		"--status", "active",
+		"--local-role", "admin",
+		"--local-group", "ops",
+		"--json",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"status": "active"`) || !strings.Contains(out, `"local_roles"`) {
+		t.Fatalf("expected updated subject output, got %s", out)
+	}
 }
 
 func runRootCommandForTest(args ...string) (string, error) {

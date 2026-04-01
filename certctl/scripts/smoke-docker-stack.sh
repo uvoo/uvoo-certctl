@@ -1,6 +1,48 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SKIP_CLEANUP=0
+ONLY_CLEANUP=0
+
+usage() {
+  cat <<'EOF'
+Usage: ./scripts/smoke-docker-stack.sh [--skip-cleanup] [--only-cleanup] [--help]
+
+Options:
+  --skip-cleanup  Leave the docker stack and temp work directory in place on exit.
+  --only-cleanup  Only tear down the configured docker-compose project and exit.
+  --help          Show this help text.
+
+Notes:
+  - Use PROJECT_NAME=... with --skip-cleanup and --only-cleanup if you want to
+    tear down the same stack later.
+  - KEEP_STACK=1 still works and leaves containers up, but --skip-cleanup also
+    preserves the temporary work directory for manual inspection.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --skip-cleanup)
+      SKIP_CLEANUP=1
+      shift
+      ;;
+    --only-cleanup)
+      ONLY_CLEANUP=1
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-$ROOT_DIR/dev/docker/docker-compose.yml}"
 PROJECT_NAME="${PROJECT_NAME:-certctl-smoke-$(date +%s)}"
@@ -17,6 +59,9 @@ CLIENT_ID="${CLIENT_ID:-certctl}"
 USERNAME="${USERNAME:-alice}"
 PASSWORD="${PASSWORD:-alicepass}"
 CSR_SUBMIT_PASSWORD="${CSR_SUBMIT_PASSWORD:-submit-secret}"
+METRICS_USERNAME="${METRICS_USERNAME:-metrics}"
+METRICS_PASSWORD="${METRICS_PASSWORD:-metrics-secret}"
+SMOKE_AUTO_APPROVE_JWT_SUBJECT="${SMOKE_AUTO_APPROVE_JWT_SUBJECT:-1}"
 SMOKE_PRIVATE_CA="${SMOKE_PRIVATE_CA:-1}"
 SMOKE_PUBLIC_CERT="${SMOKE_PUBLIC_CERT:-0}"
 SMOKE_PUBLIC_CERT_ISSUE="${SMOKE_PUBLIC_CERT_ISSUE:-0}"
@@ -44,13 +89,27 @@ certctl_exec() {
   compose exec -T "$CERTCTL_SERVICE" certctl --db "$DB_PATH_IN_CONTAINER" "$@"
 }
 
+cleanup_stack() {
+  compose down -v >/dev/null 2>&1 || true
+}
+
 cleanup() {
+  if [[ "$SKIP_CLEANUP" == "1" ]]; then
+    return 0
+  fi
   if [[ "$KEEP_STACK" != "1" ]]; then
-    compose down -v >/dev/null 2>&1 || true
+    cleanup_stack
   fi
   rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
+
+if [[ "$ONLY_CLEANUP" == "1" ]]; then
+  echo "Cleaning up docker stack for project: $PROJECT_NAME"
+  cleanup_stack
+  rm -rf "$WORK_DIR"
+  exit 0
+fi
 
 wait_for_url() {
   local url="$1"
@@ -117,12 +176,28 @@ require_env() {
 configure_auth() {
   echo "Configuring trusted issuer and local bindings..."
   certctl_exec create-auth-issuer \
+    --preset keycloak \
     --name keycloak-dev \
     --issuer "$ISSUER_URL" \
     --audience "$CLIENT_ID" \
     --required-claim "azp=$CLIENT_ID" \
-    --discovery-url "$INTERNAL_ISSUER_URL/.well-known/openid-configuration" \
-    --roles-claim realm_access.roles >/dev/null
+    --discovery-url "$INTERNAL_ISSUER_URL/.well-known/openid-configuration" >/dev/null
+
+  if [[ "$SMOKE_AUTO_APPROVE_JWT_SUBJECT" == "1" ]]; then
+    certctl_exec create-subject-auto-approval \
+      --name keycloak-example-users \
+      --issuer "$ISSUER_URL" \
+      --email-domain example.com \
+      --local-group docker-smoke-admin >/dev/null
+
+    certctl_exec create-authz-binding \
+      --principal "local_group:docker-smoke-admin" \
+      --permission doctor.read >/dev/null
+    certctl_exec create-authz-binding \
+      --principal "local_group:docker-smoke-admin" \
+      --permission metrics.read >/dev/null
+    return 0
+  fi
 
   certctl_exec create-authz-binding \
     --principal "role:$ISSUER_URL:certctl_admin" \
@@ -133,13 +208,17 @@ configure_auth() {
 }
 
 configure_private_csr_auth() {
+  local principal="role:$ISSUER_URL:certctl_admin"
+  if [[ "$SMOKE_AUTO_APPROVE_JWT_SUBJECT" == "1" ]]; then
+    principal="local_group:docker-smoke-admin"
+  fi
   certctl_exec create-authz-binding \
-    --principal "role:$ISSUER_URL:certctl_admin" \
+    --principal "$principal" \
     --permission csr.read \
     --resource-kind csr_request \
     --resource-ref '*' >/dev/null
   certctl_exec create-authz-binding \
-    --principal "role:$ISSUER_URL:certctl_admin" \
+    --principal "$principal" \
     --permission csr.approve \
     --resource-kind csr_request \
     --resource-ref '*' >/dev/null
@@ -185,12 +264,18 @@ assert obj["status"] == "ok", obj
 print("doctor ok")
 PY
 
-  echo "Calling /metrics with bearer auth..."
+  echo "Calling /metrics with dedicated metrics basic auth..."
   local metrics
+  metrics="$(curl -fsS "$CERTCTL_BASE_URL/metrics" \
+    -u "$METRICS_USERNAME:$METRICS_PASSWORD")"
+  grep -q 'certctl_certificates_total' <<<"$metrics"
+  grep -q 'certctl_csr_requests_total' <<<"$metrics"
+  grep -q 'certctl_auth_requests_total{auth_method="basic_metrics",result="allowed"}' <<<"$metrics"
+
+  echo "Calling /metrics with bearer auth..."
   metrics="$(curl -fsS "$CERTCTL_BASE_URL/metrics" \
     -H "Authorization: Bearer $ACCESS_TOKEN")"
   grep -q 'certctl_certificates_total' <<<"$metrics"
-  grep -q 'certctl_csr_requests_total' <<<"$metrics"
 }
 
 run_private_csr_smoke() {

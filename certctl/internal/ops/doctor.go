@@ -27,6 +27,7 @@ type DoctorStore interface {
 	ListCSRRequests(string, string) ([]storage.CSRRequest, error)
 	ListAuthIssuers(bool) ([]storage.AuthIssuer, error)
 	ListAuthzBindings(bool) ([]storage.AuthzBinding, error)
+	ListSubjectAutoApprovalRules(bool) ([]storage.SubjectAutoApprovalRule, error)
 }
 
 type AuthIssuerProbe func(storage.AuthIssuer) error
@@ -85,14 +86,19 @@ func RunDoctorWithOptions(store DoctorStore, opts DoctorOptions) ([]DoctorFindin
 	if err != nil {
 		return nil, err
 	}
+	subjectAutoApprovalRules, err := store.ListSubjectAutoApprovalRules(false)
+	if err != nil {
+		return nil, err
+	}
 
 	findings = append(findings, checkActiveLeafCounts(publicRows, privateRows)...)
 	findings = append(findings, checkLeafLineageLinks(publicRows, privateRows)...)
 	findings = append(findings, checkCAInvariants(rootRows, icaRows, now)...)
 	findings = append(findings, checkPrivateCertIssuers(privateRows, icaRows)...)
-	findings = append(findings, checkAuthIssuerBindings(authIssuers, authzBindings)...)
+	findings = append(findings, checkAuthIssuerBindings(authIssuers, authzBindings, subjectAutoApprovalRules)...)
 	findings = append(findings, checkBroadAuthzBindings(authzBindings)...)
 	findings = append(findings, checkDuplicateAuthzBindings(authzBindings)...)
+	findings = append(findings, checkSubjectAutoApprovalRules(authIssuers, subjectAutoApprovalRules)...)
 	findings = append(findings, checkAuthIssuerDiscovery(authIssuers, authzBindings, opts.AuthIssuerProbe)...)
 	if opts.WarnDays > 0 {
 		findings = append(findings, checkExpiringLeafs(publicRows, privateRows, now, warnWindow)...)
@@ -418,7 +424,7 @@ func checkPendingCSRRequests(requests []storage.CSRRequest, now time.Time, warnW
 	return findings
 }
 
-func checkAuthIssuerBindings(issuers []storage.AuthIssuer, bindings []storage.AuthzBinding) []DoctorFinding {
+func checkAuthIssuerBindings(issuers []storage.AuthIssuer, bindings []storage.AuthzBinding, rules []storage.SubjectAutoApprovalRule) []DoctorFinding {
 	var findings []DoctorFinding
 	knownIssuers := map[string]storage.AuthIssuer{}
 	disabled := map[string]storage.AuthIssuer{}
@@ -438,6 +444,14 @@ func checkAuthIssuerBindings(issuers []storage.AuthIssuer, bindings []storage.Au
 				referenced[issuerURL] = append(referenced[issuerURL], binding.ID)
 				break
 			}
+		}
+	}
+	for _, rule := range rules {
+		if !rule.Enabled {
+			continue
+		}
+		if _, ok := knownIssuers[rule.Issuer]; ok {
+			referenced[rule.Issuer] = append(referenced[rule.Issuer], "subject_auto_approval:"+rule.Name)
 		}
 	}
 
@@ -550,6 +564,43 @@ func checkBroadAuthzBindings(bindings []storage.AuthzBinding) []DoctorFinding {
 				Severity: "warn",
 				Check:    "authz_binding_wildcard_scope",
 				Message:  fmt.Sprintf("authz binding %s grants %s with wildcard resource scope", binding.ID, binding.Permission),
+			})
+		}
+	}
+	return findings
+}
+
+func checkSubjectAutoApprovalRules(issuers []storage.AuthIssuer, rules []storage.SubjectAutoApprovalRule) []DoctorFinding {
+	var findings []DoctorFinding
+	knownIssuers := map[string]storage.AuthIssuer{}
+	for _, issuer := range issuers {
+		knownIssuers[issuer.Issuer] = issuer
+	}
+	for _, rule := range rules {
+		if !rule.Enabled {
+			continue
+		}
+		issuer, ok := knownIssuers[rule.Issuer]
+		if !ok {
+			findings = append(findings, DoctorFinding{
+				Severity: "warn",
+				Check:    "subject_auto_approval_unknown_issuer",
+				Message:  fmt.Sprintf("enabled subject auto approval rule %s references unknown issuer %s", rule.Name, rule.Issuer),
+			})
+			continue
+		}
+		if !issuer.Enabled {
+			findings = append(findings, DoctorFinding{
+				Severity: "warn",
+				Check:    "subject_auto_approval_disabled_issuer",
+				Message:  fmt.Sprintf("enabled subject auto approval rule %s references disabled issuer %s", rule.Name, rule.Issuer),
+			})
+		}
+		if strings.TrimSpace(rule.EmailDomain) == "" && len(rule.RequiredRoles) == 0 && len(rule.RequiredGroups) == 0 {
+			findings = append(findings, DoctorFinding{
+				Severity: "warn",
+				Check:    "subject_auto_approval_broad",
+				Message:  fmt.Sprintf("subject auto approval rule %s auto-activates every subject for issuer %s", rule.Name, rule.Issuer),
 			})
 		}
 	}

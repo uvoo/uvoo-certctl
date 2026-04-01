@@ -20,6 +20,8 @@ func init() {
 	var csrMinInterval time.Duration
 	var adminUsername string
 	var adminPassword string
+	var metricsUsername string
+	var metricsPassword string
 	var adminWarnDays int
 	var enableMetrics bool
 
@@ -35,8 +37,18 @@ func init() {
 			if err != nil {
 				return err
 			}
+			metricsPassword, err := util.ResolveSecretValue(metricsPassword, "CERTCTL_METRICS_PASSWORD")
+			if err != nil {
+				return err
+			}
 			if (strings.TrimSpace(adminUsername) == "") != (adminPassword == "") {
 				return fmt.Errorf("both --admin-username and --admin-password are required to enable the admin api")
+			}
+			if (strings.TrimSpace(metricsUsername) == "") != (metricsPassword == "") {
+				return fmt.Errorf("both --metrics-username and --metrics-password are required to enable dedicated metrics basic auth")
+			}
+			if !enableMetrics && (strings.TrimSpace(metricsUsername) != "" || metricsPassword != "") {
+				return fmt.Errorf("--metrics must be enabled when using --metrics-username or --metrics-password")
 			}
 			srv := server.New(server.Config{
 				DBPath:                  rootCfg.DBPath,
@@ -49,6 +61,8 @@ func init() {
 				CSRMinInterval:          csrMinInterval,
 				AdminUsername:           adminUsername,
 				AdminPassword:           adminPassword,
+				MetricsUsername:         metricsUsername,
+				MetricsPassword:         metricsPassword,
 				AdminWarnDays:           adminWarnDays,
 				DefaultIntermediateName: rootCfg.DefaultIntermediateName,
 				ProviderHTTPTimeout:     rootCfg.HTTPTimeout,
@@ -69,10 +83,12 @@ func init() {
 				fmt.Println("Admin API enabled at /admin/v1 with HTTP Basic auth")
 			}
 			if enableMetrics {
-				if strings.TrimSpace(adminUsername) != "" && adminPassword != "" {
-					fmt.Println("Prometheus metrics enabled at /metrics with HTTP Basic auth")
+				if strings.TrimSpace(metricsUsername) != "" && metricsPassword != "" {
+					fmt.Println("Prometheus metrics enabled at /metrics with dedicated HTTP Basic auth")
+				} else if strings.TrimSpace(adminUsername) != "" && adminPassword != "" {
+					fmt.Println("Prometheus metrics enabled at /metrics with admin HTTP Basic auth or bearer auth")
 				} else {
-					fmt.Println("Prometheus metrics enabled at /metrics")
+					fmt.Println("Prometheus metrics enabled at /metrics with bearer auth when configured")
 				}
 			}
 			return srv.Run()
@@ -88,6 +104,8 @@ func init() {
 	cmd.Flags().DurationVar(&csrMinInterval, "csr-min-submit-interval", 2*time.Second, "minimum time between CSR submissions from the same client IP")
 	cmd.Flags().StringVar(&adminUsername, "admin-username", "", "optional HTTP Basic auth username for the admin API")
 	cmd.Flags().StringVar(&adminPassword, "admin-password", "", "optional HTTP Basic auth password for the admin API")
+	cmd.Flags().StringVar(&metricsUsername, "metrics-username", "", "optional dedicated HTTP Basic auth username for /metrics")
+	cmd.Flags().StringVar(&metricsPassword, "metrics-password", "", "optional dedicated HTTP Basic auth password for /metrics")
 	cmd.Flags().IntVar(&adminWarnDays, "admin-warn-days", 30, "doctor and metrics warning window in days for the admin API")
 	cmd.Flags().BoolVar(&enableMetrics, "metrics", false, "enable Prometheus-style metrics at /metrics")
 	rootCmd.AddCommand(cmd)

@@ -169,6 +169,87 @@ func TestAdminDoctorAllowsApprovedBearerSubjectWithBinding(t *testing.T) {
 	}
 }
 
+func TestAdminDoctorAutoApprovesMatchingSubjectRule(t *testing.T) {
+	issuerURL, signer, jwks := newTestOIDCIssuer(t)
+
+	dbPath := filepath.Join(t.TempDir(), "certs.db")
+	store, err := storage.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertAuthIssuer(storage.AuthIssuer{
+		ID:            "issuer-1",
+		Name:          "local-keycloak",
+		Enabled:       true,
+		Issuer:        issuerURL,
+		Audiences:     []string{"certctl"},
+		SubjectClaim:  "sub",
+		UsernameClaim: "preferred_username",
+		EmailClaim:    "email",
+		RolesClaims:   []string{"realm_access.roles"},
+		GroupsClaims:  []string{"groups"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertSubjectAutoApprovalRule(storage.SubjectAutoApprovalRule{
+		ID:          "rule-1",
+		Name:        "example-users",
+		Enabled:     true,
+		Issuer:      issuerURL,
+		EmailDomain: "example.com",
+		LocalGroups: []string{"employees"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateAuthzBinding(storage.AuthzBinding{
+		ID:         "binding-1",
+		Enabled:    true,
+		Principal:  "local_group:employees",
+		Permission: "doctor.read",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	token := signTestTokenWithClaims(t, signer, issuerURL, []string{"certctl_viewer"}, []string{"certctl"}, map[string]any{
+		"email": "alice@example.com",
+	})
+
+	srv := New(Config{
+		DBPath:        dbPath,
+		AdminWarnDays: 30,
+	})
+	srv.authVerifier = auth.NewVerifierWithClient(newTestOIDCHTTPClient(t, issuerURL, jwks))
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/v1/doctor", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	store, err = storage.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	subjectRec, err := store.GetSubject(issuerURL, "user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if subjectRec.Status != storage.SubjectStatusActive {
+		t.Fatalf("expected auto-approved active subject, got %s", subjectRec.Status)
+	}
+	if !strings.Contains(strings.Join(subjectRec.LocalGroups, ","), "employees") {
+		t.Fatalf("expected employees local group, got %+v", subjectRec.LocalGroups)
+	}
+}
+
 func TestAdminDoctorBearerForbiddenWithoutBinding(t *testing.T) {
 	issuerURL, signer, jwks := newTestOIDCIssuer(t)
 
@@ -314,8 +395,22 @@ func newTestOIDCIssuer(t *testing.T) (string, jose.Signer, jose.JSONWebKeySet) {
 }
 
 func signTestToken(t *testing.T, signer jose.Signer, issuer string, roles []string, audiences []string) string {
+	return signTestTokenWithClaims(t, signer, issuer, roles, audiences, nil)
+}
+
+func signTestTokenWithClaims(t *testing.T, signer jose.Signer, issuer string, roles []string, audiences []string, extra map[string]any) string {
 	t.Helper()
 
+	claims := map[string]any{
+		"preferred_username": "alice",
+		"email":              "alice@example.com",
+		"realm_access": map[string]any{
+			"roles": roles,
+		},
+	}
+	for key, value := range extra {
+		claims[key] = value
+	}
 	token, err := josejwt.Signed(signer).Claims(josejwt.Claims{
 		Issuer:    issuer,
 		Subject:   "user-1",
@@ -323,13 +418,7 @@ func signTestToken(t *testing.T, signer jose.Signer, issuer string, roles []stri
 		Expiry:    josejwt.NewNumericDate(time.Now().UTC().Add(time.Hour)),
 		NotBefore: josejwt.NewNumericDate(time.Now().UTC().Add(-time.Minute)),
 		IssuedAt:  josejwt.NewNumericDate(time.Now().UTC().Add(-time.Minute)),
-	}).Claims(map[string]any{
-		"preferred_username": "alice",
-		"email":              "alice@example.com",
-		"realm_access": map[string]any{
-			"roles": roles,
-		},
-	}).Serialize()
+	}).Claims(claims).Serialize()
 	if err != nil {
 		t.Fatal(err)
 	}

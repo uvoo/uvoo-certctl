@@ -31,6 +31,7 @@ func init() {
 			if err != nil {
 				return err
 			}
+			logAuditEvent(store, "disable_subject", "subject", rec.ID, rec.Issuer+" "+rec.Subject)
 			if jsonOut {
 				return printJSON(subjectPayload(rec))
 			}
