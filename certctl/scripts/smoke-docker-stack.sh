@@ -369,6 +369,32 @@ assert any(item["issuer"] == issuer for item in payload["items"]), payload
 print("auth issuer list ok")
 PY
 
+  echo "Listing auth provider presets over the admin API..."
+  local auth_provider_presets_json
+  auth_provider_presets_json="$(curl -fsS "$CERTCTL_BASE_URL/admin/v1/auth-provider-presets" \
+    -H "Authorization: Bearer $ACCESS_TOKEN")"
+  python3 - <<'PY' "$auth_provider_presets_json"
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+assert any(item["name"] == "keycloak" for item in payload["items"]), payload
+print("auth provider preset list ok")
+PY
+
+  local auth_provider_preset_json
+  auth_provider_preset_json="$(curl -fsS "$CERTCTL_BASE_URL/admin/v1/auth-provider-presets/keycloak" \
+    -H "Authorization: Bearer $ACCESS_TOKEN")"
+  python3 - <<'PY' "$auth_provider_preset_json"
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+assert payload["name"] == "keycloak", payload
+assert payload["requires_issuer"] is True, payload
+print("auth provider preset get ok")
+PY
+
   echo "Creating, updating, and deleting a temporary auth issuer over the admin API..."
   python3 - <<'PY' "$WORK_DIR/temp-auth-issuer.json"
 import json
@@ -376,8 +402,9 @@ import sys
 from pathlib import Path
 
 Path(sys.argv[1]).write_text(json.dumps({
+    "preset": "keycloak",
     "name": "docker-smoke-temp",
-    "issuer": "https://issuer.invalid/docker-smoke",
+    "issuer": "http://issuer.invalid/docker-smoke",
     "audiences": ["certctl"],
     "required_claims": {"azp": "certctl"},
     "enabled": True,

@@ -56,6 +56,7 @@ This smoke path:
 - calls `/admin/v1/doctor`
 - calls `/admin/v1/doctor/auth`
 - calls `/admin/v1/effective-authz`
+- lists auth provider presets over `/admin/v1/auth-provider-presets`
 - lists auth issuers over `/admin/v1/auth-issuers?probe=true`
 - creates, updates, and deletes a temporary auth issuer over `/admin/v1/auth-issuers`
 - lists authz bindings over `/admin/v1/authz-bindings`

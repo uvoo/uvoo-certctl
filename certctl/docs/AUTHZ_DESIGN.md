@@ -257,6 +257,8 @@ Initial built-in server mapping:
 - `GET /admin/v1/doctor` -> `doctor.read`
 - `GET /admin/v1/doctor/auth` -> `doctor.read`
 - `GET /admin/v1/effective-authz` -> `authz.read`
+- `GET /admin/v1/auth-provider-presets` -> `auth_issuer.read`
+- `GET /admin/v1/auth-provider-presets/{name}` -> `auth_issuer.read`
 - `GET /admin/v1/auth-issuers` -> `auth_issuer.read`
 - `POST /admin/v1/auth-issuers` -> `auth_issuer.write`
 - `GET /admin/v1/auth-issuers/{name}` -> `auth_issuer.read`

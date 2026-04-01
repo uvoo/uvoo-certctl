@@ -72,6 +72,7 @@ type adminUpsertSubjectAutoApprovalRuleRequest struct {
 }
 
 type adminCreateAuthIssuerRequest struct {
+	Preset         string            `json:"preset"`
 	Name           string            `json:"name"`
 	Issuer         string            `json:"issuer"`
 	Audiences      []string          `json:"audiences"`
@@ -291,6 +292,20 @@ func (s *Server) handleAdminAuthIssuers(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+func (s *Server) handleAdminAuthProviderPresets(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.URL.Path == "/admin/v1/auth-provider-presets" && r.Method == http.MethodGet:
+		s.handleAdminAuthProviderPresetList(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/auth-provider-presets/") && r.Method == http.MethodGet:
+		s.handleAdminAuthProviderPresetGet(w, r)
+		return
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+}
+
 func (s *Server) handleAdminAuthzBindings(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.URL.Path == "/admin/v1/authz-bindings" && r.Method == http.MethodGet:
@@ -372,6 +387,33 @@ func (s *Server) handleAdminAuthIssuerGet(w http.ResponseWriter, r *http.Request
 		}
 	}
 	writeError(w, http.StatusNotFound, "auth issuer not found")
+}
+
+func (s *Server) handleAdminAuthProviderPresetList(w http.ResponseWriter, r *http.Request) {
+	names := auth.ProviderPresetNames()
+	payload := make([]map[string]any, 0, len(names))
+	for _, name := range names {
+		rec, _ := auth.ProviderPresetByName(name)
+		payload = append(payload, authProviderPresetPayload(rec))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": payload,
+		"count": len(payload),
+	})
+}
+
+func (s *Server) handleAdminAuthProviderPresetGet(w http.ResponseWriter, r *http.Request) {
+	name := adminAuthProviderPresetName(r.URL.Path)
+	if name == "" {
+		writeError(w, http.StatusNotFound, "auth provider preset not found")
+		return
+	}
+	rec, ok := auth.ProviderPresetByName(name)
+	if !ok {
+		writeError(w, http.StatusNotFound, "auth provider preset not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, authProviderPresetPayload(rec))
 }
 
 func (s *Server) handleAdminAuthIssuerCreate(w http.ResponseWriter, r *http.Request) {
@@ -2078,6 +2120,14 @@ func adminSubjectID(path string) string {
 	return id
 }
 
+func adminAuthProviderPresetName(path string) string {
+	name := strings.TrimSpace(strings.TrimPrefix(path, "/admin/v1/auth-provider-presets/"))
+	if name == "" || strings.Contains(name, "/") {
+		return ""
+	}
+	return name
+}
+
 func compactStrings(values []string) []string {
 	out := make([]string, 0, len(values))
 	for _, value := range values {
@@ -2108,6 +2158,41 @@ func normalizedRequiredClaims(values map[string]string) map[string]string {
 }
 
 func buildAdminAuthIssuer(body adminCreateAuthIssuerRequest) (storage.AuthIssuer, error) {
+	presetName := strings.TrimSpace(body.Preset)
+	if presetName != "" {
+		rec, ok := auth.ProviderPresetByName(presetName)
+		if !ok {
+			return storage.AuthIssuer{}, fmt.Errorf("unknown auth provider preset %q", presetName)
+		}
+		if strings.TrimSpace(body.Name) == "" {
+			body.Name = rec.Name
+		}
+		if strings.TrimSpace(body.Issuer) == "" {
+			body.Issuer = rec.Issuer
+		}
+		if strings.TrimSpace(body.DiscoveryURL) == "" {
+			body.DiscoveryURL = rec.DiscoveryURL
+		}
+		if strings.TrimSpace(body.SubjectClaim) == "" {
+			body.SubjectClaim = rec.SubjectClaim
+		}
+		if strings.TrimSpace(body.UsernameClaim) == "" {
+			body.UsernameClaim = rec.UsernameClaim
+		}
+		if strings.TrimSpace(body.EmailClaim) == "" {
+			body.EmailClaim = rec.EmailClaim
+		}
+		if len(body.RolesClaims) == 0 {
+			body.RolesClaims = rec.RolesClaims
+		}
+		if len(body.GroupsClaims) == 0 {
+			body.GroupsClaims = rec.GroupsClaims
+		}
+		if len(body.Audiences) == 0 {
+			return storage.AuthIssuer{}, fmt.Errorf("audiences is required when using preset %q", presetName)
+		}
+	}
+
 	name := strings.TrimSpace(body.Name)
 	issuer := strings.TrimSpace(body.Issuer)
 	if name == "" {
@@ -2204,6 +2289,21 @@ func authzBindingReferencesIssuer(binding storage.AuthzBinding, issuer string) b
 		}
 	}
 	return false
+}
+
+func authProviderPresetPayload(rec auth.ProviderPreset) map[string]any {
+	return map[string]any{
+		"name":            rec.Name,
+		"description":     emptyStringToNil(rec.Description),
+		"issuer":          emptyStringToNil(rec.Issuer),
+		"discovery_url":   emptyStringToNil(rec.DiscoveryURL),
+		"requires_issuer": rec.Issuer == "",
+		"subject_claim":   emptyStringToNil(rec.SubjectClaim),
+		"username_claim":  emptyStringToNil(rec.UsernameClaim),
+		"email_claim":     emptyStringToNil(rec.EmailClaim),
+		"roles_claims":    rec.RolesClaims,
+		"groups_claims":   rec.GroupsClaims,
+	}
 }
 
 func buildAdminAuthzBinding(body adminCreateAuthzBindingRequest) (storage.AuthzBinding, error) {

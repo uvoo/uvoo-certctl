@@ -350,6 +350,16 @@ func adminAuthIssuerPermission(r *http.Request) (auth.PermissionRequest, bool) {
 	}
 }
 
+func adminAuthProviderPresetPermission(r *http.Request) (auth.PermissionRequest, bool) {
+	if r.Method != http.MethodGet {
+		return auth.PermissionRequest{}, false
+	}
+	if r.URL.Path != "/admin/v1/auth-provider-presets" && adminAuthProviderPresetName(r.URL.Path) == "" {
+		return auth.PermissionRequest{}, false
+	}
+	return auth.PermissionRequest{Permission: "auth_issuer.read", ResourceKind: "auth_provider_preset", ResourceRef: "*"}, true
+}
+
 func metricsPermission(r *http.Request) (auth.PermissionRequest, bool) {
 	if r.Method != http.MethodGet {
 		return auth.PermissionRequest{}, false

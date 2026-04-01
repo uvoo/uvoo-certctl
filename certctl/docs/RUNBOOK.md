@@ -75,9 +75,15 @@ Remote issuer management is also available over the admin API:
 
 ```bash
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/auth-provider-presets
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/auth-provider-presets/keycloak
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -H 'Content-Type: application/json' \
   -X POST https://certctl.example.com:8443/admin/v1/auth-issuers \
-  -d '{"name":"keycloak-dev","issuer":"https://sso.example.com/realms/certctl","audiences":["certctl"],"required_claims":{"azp":"certctl"},"discovery_url":"https://sso.example.com/realms/certctl/.well-known/openid-configuration","roles_claims":["realm_access.roles"],"groups_claims":["groups"]}'
+  -d '{"preset":"keycloak","name":"keycloak-dev","issuer":"https://sso.example.com/realms/certctl","audiences":["certctl"],"required_claims":{"azp":"certctl"},"discovery_url":"https://sso.example.com/realms/certctl/.well-known/openid-configuration"}'
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -H 'Content-Type: application/json' \
@@ -286,6 +292,7 @@ Notes:
 - `/admin/v1/subject-auto-approvals` supports remote list/get/upsert/delete for subject auto-approval rules
 - `/admin/v1/effective-authz` shows the caller's current effective permissions and matching bindings
 - `/admin/v1/doctor/auth` returns only auth-related doctor findings
+- `/admin/v1/auth-provider-presets` exposes the built-in provider presets for remote operators
 - `/admin/v1/auth-issuers` supports remote list, create, update, delete, and live connectivity probe status with `?probe=true`
 - `/admin/v1/authz-bindings` supports remote list, create, update, delete, and item inspection for current authz bindings
 - `/metrics` includes low-cardinality counts for CSR backlog, pickup-ready requests, configured auth issuers and bindings, cached auth issuer connectivity states, doctor findings by severity and check, issuer binding coverage, binding permission and principal-kind mix, risky authz and subject auto-approval counts, auth request outcomes, subject auto-approval rules and matches, pending-subject counts, and locally tracked JWT subjects

@@ -83,6 +83,8 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("/admin/v1/doctor", s.requireAdminPermission(s.handleAdminDoctor, adminDoctorPermission))
 	s.mux.HandleFunc("/admin/v1/doctor/auth", s.requireAdminPermission(s.handleAdminAuthDoctor, adminDoctorPermission))
 	s.mux.HandleFunc("/admin/v1/effective-authz", s.requireAdminPermission(s.handleAdminEffectiveAuthz, adminEffectiveAuthzPermission))
+	s.mux.HandleFunc("/admin/v1/auth-provider-presets", s.requireAdminPermission(s.handleAdminAuthProviderPresets, adminAuthProviderPresetPermission))
+	s.mux.HandleFunc("/admin/v1/auth-provider-presets/", s.requireAdminPermission(s.handleAdminAuthProviderPresets, adminAuthProviderPresetPermission))
 	s.mux.HandleFunc("/admin/v1/auth-issuers", s.requireAdminPermission(s.handleAdminAuthIssuers, adminAuthIssuerPermission))
 	s.mux.HandleFunc("/admin/v1/auth-issuers/", s.requireAdminPermission(s.handleAdminAuthIssuers, adminAuthIssuerPermission))
 	s.mux.HandleFunc("/admin/v1/authz-bindings", s.requireAdminPermission(s.handleAdminAuthzBindings, adminEffectiveAuthzPermission))

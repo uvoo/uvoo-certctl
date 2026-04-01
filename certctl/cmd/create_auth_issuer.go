@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"certctl/internal/auth"
 	"certctl/internal/storage"
 	"certctl/internal/util"
 	"github.com/spf13/cobra"
@@ -39,7 +40,7 @@ func init() {
   certctl create-auth-issuer --preset aws-cognito --name cognito-dev --issuer https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example --audience <app-client-id>`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if preset != "" {
-				rec, ok := authProviderPresetByName(strings.TrimSpace(preset))
+				rec, ok := auth.ProviderPresetByName(strings.TrimSpace(preset))
 				if !ok {
 					return fmt.Errorf("unknown auth provider preset %q", preset)
 				}

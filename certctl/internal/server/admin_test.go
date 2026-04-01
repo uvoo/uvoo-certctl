@@ -147,6 +147,57 @@ func TestAdminAuthIssuerListAndProbe(t *testing.T) {
 	}
 }
 
+func TestAdminAuthProviderPresetsAndCreateIssuerFromPreset(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "certs.db")
+	srv := New(Config{
+		DBPath:        dbPath,
+		AdminUsername: "admin",
+		AdminPassword: "admin-secret",
+	})
+
+	listReq := httptest.NewRequest(http.MethodGet, "/admin/v1/auth-provider-presets", nil)
+	listReq.SetBasicAuth("admin", "admin-secret")
+	listRec := httptest.NewRecorder()
+	srv.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", listRec.Code, listRec.Body.String())
+	}
+	if !strings.Contains(listRec.Body.String(), `"name":"google"`) {
+		t.Fatalf("expected preset list payload, got %s", listRec.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/admin/v1/auth-provider-presets/keycloak", nil)
+	getReq.SetBasicAuth("admin", "admin-secret")
+	getRec := httptest.NewRecorder()
+	srv.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", getRec.Code, getRec.Body.String())
+	}
+	if !strings.Contains(getRec.Body.String(), `"name":"keycloak"`) || !strings.Contains(getRec.Body.String(), `"requires_issuer":true`) {
+		t.Fatalf("expected preset detail payload, got %s", getRec.Body.String())
+	}
+
+	createReq := httptest.NewRequest(http.MethodPost, "/admin/v1/auth-issuers", strings.NewReader(`{
+		"preset":"keycloak",
+		"name":"keycloak-dev",
+		"issuer":"http://localhost:18080/realms/certctl",
+		"audiences":["certctl"],
+		"required_claims":{"azp":"certctl"},
+		"discovery_url":"http://keycloak:8080/realms/certctl/.well-known/openid-configuration"
+	}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.SetBasicAuth("admin", "admin-secret")
+	createRec := httptest.NewRecorder()
+	srv.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", createRec.Code, createRec.Body.String())
+	}
+	body := createRec.Body.String()
+	if !strings.Contains(body, `"name":"keycloak-dev"`) || !strings.Contains(body, `"roles_claims":["realm_access.roles"]`) {
+		t.Fatalf("expected created issuer from preset, got %s", body)
+	}
+}
+
 func TestAdminAuthIssuerCreateUpdateAndDelete(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "certs.db")
 	srv := New(Config{

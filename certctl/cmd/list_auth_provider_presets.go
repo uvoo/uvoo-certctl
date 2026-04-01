@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"certctl/internal/auth"
 	"github.com/spf13/cobra"
 )
 
@@ -15,28 +16,17 @@ func init() {
 		Example: `  certctl list-auth-provider-presets
   certctl list-auth-provider-presets --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			names := authProviderPresetNames()
+			names := auth.ProviderPresetNames()
 			if jsonOut {
 				payload := make([]map[string]any, 0, len(names))
 				for _, name := range names {
-					rec := authProviderPresets[name]
-					payload = append(payload, map[string]any{
-						"name":            name,
-						"description":     emptyStringToNil(rec.Description),
-						"issuer":          rec.Issuer,
-						"discovery_url":   rec.DiscoveryURL,
-						"requires_issuer": rec.Issuer == "",
-						"subject_claim":   rec.SubjectClaim,
-						"username_claim":  rec.UsernameClaim,
-						"email_claim":     rec.EmailClaim,
-						"roles_claims":    rec.RolesClaims,
-						"groups_claims":   rec.GroupsClaims,
-					})
+					rec, _ := auth.ProviderPresetByName(name)
+					payload = append(payload, authProviderPresetPayload(rec))
 				}
 				return printJSON(payload)
 			}
 			for _, name := range names {
-				rec := authProviderPresets[name]
+				rec, _ := auth.ProviderPresetByName(name)
 				printKV("preset", name)
 				if rec.Description != "" {
 					printKV("description", rec.Description)
@@ -54,4 +44,19 @@ func init() {
 
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 	rootCmd.AddCommand(cmd)
+}
+
+func authProviderPresetPayload(rec auth.ProviderPreset) map[string]any {
+	return map[string]any{
+		"name":            rec.Name,
+		"description":     emptyStringToNil(rec.Description),
+		"issuer":          rec.Issuer,
+		"discovery_url":   rec.DiscoveryURL,
+		"requires_issuer": rec.Issuer == "",
+		"subject_claim":   rec.SubjectClaim,
+		"username_claim":  rec.UsernameClaim,
+		"email_claim":     rec.EmailClaim,
+		"roles_claims":    rec.RolesClaims,
+		"groups_claims":   rec.GroupsClaims,
+	}
 }
