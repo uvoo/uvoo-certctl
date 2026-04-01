@@ -8,6 +8,8 @@
 - Added dedicated optional Basic auth credentials for `/metrics` separate from the admin API credentials.
 - Expanded auth observability with auth outcome counters, subject auto-approval match counters, pending-subject metrics, and richer `explain-authz` and `list-effective-authz` previews.
 - Updated the Docker Keycloak smoke stack to exercise first-login auto-approval and improved manual debugging ergonomics with `--skip-cleanup` and `--only-cleanup`.
+- Added a fuller remote admin API for auth and subject operations, including remote auth issuer CRUD, authz binding CRUD, subject item get/update/delete, and read-only auth provider preset endpoints.
+- Remote auth issuer creation can now consume built-in provider presets directly over HTTP, so fully remote bootstrap is possible without dropping into the CLI.
 
 ## v0.1.0 - 2026-03-30
 

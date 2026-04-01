@@ -2,7 +2,7 @@
 
 A Cobra-based refactor of the original single-file ACME utility.
 
-- Latest release notes: [`docs/RELEASE_NOTES_v0.3.0.md`](docs/RELEASE_NOTES_v0.3.0.md)
+- Latest release notes: [`docs/RELEASE_NOTES_v0.4.0.md`](docs/RELEASE_NOTES_v0.4.0.md)
 - Initial release notes: [`docs/RELEASE_NOTES_v0.1.0.md`](docs/RELEASE_NOTES_v0.1.0.md)
 - Install guide: [`docs/INSTALL.md`](docs/INSTALL.md)
 - CSR guide: [`docs/CSR_REQUESTS.md`](docs/CSR_REQUESTS.md)
@@ -368,7 +368,7 @@ Build common release binaries for Linux, macOS, and Windows:
 Build a versioned set of release archives:
 
 ```bash
-VERSION=v0.2.0 ./scripts/build-release.sh
+VERSION=v0.4.0 ./scripts/build-release.sh
 ```
 
 The release script stamps `version`, `commit`, and `date` into the binary, bundles the docs into each archive, and writes both per-archive checksums and a `checksums.txt` manifest.

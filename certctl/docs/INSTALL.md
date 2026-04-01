@@ -84,7 +84,7 @@ go build -o certctl .
 Or build the release matrix:
 
 ```bash
-VERSION=v0.2.0 ./scripts/build-release.sh
+VERSION=v0.4.0 ./scripts/build-release.sh
 ```
 
 For day-to-day operations after install, see [`RUNBOOK.md`](RUNBOOK.md).

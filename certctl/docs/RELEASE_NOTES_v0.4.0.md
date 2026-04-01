@@ -1,6 +1,6 @@
 # certctl v0.4.0
 
-Adds subject auto-approval, richer auth debugging, better metrics access controls, and stronger auth observability without expanding the core model much.
+Adds subject auto-approval, richer auth debugging, stronger remote auth administration, better metrics access controls, and stronger auth observability without expanding the core model much.
 
 ## Highlights
 
@@ -10,12 +10,18 @@ Adds subject auto-approval, richer auth debugging, better metrics access control
 - Optional dedicated Basic auth credentials for `/metrics`, separate from the admin API credentials.
 - Stronger auth observability with auth outcome counters, subject auto-approval match counters, and explicit pending-subject metrics.
 - Better bearer-token debugging through richer `explain-authz` and `list-effective-authz` output.
+- A much more complete remote admin API for auth issuers, authz bindings, subjects, and provider presets.
+- Added a micro app called promalert so we can trigger alerts outside of app from /metrics
+  - cmd/promalert/main.go
+  - docs/PROMALERT.md
 
 ## Operator-focused improvements
 
 - New subject auto-approval rules can automatically activate first-seen JWT subjects and assign local roles or groups without introducing a larger policy engine.
 - `explain-authz` and `list-effective-authz --bearer-token ...` now show local subject status, matching auto-approval rules, and the predicted local assignments and effective access state for a token.
 - `/metrics` can now use its own Basic auth credentials with `--metrics-username` and `--metrics-password`, which is helpful when metrics need a fallback path without exposing the full admin password.
+- The built-in admin API now supports remote CRUD for auth issuers and authz bindings, subject item get/update/delete by ID, and read-only listing of built-in auth provider presets.
+- Remote issuer creation can use built-in presets directly, which makes remote bootstrap for Google, Microsoft, Keycloak, and Cognito much simpler.
 - Metrics now include low-cardinality auth and subject signals such as:
   - `certctl_auth_requests_total`
   - `certctl_subject_auto_approval_matches_total`
@@ -39,3 +45,4 @@ Adds subject auto-approval, richer auth debugging, better metrics access control
 - Existing admin Basic auth and bearer-auth flows continue to work.
 - `/metrics` now accepts a dedicated Basic auth pair when configured; otherwise it continues to use the admin Basic auth or bearer auth path.
 - `doctor` and `/metrics` may surface more auth-related warnings and counters than earlier releases because subject auto-approval and pending-subject tracking are now first-class operational signals.
+- Remote admin users can now stay within the HTTP API for most auth/bootstrap tasks instead of mixing CLI-only setup with remote operations.
