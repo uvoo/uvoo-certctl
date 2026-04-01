@@ -2,7 +2,7 @@
 
 A Cobra-based refactor of the original single-file ACME utility.
 
-- Latest release notes: [`docs/RELEASE_NOTES_v0.2.0.md`](docs/RELEASE_NOTES_v0.2.0.md)
+- Latest release notes: [`docs/RELEASE_NOTES_v0.3.0.md`](docs/RELEASE_NOTES_v0.3.0.md)
 - Initial release notes: [`docs/RELEASE_NOTES_v0.1.0.md`](docs/RELEASE_NOTES_v0.1.0.md)
 - Install guide: [`docs/INSTALL.md`](docs/INSTALL.md)
 - CSR guide: [`docs/CSR_REQUESTS.md`](docs/CSR_REQUESTS.md)
@@ -176,17 +176,24 @@ go run . create-authz-binding \
 
 go run . list-auth-provider-presets
 go run . create-auth-issuer --preset google --name google-login --audience <client-id>
+go run . create-auth-issuer --preset microsoft-tenant --name entra-login --issuer https://login.microsoftonline.com/<tenant>/v2.0 --audience <app-id>
+go run . create-auth-issuer --preset keycloak --name keycloak-login --issuer https://sso.example.com/realms/certctl --audience certctl
+go run . create-auth-issuer --preset aws-cognito --name cognito-login --issuer https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example --audience <app-client-id>
 go run . list-auth-issuers
 go run . check-auth-issuer --issuer https://sso.example.com/realms/certctl
 go run . update-auth-issuer --issuer https://sso.example.com/realms/certctl --name keycloak-prod
 go run . delete-auth-issuer --issuer https://sso.example.com/realms/certctl
 go run . delete-auth-issuer --issuer https://sso.example.com/realms/certctl --force
+go run . create-subject-auto-approval --name google-employees --issuer https://accounts.google.com --email-domain example.com --local-group employees
+go run . list-subject-auto-approvals
 go run . list-effective-authz --principal 'role:https://sso.example.com/realms/certctl:certctl_admin'
 go run . list-authz-bindings
 go run . list-authz-bindings --principal 'role:https://sso.example.com/realms/certctl:certctl_admin'
 go run . list-subjects --all
 go run . list-subjects --status pending
+go run . list-subjects --local-group employees
 go run . approve-subject --issuer https://accounts.google.com --subject user-123 --local-group viewers
+go run . update-subject --issuer https://accounts.google.com --subject user-123 --status active --local-group employees
 go run . disable-subject --issuer https://sso.example.com/realms/certctl --subject user-123
 go run . enable-subject --issuer https://sso.example.com/realms/certctl --subject user-123
 go run . update-authz-binding --id <binding-id> --permission csr.approve
@@ -211,7 +218,7 @@ With `--admin-username` and `--admin-password`, the built-in server also exposes
 
 The admin API can also use bearer tokens from trusted JWT/OIDC issuers configured in the local database. The auth model and claim mapping are documented in [`docs/AUTHZ_DESIGN.md`](docs/AUTHZ_DESIGN.md).
 
-New JWT subjects are tracked locally on first successful token verification and begin in `pending` state until an operator approves them.
+New JWT subjects are tracked locally on first successful token verification and begin in `pending` state until an operator approves them, unless a matching subject auto-approval rule activates them and assigns local roles or groups.
 
 For local Docker-based Keycloak and `certctl` smoke testing, including private CSR approval and optional public provider checks, see [`docs/DOCKER_DEV.md`](docs/DOCKER_DEV.md).
 
@@ -241,7 +248,7 @@ go run . version
 go run . version --json
 ```
 
-`doctor` also checks enabled JWT/OIDC issuers for broken discovery or JWKS connectivity, warns when disabled issuers are still referenced by enabled authz bindings, flags bindings that point at unknown issuers, warns on enabled issuers with no bindings, warns when bindings depend on an issuer that is currently unreachable, and warns on overly broad or duplicate/conflicting authz bindings.
+`doctor` also checks enabled JWT/OIDC issuers for broken discovery or JWKS connectivity, warns when disabled issuers are still referenced by enabled authz bindings, flags bindings that point at unknown issuers, warns on enabled issuers with no bindings or only risky subject auto-approval coverage, warns when bindings depend on an issuer that is currently unreachable, and warns on overly broad or duplicate/conflicting authz bindings and overly broad subject auto-approval rules.
 
 Renew a stored public certificate:
 

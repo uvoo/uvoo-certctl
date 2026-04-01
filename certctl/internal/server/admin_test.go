@@ -254,6 +254,7 @@ func TestMetricsEndpointRequiresAuthWhenAdminEnabled(t *testing.T) {
 		!strings.Contains(body, "certctl_csr_requests_ready_for_pickup_total") ||
 		!strings.Contains(body, "certctl_auth_issuers_total") ||
 		!strings.Contains(body, "certctl_authz_bindings_total") ||
+		!strings.Contains(body, "certctl_subject_auto_approval_rules_total") ||
 		!strings.Contains(body, "certctl_subjects_total") {
 		t.Fatalf("expected metrics output, got %s", body)
 	}

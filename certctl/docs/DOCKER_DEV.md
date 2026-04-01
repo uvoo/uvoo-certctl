@@ -45,8 +45,9 @@ This smoke path:
 - builds the `certctl` container image
 - starts Keycloak and `certctl`
 - configures the trusted issuer and local authz bindings inside the container
+- creates a subject auto-approval rule for `@example.com` Keycloak users
 - fetches a Keycloak access token
-- registers and approves the first pending JWT subject
+- exercises first-login subject auto-approval
 - calls `/admin/v1/doctor`
 - calls `/metrics`
 - creates a private root and intermediate CA
@@ -141,6 +142,7 @@ They reuse `scripts/smoke-docker-stack.sh`. Public runs need the matching reposi
 - `KEYCLOAK_HOST_PORT` overrides the published Keycloak port
 - `CERTCTL_HOST_PORT` overrides the published `certctl` port
 - `INTERNAL_ISSUER_URL` overrides the OIDC discovery URL used from inside the `certctl` container
+- `SMOKE_AUTO_APPROVE_JWT_SUBJECT=0` keeps the first JWT subject pending so you can exercise manual approval
 - `SMOKE_PRIVATE_CA=0` skips the private CSR flow
 - `SMOKE_PUBLIC_CERT=1` enables public provider precursor checks
 - `SMOKE_PUBLIC_CERT_ISSUE=1` attempts a real public certificate issuance
@@ -155,6 +157,8 @@ docker compose -f dev/docker/docker-compose.yml logs -f certctl
 docker compose -f dev/docker/docker-compose.yml logs -f keycloak
 docker compose -f dev/docker/docker-compose.yml exec certctl certctl --db /data/certs.db list-auth-issuers --all
 docker compose -f dev/docker/docker-compose.yml exec certctl certctl --db /data/certs.db list-authz-bindings --all
+docker compose -f dev/docker/docker-compose.yml exec certctl certctl --db /data/certs.db list-subject-auto-approvals --all
+docker compose -f dev/docker/docker-compose.yml exec certctl certctl --db /data/certs.db list-subjects --all
 docker compose -f dev/docker/docker-compose.yml exec certctl certctl --db /data/certs.db doctor --warn-days 0
 docker compose -f dev/docker/docker-compose.yml exec certctl certctl --db /data/certs.db list-csr-requests --all
 ```

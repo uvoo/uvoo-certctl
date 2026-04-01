@@ -21,14 +21,16 @@ func init() {
 				for _, name := range names {
 					rec := authProviderPresets[name]
 					payload = append(payload, map[string]any{
-						"name":           name,
-						"issuer":         rec.Issuer,
-						"discovery_url":  rec.DiscoveryURL,
-						"subject_claim":  rec.SubjectClaim,
-						"username_claim": rec.UsernameClaim,
-						"email_claim":    rec.EmailClaim,
-						"roles_claims":   rec.RolesClaims,
-						"groups_claims":  rec.GroupsClaims,
+						"name":            name,
+						"description":     emptyStringToNil(rec.Description),
+						"issuer":          rec.Issuer,
+						"discovery_url":   rec.DiscoveryURL,
+						"requires_issuer": rec.Issuer == "",
+						"subject_claim":   rec.SubjectClaim,
+						"username_claim":  rec.UsernameClaim,
+						"email_claim":     rec.EmailClaim,
+						"roles_claims":    rec.RolesClaims,
+						"groups_claims":   rec.GroupsClaims,
 					})
 				}
 				return printJSON(payload)
@@ -36,8 +38,14 @@ func init() {
 			for _, name := range names {
 				rec := authProviderPresets[name]
 				printKV("preset", name)
+				if rec.Description != "" {
+					printKV("description", rec.Description)
+				}
 				printKV("issuer", rec.Issuer)
 				printKV("discovery_url", rec.DiscoveryURL)
+				if rec.Issuer == "" {
+					printKV("requires_issuer", "true")
+				}
 				fmt.Println()
 			}
 			return nil

@@ -359,6 +359,55 @@ func TestAuthIssuerRoundTripRequiredClaims(t *testing.T) {
 	}
 }
 
+func TestSubjectAutoApprovalRuleRoundTrip(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "subject-auto-approval.db")
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if err := store.UpsertSubjectAutoApprovalRule(SubjectAutoApprovalRule{
+		ID:             "rule-1",
+		Name:           "google-employees",
+		Enabled:        true,
+		Issuer:         "https://accounts.google.com",
+		EmailDomain:    "@example.com",
+		RequiredRoles:  []string{"employee"},
+		RequiredGroups: []string{"engineering"},
+		LocalRoles:     []string{"viewer"},
+		LocalGroups:    []string{"employees"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rec, err := store.GetSubjectAutoApprovalRuleByName("google-employees")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.EmailDomain != "example.com" {
+		t.Fatalf("expected normalized email domain, got %q", rec.EmailDomain)
+	}
+	if len(rec.RequiredRoles) != 1 || rec.RequiredRoles[0] != "employee" {
+		t.Fatalf("unexpected required roles: %+v", rec.RequiredRoles)
+	}
+
+	rows, err := store.ListSubjectAutoApprovalRules(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Name != "google-employees" {
+		t.Fatalf("unexpected rules: %+v", rows)
+	}
+
+	if err := store.DeleteSubjectAutoApprovalRule("google-employees"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetSubjectAutoApprovalRuleByName("google-employees"); err == nil {
+		t.Fatal("expected deleted subject auto approval rule lookup to fail")
+	}
+}
+
 func TestUpdateAuthzBindingPersistsChanges(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "authz-update.db")
 	store, err := Open(dbPath)

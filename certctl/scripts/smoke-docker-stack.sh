@@ -17,6 +17,7 @@ CLIENT_ID="${CLIENT_ID:-certctl}"
 USERNAME="${USERNAME:-alice}"
 PASSWORD="${PASSWORD:-alicepass}"
 CSR_SUBMIT_PASSWORD="${CSR_SUBMIT_PASSWORD:-submit-secret}"
+SMOKE_AUTO_APPROVE_JWT_SUBJECT="${SMOKE_AUTO_APPROVE_JWT_SUBJECT:-1}"
 SMOKE_PRIVATE_CA="${SMOKE_PRIVATE_CA:-1}"
 SMOKE_PUBLIC_CERT="${SMOKE_PUBLIC_CERT:-0}"
 SMOKE_PUBLIC_CERT_ISSUE="${SMOKE_PUBLIC_CERT_ISSUE:-0}"
@@ -117,12 +118,28 @@ require_env() {
 configure_auth() {
   echo "Configuring trusted issuer and local bindings..."
   certctl_exec create-auth-issuer \
+    --preset keycloak \
     --name keycloak-dev \
     --issuer "$ISSUER_URL" \
     --audience "$CLIENT_ID" \
     --required-claim "azp=$CLIENT_ID" \
-    --discovery-url "$INTERNAL_ISSUER_URL/.well-known/openid-configuration" \
-    --roles-claim realm_access.roles >/dev/null
+    --discovery-url "$INTERNAL_ISSUER_URL/.well-known/openid-configuration" >/dev/null
+
+  if [[ "$SMOKE_AUTO_APPROVE_JWT_SUBJECT" == "1" ]]; then
+    certctl_exec create-subject-auto-approval \
+      --name keycloak-example-users \
+      --issuer "$ISSUER_URL" \
+      --email-domain example.com \
+      --local-group docker-smoke-admin >/dev/null
+
+    certctl_exec create-authz-binding \
+      --principal "local_group:docker-smoke-admin" \
+      --permission doctor.read >/dev/null
+    certctl_exec create-authz-binding \
+      --principal "local_group:docker-smoke-admin" \
+      --permission metrics.read >/dev/null
+    return 0
+  fi
 
   certctl_exec create-authz-binding \
     --principal "role:$ISSUER_URL:certctl_admin" \
@@ -133,13 +150,17 @@ configure_auth() {
 }
 
 configure_private_csr_auth() {
+  local principal="role:$ISSUER_URL:certctl_admin"
+  if [[ "$SMOKE_AUTO_APPROVE_JWT_SUBJECT" == "1" ]]; then
+    principal="local_group:docker-smoke-admin"
+  fi
   certctl_exec create-authz-binding \
-    --principal "role:$ISSUER_URL:certctl_admin" \
+    --principal "$principal" \
     --permission csr.read \
     --resource-kind csr_request \
     --resource-ref '*' >/dev/null
   certctl_exec create-authz-binding \
-    --principal "role:$ISSUER_URL:certctl_admin" \
+    --principal "$principal" \
     --permission csr.approve \
     --resource-kind csr_request \
     --resource-ref '*' >/dev/null

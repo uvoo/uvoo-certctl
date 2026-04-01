@@ -415,6 +415,10 @@ func buildMetrics(store *storage.Store, warnDays int) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	subjectAutoApprovalRules, err := store.ListSubjectAutoApprovalRules(false)
+	if err != nil {
+		return "", err
+	}
 	subjects, err := store.ListSubjects(false)
 	if err != nil {
 		return "", err
@@ -531,6 +535,15 @@ func buildMetrics(store *storage.Store, warnDays int) (string, error) {
 			"enabled": parts[0],
 			"scope":   parts[1],
 		}, float64(count))
+	}
+
+	writeMetricHeader(&b, "certctl_subject_auto_approval_rules_total", "Subject auto-approval rules by enabled state.")
+	subjectRuleCounts := map[string]int{}
+	for _, rule := range subjectAutoApprovalRules {
+		subjectRuleCounts[strconv.FormatBool(rule.Enabled)]++
+	}
+	for enabled, count := range subjectRuleCounts {
+		writeMetricSample(&b, "certctl_subject_auto_approval_rules_total", map[string]string{"enabled": enabled}, float64(count))
 	}
 
 	writeMetricHeader(&b, "certctl_subjects_total", "Locally tracked JWT subjects by status.")

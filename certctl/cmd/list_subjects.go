@@ -13,15 +13,18 @@ func init() {
 	var issuer string
 	var subject string
 	var status string
+	var localRole string
+	var localGroup string
 	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "list-subjects",
 		Short: "List observed JWT subjects",
 		Example: `  certctl list-subjects
-  certctl list-subjects --all --json
-  certctl list-subjects --issuer https://sso.example.com/realms/certctl
-  certctl list-subjects --status pending`,
+			  certctl list-subjects --all --json
+			  certctl list-subjects --issuer https://sso.example.com/realms/certctl
+			  certctl list-subjects --status pending
+			  certctl list-subjects --local-group employees`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {
@@ -43,6 +46,12 @@ func init() {
 					continue
 				}
 				if status != "" && row.Status != strings.TrimSpace(status) {
+					continue
+				}
+				if localRole != "" && !containsString(row.LocalRoles, strings.TrimSpace(localRole)) {
+					continue
+				}
+				if localGroup != "" && !containsString(row.LocalGroups, strings.TrimSpace(localGroup)) {
 					continue
 				}
 				filtered = append(filtered, row)
@@ -89,6 +98,18 @@ func init() {
 	cmd.Flags().StringVar(&issuer, "issuer", "", "filter by issuer URL")
 	cmd.Flags().StringVar(&subject, "subject", "", "filter by subject value")
 	cmd.Flags().StringVar(&status, "status", "", "filter by subject status: pending, active, disabled")
+	cmd.Flags().StringVar(&localRole, "local-role", "", "filter by local role")
+	cmd.Flags().StringVar(&localGroup, "local-group", "", "filter by local group")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON output")
 	rootCmd.AddCommand(cmd)
+}
+
+func containsString(values []string, target string) bool {
+	target = strings.TrimSpace(target)
+	for _, value := range values {
+		if strings.TrimSpace(value) == target {
+			return true
+		}
+	}
+	return false
 }

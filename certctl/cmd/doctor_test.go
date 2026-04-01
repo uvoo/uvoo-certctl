@@ -382,15 +382,104 @@ func TestRunDoctorWarnsOnUnusedIssuer(t *testing.T) {
 	}
 }
 
+func TestRunDoctorDoesNotWarnUnusedIssuerWhenSubjectAutoApprovalRuleExists(t *testing.T) {
+	findings, err := runDoctorWithOptions(&fakeDoctorStore{
+		authIssuers: []storage.AuthIssuer{
+			{
+				ID:      "issuer-1",
+				Name:    "google",
+				Issuer:  "https://accounts.google.com",
+				Enabled: true,
+			},
+		},
+		subjectAutoApprovalRules: []storage.SubjectAutoApprovalRule{
+			{
+				ID:          "rule-1",
+				Name:        "google-employees",
+				Enabled:     true,
+				Issuer:      "https://accounts.google.com",
+				EmailDomain: "example.com",
+			},
+		},
+	}, ops.DoctorOptions{WarnDays: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, finding := range findings {
+		if finding.Check == "auth_issuer_unused" {
+			t.Fatalf("did not expect auth_issuer_unused finding, got %+v", findings)
+		}
+	}
+}
+
+func TestRunDoctorWarnsOnBroadAndUnknownSubjectAutoApprovalRules(t *testing.T) {
+	findings, err := runDoctorWithOptions(&fakeDoctorStore{
+		authIssuers: []storage.AuthIssuer{
+			{
+				ID:      "issuer-1",
+				Name:    "google",
+				Issuer:  "https://accounts.google.com",
+				Enabled: true,
+			},
+			{
+				ID:      "issuer-2",
+				Name:    "disabled-keycloak",
+				Issuer:  "https://issuer.example.test/realms/certctl",
+				Enabled: false,
+			},
+		},
+		subjectAutoApprovalRules: []storage.SubjectAutoApprovalRule{
+			{
+				ID:      "rule-1",
+				Name:    "broad-google",
+				Enabled: true,
+				Issuer:  "https://accounts.google.com",
+			},
+			{
+				ID:      "rule-2",
+				Name:    "unknown-issuer",
+				Enabled: true,
+				Issuer:  "https://missing-issuer.example.test/realms/certctl",
+			},
+			{
+				ID:      "rule-3",
+				Name:    "disabled-issuer",
+				Enabled: true,
+				Issuer:  "https://issuer.example.test/realms/certctl",
+			},
+		},
+	}, ops.DoctorOptions{WarnDays: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantChecks := map[string]bool{
+		"subject_auto_approval_broad":           false,
+		"subject_auto_approval_unknown_issuer":  false,
+		"subject_auto_approval_disabled_issuer": false,
+	}
+	for _, finding := range findings {
+		if _, ok := wantChecks[finding.Check]; ok {
+			wantChecks[finding.Check] = true
+		}
+	}
+	for check, found := range wantChecks {
+		if !found {
+			t.Fatalf("expected %s finding, got %+v", check, findings)
+		}
+	}
+}
+
 type fakeDoctorStore struct {
-	publicRows    []storage.PublicCert
-	privateRows   []storage.PrivateCert
-	rootRows      []storage.PrivateRootCA
-	icaRows       []storage.PrivateIntermediateCA
-	shares        []storage.CertShare
-	csrRows       []storage.CSRRequest
-	authIssuers   []storage.AuthIssuer
-	authzBindings []storage.AuthzBinding
+	publicRows               []storage.PublicCert
+	privateRows              []storage.PrivateCert
+	rootRows                 []storage.PrivateRootCA
+	icaRows                  []storage.PrivateIntermediateCA
+	shares                   []storage.CertShare
+	csrRows                  []storage.CSRRequest
+	authIssuers              []storage.AuthIssuer
+	authzBindings            []storage.AuthzBinding
+	subjectAutoApprovalRules []storage.SubjectAutoApprovalRule
 }
 
 func (f *fakeDoctorStore) List(_ string, _ bool) ([]storage.PublicCert, error) {
@@ -423,6 +512,10 @@ func (f *fakeDoctorStore) ListAuthIssuers(_ bool) ([]storage.AuthIssuer, error) 
 
 func (f *fakeDoctorStore) ListAuthzBindings(_ bool) ([]storage.AuthzBinding, error) {
 	return f.authzBindings, nil
+}
+
+func (f *fakeDoctorStore) ListSubjectAutoApprovalRules(_ bool) ([]storage.SubjectAutoApprovalRule, error) {
+	return f.subjectAutoApprovalRules, nil
 }
 
 var _ doctorStore = (*fakeDoctorStore)(nil)

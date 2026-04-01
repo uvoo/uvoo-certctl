@@ -73,6 +73,35 @@ func (s *Server) authenticateAdminRequest(r *http.Request, req auth.PermissionRe
 	if err != nil {
 		return auth.Identity{}, http.StatusInternalServerError, err
 	}
+	if subjectRec.Status == storage.SubjectStatusPending {
+		rules, err := store.ListSubjectAutoApprovalRules(true)
+		if err != nil {
+			return auth.Identity{}, http.StatusInternalServerError, err
+		}
+		match := auth.MatchSubjectAutoApprovalRules(identity, rules)
+		if len(match.RuleNames) > 0 {
+			if err := store.UpdateSubjectApproval(
+				identity.Issuer,
+				identity.Subject,
+				storage.SubjectStatusActive,
+				mergeStringSets(subjectRec.LocalRoles, match.LocalRoles),
+				mergeStringSets(subjectRec.LocalGroups, match.LocalGroups),
+			); err != nil {
+				return auth.Identity{}, http.StatusInternalServerError, err
+			}
+			_ = store.LogAuditEvent(storage.AuditEvent{
+				ID:         util.NewID(),
+				Action:     "auto_approve_subject",
+				TargetKind: "subject",
+				TargetID:   subjectRec.ID,
+				Summary:    identity.Issuer + " " + identity.Subject + " via rules " + strings.Join(match.RuleNames, ","),
+			})
+			subjectRec, err = store.GetSubject(identity.Issuer, identity.Subject)
+			if err != nil {
+				return auth.Identity{}, http.StatusInternalServerError, err
+			}
+		}
+	}
 	identity = auth.ApplySubjectRecord(identity, subjectRec)
 	if subjectRec.Status == storage.SubjectStatusDisabled {
 		return auth.Identity{}, http.StatusForbidden, auth.ErrSubjectDisabled
@@ -118,6 +147,23 @@ func bearerTokenFromRequest(r *http.Request) string {
 		return ""
 	}
 	return strings.TrimSpace(raw[7:])
+}
+
+func mergeStringSets(base []string, extra []string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, item := range append(append([]string(nil), base...), extra...) {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		out = append(out, item)
+	}
+	return out
 }
 
 func adminDoctorPermission(r *http.Request) (auth.PermissionRequest, bool) {

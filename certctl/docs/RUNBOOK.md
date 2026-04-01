@@ -44,14 +44,18 @@ certctl doctor --warn-days 14
 certctl doctor --warn-days 0 --json
 ```
 
-`doctor` also checks enabled JWT/OIDC issuers for broken discovery or JWKS connectivity, flags disabled issuers that are still referenced by enabled authz bindings, warns on bindings that still point at unknown issuers, highlights unused or unreachable issuer relationships, and highlights overly broad or duplicate/conflicting authz bindings.
+`doctor` also checks enabled JWT/OIDC issuers for broken discovery or JWKS connectivity, flags disabled issuers that are still referenced by enabled authz bindings, warns on bindings that still point at unknown issuers, highlights unused or unreachable issuer relationships, and highlights overly broad or duplicate/conflicting authz bindings and subject auto-approval rules.
 
 To review locally tracked JWT subjects:
 
 ```bash
 certctl list-subjects --all
 certctl list-subjects --status pending
+certctl list-subjects --local-group employees
+certctl create-subject-auto-approval --name google-employees --issuer https://accounts.google.com --email-domain example.com --local-group employees
+certctl list-subject-auto-approvals
 certctl approve-subject --issuer https://accounts.google.com --subject user-123 --local-group viewers
+certctl update-subject --issuer https://accounts.google.com --subject user-123 --status active --local-group employees
 certctl disable-subject --issuer https://sso.example.com/realms/certctl --subject user-123
 certctl enable-subject --issuer https://sso.example.com/realms/certctl --subject user-123
 ```
@@ -61,7 +65,9 @@ For common public identity providers, start from a preset:
 ```bash
 certctl list-auth-provider-presets
 certctl create-auth-issuer --preset google --name google-login --audience <client-id>
-certctl create-auth-issuer --preset microsoft-consumers --name microsoft-login --audience <app-id>
+certctl create-auth-issuer --preset microsoft-tenant --name microsoft-login --issuer https://login.microsoftonline.com/<tenant>/v2.0 --audience <app-id>
+certctl create-auth-issuer --preset keycloak --name keycloak-login --issuer https://sso.example.com/realms/certctl --audience certctl
+certctl create-auth-issuer --preset aws-cognito --name cognito-login --issuer https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example --audience <app-client-id>
 ```
 
 Recommended routine:
@@ -196,7 +202,7 @@ Notes:
 - if you run behind a reverse proxy, allow the proxy source address
 - the built-in NACL checks the TCP client address, not forwarded-for headers
 - `/metrics` uses the same Basic auth when the admin API is enabled
-- `/metrics` includes low-cardinality counts for CSR backlog, pickup-ready requests, configured auth issuers and bindings, and locally tracked JWT subjects
+- `/metrics` includes low-cardinality counts for CSR backlog, pickup-ready requests, configured auth issuers and bindings, subject auto-approval rules, and locally tracked JWT subjects
 - for local end-to-end testing with Keycloak and the built-in server, use the Docker stack in [`DOCKER_DEV.md`](DOCKER_DEV.md)
 
 ## 6. Backup and restore
