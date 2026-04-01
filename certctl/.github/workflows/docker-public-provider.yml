@@ -1,0 +1,44 @@
+name: Docker Public Provider Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "Attempt real public ACME issuance"
+        required: false
+        default: false
+        type: boolean
+      write_test:
+        description: "Create and remove a temporary provider TXT record"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run Docker public provider smoke
+        env:
+          PUBLIC_DOMAIN: ${{ vars.CERTCTL_PUBLIC_TEST_DOMAIN }}
+          PUBLIC_CERT_COMMON_NAME: ${{ vars.CERTCTL_PUBLIC_TEST_COMMON_NAME }}
+          PUBLIC_CERT_EMAIL: ${{ vars.CERTCTL_PUBLIC_TEST_EMAIL }}
+          PUBLIC_STORAGE_PASSWORD: ${{ secrets.CERTCTL_PUBLIC_STORAGE_PASSWORD }}
+          NAMECHEAP_API_USER: ${{ secrets.NAMECHEAP_API_USER }}
+          NAMECHEAP_API_KEY: ${{ secrets.NAMECHEAP_API_KEY }}
+          NAMECHEAP_CLIENT_IP: ${{ secrets.NAMECHEAP_CLIENT_IP }}
+        run: |
+          set -euo pipefail
+          export SMOKE_PRIVATE_CA=0
+          export SMOKE_PUBLIC_CERT=1
+          if [[ "${{ inputs.issue }}" == "true" ]]; then
+            export SMOKE_PUBLIC_CERT_ISSUE=1
+          fi
+          if [[ "${{ inputs.write_test }}" == "true" ]]; then
+            export PUBLIC_WRITE_TEST=1
+          fi
+          ./scripts/smoke-docker-stack.sh

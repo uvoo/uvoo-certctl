@@ -8,7 +8,7 @@ A Cobra-based refactor of the original single-file ACME utility.
 - CSR guide: [`docs/CSR_REQUESTS.md`](docs/CSR_REQUESTS.md)
 - Admin runbook: [`docs/RUNBOOK.md`](docs/RUNBOOK.md)
 - Auth/authz design: [`docs/AUTHZ_DESIGN.md`](docs/AUTHZ_DESIGN.md)
-- Auth dev guide: [`docs/AUTH_DEV.md`](docs/AUTH_DEV.md)
+- Docker dev guide: [`docs/DOCKER_DEV.md`](docs/DOCKER_DEV.md)
 - Release process: [`docs/RELEASING.md`](docs/RELEASING.md)
 
 ## What changed
@@ -174,6 +174,8 @@ go run . create-authz-binding \
   --principal 'role:https://sso.example.com/realms/certctl:certctl_admin' \
   --permission doctor.read
 
+go run . list-auth-provider-presets
+go run . create-auth-issuer --preset google --name google-login --audience <client-id>
 go run . list-auth-issuers
 go run . check-auth-issuer --issuer https://sso.example.com/realms/certctl
 go run . update-auth-issuer --issuer https://sso.example.com/realms/certctl --name keycloak-prod
@@ -182,6 +184,11 @@ go run . delete-auth-issuer --issuer https://sso.example.com/realms/certctl --fo
 go run . list-effective-authz --principal 'role:https://sso.example.com/realms/certctl:certctl_admin'
 go run . list-authz-bindings
 go run . list-authz-bindings --principal 'role:https://sso.example.com/realms/certctl:certctl_admin'
+go run . list-subjects --all
+go run . list-subjects --status pending
+go run . approve-subject --issuer https://accounts.google.com --subject user-123 --local-group viewers
+go run . disable-subject --issuer https://sso.example.com/realms/certctl --subject user-123
+go run . enable-subject --issuer https://sso.example.com/realms/certctl --subject user-123
 go run . update-authz-binding --id <binding-id> --permission csr.approve
 go run . update-authz-binding --match-principal 'role:https://sso.example.com/realms/certctl:certctl_admin' --match-permission doctor.read --permission metrics.read
 go run . delete-authz-binding --principal 'role:https://sso.example.com/realms/certctl:certctl_admin' --permission doctor.read
@@ -200,11 +207,13 @@ go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt 
 go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt --tls-key-file /etc/certctl/tls/server.key --admin-username admin --admin-password env:CERTCTL_ADMIN_PASSWORD --metrics
 ```
 
-With `--admin-username` and `--admin-password`, the built-in server also exposes a small authenticated JSON admin API under `/admin/v1` for remote `doctor` and CSR queue actions. `--metrics` enables a Prometheus-style `/metrics` endpoint, using the same Basic auth when admin auth is enabled.
+With `--admin-username` and `--admin-password`, the built-in server also exposes a small authenticated JSON admin API under `/admin/v1` for remote `doctor` and CSR queue actions. `--metrics` enables a Prometheus-style `/metrics` endpoint, using the same Basic auth when admin auth is enabled. The metrics output includes certificate and CA status totals, CSR queue totals, pending and pickup-ready CSR counters, share totals, auth issuer/binding counts, and locally tracked JWT subject counts.
 
 The admin API can also use bearer tokens from trusted JWT/OIDC issuers configured in the local database. The auth model and claim mapping are documented in [`docs/AUTHZ_DESIGN.md`](docs/AUTHZ_DESIGN.md).
 
-For local Keycloak testing and a one-command bearer-auth smoke path, see [`docs/AUTH_DEV.md`](docs/AUTH_DEV.md).
+New JWT subjects are tracked locally on first successful token verification and begin in `pending` state until an operator approves them.
+
+For local Docker-based Keycloak and `certctl` smoke testing, including private CSR approval and optional public provider checks, see [`docs/DOCKER_DEV.md`](docs/DOCKER_DEV.md).
 
 Export safe metadata or a DB backup:
 

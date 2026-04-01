@@ -325,7 +325,7 @@ Do not copy directly:
 
 ## Development and testing
 
-For local testing, a small `docker-compose` setup with Keycloak is worthwhile.
+For local testing, a small Docker Compose stack with Keycloak and `certctl` is worthwhile.
 
 That should stay development-only and should not leak into the main runtime path.
 

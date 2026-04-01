@@ -248,7 +248,13 @@ func TestMetricsEndpointRequiresAuthWhenAdminEnabled(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", authRec.Code, authRec.Body.String())
 	}
 	body := authRec.Body.String()
-	if !strings.Contains(body, "certctl_csr_requests_total") || !strings.Contains(body, "certctl_pending_csr_requests_older_than_days_total") {
+	if !strings.Contains(body, "certctl_csr_requests_total") ||
+		!strings.Contains(body, "certctl_pending_csr_requests_older_than_days_total") ||
+		!strings.Contains(body, "certctl_pending_csr_requests_total") ||
+		!strings.Contains(body, "certctl_csr_requests_ready_for_pickup_total") ||
+		!strings.Contains(body, "certctl_auth_issuers_total") ||
+		!strings.Contains(body, "certctl_authz_bindings_total") ||
+		!strings.Contains(body, "certctl_subjects_total") {
 		t.Fatalf("expected metrics output, got %s", body)
 	}
 }

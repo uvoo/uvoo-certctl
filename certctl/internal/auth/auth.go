@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 
@@ -17,6 +18,8 @@ type Identity struct {
 	Email      string
 	Roles      []string
 	Groups     []string
+	LocalRoles  []string
+	LocalGroups []string
 	Principals []string
 	RawClaims  map[string]any
 }
@@ -48,6 +51,17 @@ func SuperuserIdentity(username string) Identity {
 		Username:   username,
 		Principals: []string{"superuser"},
 	}
+}
+
+var ErrSubjectDisabled = errors.New("subject is locally disabled")
+var ErrSubjectPending = errors.New("subject is pending local approval")
+
+func ApplySubjectRecord(identity Identity, subject storage.Subject) Identity {
+	identity.LocalRoles = append([]string(nil), subject.LocalRoles...)
+	identity.LocalGroups = append([]string(nil), subject.LocalGroups...)
+	identity.Principals = append(identity.Principals, localPrincipals(subject.LocalRoles, subject.LocalGroups)...)
+	identity.Principals = uniqueStrings(identity.Principals...)
+	return identity
 }
 
 func Allowed(identity Identity, bindings []storage.AuthzBinding, req PermissionRequest) bool {
@@ -125,4 +139,21 @@ func EffectivePermissions(identity Identity, bindings []storage.AuthzBinding) []
 	}
 	slices.Sort(out)
 	return out
+}
+
+func localPrincipals(localRoles, localGroups []string) []string {
+	var principals []string
+	for _, role := range localRoles {
+		role = strings.TrimSpace(role)
+		if role != "" {
+			principals = append(principals, "local_role:"+role)
+		}
+	}
+	for _, group := range localGroups {
+		group = strings.TrimSpace(group)
+		if group != "" {
+			principals = append(principals, "local_group:"+group)
+		}
+	}
+	return uniqueStrings(principals...)
 }

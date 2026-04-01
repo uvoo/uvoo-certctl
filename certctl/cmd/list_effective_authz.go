@@ -45,6 +45,7 @@ func init() {
 				Principals: compactStrings(principals),
 			}
 			var matchedIssuer any
+			var subjectRecord any
 			if bearerToken != "" {
 				mode = "bearer_token"
 				token, err := util.ResolveSecretValue(bearerToken, "CERTCTL_BEARER_TOKEN")
@@ -67,6 +68,10 @@ func init() {
 				if err != nil {
 					return err
 				}
+				if subjectRec, err := store.GetSubject(identity.Issuer, identity.Subject); err == nil {
+					identity = auth.ApplySubjectRecord(identity, subjectRec)
+					subjectRecord = subjectPayload(subjectRec)
+				}
 			}
 
 			effectivePermissions := auth.EffectivePermissions(identity, bindings)
@@ -74,9 +79,12 @@ func init() {
 			payload := map[string]any{
 				"input_mode":            mode,
 				"matched_issuer":        matchedIssuer,
+				"subject_record":        subjectRecord,
 				"principals":            identity.Principals,
 				"roles":                 identity.Roles,
 				"groups":                identity.Groups,
+				"local_roles":           identity.LocalRoles,
+				"local_groups":          identity.LocalGroups,
 				"effective_permissions": effectivePermissions,
 				"matching_bindings":     matchingBindings,
 			}
@@ -92,6 +100,8 @@ func init() {
 			printStringList("principals", identity.Principals)
 			printStringList("roles", identity.Roles)
 			printStringList("groups", identity.Groups)
+			printStringList("local_roles", identity.LocalRoles)
+			printStringList("local_groups", identity.LocalGroups)
 			printStringList("effective_permissions", effectivePermissions)
 			return nil
 		},

@@ -20,6 +20,8 @@ For this repo, Docker Compose is not necessary for normal validation:
 
 Keeping CI as plain Go plus release-build verification is simpler to audit and easier to maintain than introducing a container stack just for testing.
 
+If you want higher-confidence end-to-end coverage for the built-in server, use the separate optional Docker integration workflow and the local stack documented in [`DOCKER_DEV.md`](DOCKER_DEV.md).
+
 ## 1. Verify the tree
 
 ```bash
