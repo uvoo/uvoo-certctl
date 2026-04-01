@@ -3148,6 +3148,17 @@ func (s *Store) GetSubject(issuer, subject string) (Subject, error) {
 	return rec, err
 }
 
+func (s *Store) GetSubjectByID(id string) (Subject, error) {
+	var rec Subject
+	err := scanSubject(s.db.QueryRow(`
+		SELECT id, issuer, subject, status, username, email, roles_json, groups_json, local_roles_json, local_groups_json, auth_count, first_seen_at, last_seen_at, updated_at
+		FROM subjects
+		WHERE id = ?
+		LIMIT 1
+	`, id), &rec)
+	return rec, err
+}
+
 func (s *Store) ListSubjects(activeOnly bool) ([]Subject, error) {
 	query := `
 		SELECT id, issuer, subject, status, username, email, roles_json, groups_json, local_roles_json, local_groups_json, auth_count, first_seen_at, last_seen_at, updated_at
@@ -3203,6 +3214,17 @@ func (s *Store) UpdateSubjectApproval(issuer, subject string, status string, loc
 		    updated_at = ?
 		WHERE issuer = ? AND subject = ?
 	`, status, marshalJSONArrayStrings(uniqueSortedStrings(localRoles)), marshalJSONArrayStrings(uniqueSortedStrings(localGroups)), timeOrNil(time.Now().UTC()), issuer, subject)
+	if err != nil {
+		return err
+	}
+	return ensureRowsAffected(res, "subject not found")
+}
+
+func (s *Store) DeleteSubjectByID(id string) error {
+	res, err := s.db.Exec(`
+		DELETE FROM subjects
+		WHERE id = ?
+	`, id)
 	if err != nil {
 		return err
 	}

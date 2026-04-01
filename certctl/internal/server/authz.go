@@ -304,6 +304,62 @@ func adminDoctorPermission(r *http.Request) (auth.PermissionRequest, bool) {
 	return auth.PermissionRequest{Permission: "doctor.read"}, true
 }
 
+func adminEffectiveAuthzPermission(r *http.Request) (auth.PermissionRequest, bool) {
+	switch {
+	case r.URL.Path == "/admin/v1/effective-authz" && r.Method == http.MethodGet:
+		return auth.PermissionRequest{Permission: "authz.read"}, true
+	case r.URL.Path == "/admin/v1/authz-bindings" && r.Method == http.MethodGet:
+		return auth.PermissionRequest{Permission: "authz.read", ResourceKind: "authz_binding", ResourceRef: "*"}, true
+	case r.URL.Path == "/admin/v1/authz-bindings" && r.Method == http.MethodPost:
+		return auth.PermissionRequest{Permission: "authz.write", ResourceKind: "authz_binding", ResourceRef: "*"}, true
+	default:
+		id := adminAuthzBindingID(r.URL.Path)
+		if id == "" {
+			return auth.PermissionRequest{}, false
+		}
+		switch r.Method {
+		case http.MethodGet:
+			return auth.PermissionRequest{Permission: "authz.read", ResourceKind: "authz_binding", ResourceRef: id}, true
+		case http.MethodPut, http.MethodDelete:
+			return auth.PermissionRequest{Permission: "authz.write", ResourceKind: "authz_binding", ResourceRef: id}, true
+		default:
+			return auth.PermissionRequest{}, false
+		}
+	}
+}
+
+func adminAuthIssuerPermission(r *http.Request) (auth.PermissionRequest, bool) {
+	switch {
+	case r.URL.Path == "/admin/v1/auth-issuers" && r.Method == http.MethodGet:
+		return auth.PermissionRequest{Permission: "auth_issuer.read", ResourceKind: "auth_issuer", ResourceRef: "*"}, true
+	case r.URL.Path == "/admin/v1/auth-issuers" && r.Method == http.MethodPost:
+		return auth.PermissionRequest{Permission: "auth_issuer.write", ResourceKind: "auth_issuer", ResourceRef: "*"}, true
+	default:
+		id := adminAuthIssuerID(r.URL.Path)
+		if id == "" {
+			return auth.PermissionRequest{}, false
+		}
+		switch r.Method {
+		case http.MethodGet:
+			return auth.PermissionRequest{Permission: "auth_issuer.read", ResourceKind: "auth_issuer", ResourceRef: id}, true
+		case http.MethodPut, http.MethodDelete:
+			return auth.PermissionRequest{Permission: "auth_issuer.write", ResourceKind: "auth_issuer", ResourceRef: id}, true
+		default:
+			return auth.PermissionRequest{}, false
+		}
+	}
+}
+
+func adminAuthProviderPresetPermission(r *http.Request) (auth.PermissionRequest, bool) {
+	if r.Method != http.MethodGet {
+		return auth.PermissionRequest{}, false
+	}
+	if r.URL.Path != "/admin/v1/auth-provider-presets" && adminAuthProviderPresetName(r.URL.Path) == "" {
+		return auth.PermissionRequest{}, false
+	}
+	return auth.PermissionRequest{Permission: "auth_issuer.read", ResourceKind: "auth_provider_preset", ResourceRef: "*"}, true
+}
+
 func metricsPermission(r *http.Request) (auth.PermissionRequest, bool) {
 	if r.Method != http.MethodGet {
 		return auth.PermissionRequest{}, false
@@ -334,6 +390,57 @@ func adminCSRItemPermission(r *http.Request) (auth.PermissionRequest, bool) {
 		return auth.PermissionRequest{Permission: "csr.approve", ResourceKind: "csr_request", ResourceRef: id}, true
 	case action == "reject" && r.Method == http.MethodPost:
 		return auth.PermissionRequest{Permission: "csr.reject", ResourceKind: "csr_request", ResourceRef: id}, true
+	default:
+		return auth.PermissionRequest{}, false
+	}
+}
+
+func adminSubjectCollectionPermission(r *http.Request) (auth.PermissionRequest, bool) {
+	if r.Method != http.MethodGet {
+		return auth.PermissionRequest{}, false
+	}
+	return auth.PermissionRequest{Permission: "subject.read", ResourceKind: "subject", ResourceRef: "*"}, true
+}
+
+func adminSubjectItemPermission(r *http.Request) (auth.PermissionRequest, bool) {
+	switch {
+	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/approve"):
+		return auth.PermissionRequest{Permission: "subject.approve", ResourceKind: "subject", ResourceRef: "*"}, true
+	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/update"):
+		return auth.PermissionRequest{Permission: "subject.update", ResourceKind: "subject", ResourceRef: "*"}, true
+	default:
+		id := adminSubjectID(r.URL.Path)
+		if id == "" {
+			return auth.PermissionRequest{}, false
+		}
+		switch r.Method {
+		case http.MethodGet:
+			return auth.PermissionRequest{Permission: "subject.read", ResourceKind: "subject", ResourceRef: id}, true
+		case http.MethodPut, http.MethodDelete:
+			return auth.PermissionRequest{Permission: "subject.update", ResourceKind: "subject", ResourceRef: id}, true
+		default:
+			return auth.PermissionRequest{}, false
+		}
+	}
+}
+
+func adminSubjectAutoApprovalCollectionPermission(r *http.Request) (auth.PermissionRequest, bool) {
+	if r.Method != http.MethodGet {
+		return auth.PermissionRequest{}, false
+	}
+	return auth.PermissionRequest{Permission: "subject_auto_approval.read", ResourceKind: "subject_auto_approval_rule", ResourceRef: "*"}, true
+}
+
+func adminSubjectAutoApprovalItemPermission(r *http.Request) (auth.PermissionRequest, bool) {
+	name := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/admin/v1/subject-auto-approvals/"))
+	if name == "" {
+		return auth.PermissionRequest{}, false
+	}
+	switch r.Method {
+	case http.MethodGet:
+		return auth.PermissionRequest{Permission: "subject_auto_approval.read", ResourceKind: "subject_auto_approval_rule", ResourceRef: name}, true
+	case http.MethodPut, http.MethodDelete:
+		return auth.PermissionRequest{Permission: "subject_auto_approval.write", ResourceKind: "subject_auto_approval_rule", ResourceRef: name}, true
 	default:
 		return auth.PermissionRequest{}, false
 	}

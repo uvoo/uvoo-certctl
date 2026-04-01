@@ -186,11 +186,18 @@ Keep permissions as short explicit strings.
 Initial set:
 
 - `doctor.read`
+- `authz.read`
+- `auth_issuer.read`
 - `metrics.read`
 - `csr.submit`
 - `csr.read`
 - `csr.approve`
 - `csr.reject`
+- `subject.read`
+- `subject.approve`
+- `subject.update`
+- `subject_auto_approval.read`
+- `subject_auto_approval.write`
 
 Future additions:
 
@@ -248,12 +255,36 @@ No nested role expansion in v1.
 Initial built-in server mapping:
 
 - `GET /admin/v1/doctor` -> `doctor.read`
+- `GET /admin/v1/doctor/auth` -> `doctor.read`
+- `GET /admin/v1/effective-authz` -> `authz.read`
+- `GET /admin/v1/auth-provider-presets` -> `auth_issuer.read`
+- `GET /admin/v1/auth-provider-presets/{name}` -> `auth_issuer.read`
+- `GET /admin/v1/auth-issuers` -> `auth_issuer.read`
+- `POST /admin/v1/auth-issuers` -> `auth_issuer.write`
+- `GET /admin/v1/auth-issuers/{name}` -> `auth_issuer.read`
+- `PUT /admin/v1/auth-issuers/{name}` -> `auth_issuer.write`
+- `DELETE /admin/v1/auth-issuers/{name}` -> `auth_issuer.write`
+- `GET /admin/v1/authz-bindings` -> `authz.read`
+- `POST /admin/v1/authz-bindings` -> `authz.write`
+- `GET /admin/v1/authz-bindings/{id}` -> `authz.read`
+- `PUT /admin/v1/authz-bindings/{id}` -> `authz.write`
+- `DELETE /admin/v1/authz-bindings/{id}` -> `authz.write`
 - `GET /metrics` -> `metrics.read`
 - `POST /admin/v1/csr-requests` -> `csr.submit`
 - `GET /admin/v1/csr-requests` -> `csr.read`
 - `GET /admin/v1/csr-requests/{id}` -> `csr.read`
 - `POST /admin/v1/csr-requests/{id}/approve` -> `csr.approve`
 - `POST /admin/v1/csr-requests/{id}/reject` -> `csr.reject`
+- `GET /admin/v1/subjects` -> `subject.read`
+- `GET /admin/v1/subjects/{id}` -> `subject.read`
+- `POST /admin/v1/subjects/approve` -> `subject.approve`
+- `POST /admin/v1/subjects/update` -> `subject.update`
+- `PUT /admin/v1/subjects/{id}` -> `subject.update`
+- `DELETE /admin/v1/subjects/{id}` -> `subject.update`
+- `GET /admin/v1/subject-auto-approvals` -> `subject_auto_approval.read`
+- `GET /admin/v1/subject-auto-approvals/{name}` -> `subject_auto_approval.read`
+- `PUT /admin/v1/subject-auto-approvals/{name}` -> `subject_auto_approval.write`
+- `DELETE /admin/v1/subject-auto-approvals/{name}` -> `subject_auto_approval.write`
 
 For later routes, keep the same pattern: one explicit permission per action.
 

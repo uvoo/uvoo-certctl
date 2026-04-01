@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"database/sql"
 	"encoding/json"
@@ -45,9 +46,16 @@ type Server struct {
 	csrLastSubmit map[string]time.Time
 	authResults   map[string]int
 	autoApprovals map[string]int
+	issuerProbes  map[string]issuerProbeStatus
 	allowNets     []*net.IPNet
 	configErr     error
 	authVerifier  *auth.Verifier
+}
+
+type issuerProbeStatus struct {
+	Status    string
+	Message   string
+	CheckedAt time.Time
 }
 
 func New(cfg Config) *Server {
@@ -57,6 +65,7 @@ func New(cfg Config) *Server {
 		csrLastSubmit: map[string]time.Time{},
 		authResults:   map[string]int{},
 		autoApprovals: map[string]int{},
+		issuerProbes:  map[string]issuerProbeStatus{},
 		authVerifier:  auth.NewVerifier(cfg.ProviderHTTPTimeout),
 	}
 	if s.cfg.CSRMaxBodyBytes <= 0 {
@@ -72,8 +81,20 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("/csr-requests", s.handleCSRRequests)
 	s.mux.HandleFunc("/csr-requests/", s.handleCSRRequests)
 	s.mux.HandleFunc("/admin/v1/doctor", s.requireAdminPermission(s.handleAdminDoctor, adminDoctorPermission))
+	s.mux.HandleFunc("/admin/v1/doctor/auth", s.requireAdminPermission(s.handleAdminAuthDoctor, adminDoctorPermission))
+	s.mux.HandleFunc("/admin/v1/effective-authz", s.requireAdminPermission(s.handleAdminEffectiveAuthz, adminEffectiveAuthzPermission))
+	s.mux.HandleFunc("/admin/v1/auth-provider-presets", s.requireAdminPermission(s.handleAdminAuthProviderPresets, adminAuthProviderPresetPermission))
+	s.mux.HandleFunc("/admin/v1/auth-provider-presets/", s.requireAdminPermission(s.handleAdminAuthProviderPresets, adminAuthProviderPresetPermission))
+	s.mux.HandleFunc("/admin/v1/auth-issuers", s.requireAdminPermission(s.handleAdminAuthIssuers, adminAuthIssuerPermission))
+	s.mux.HandleFunc("/admin/v1/auth-issuers/", s.requireAdminPermission(s.handleAdminAuthIssuers, adminAuthIssuerPermission))
+	s.mux.HandleFunc("/admin/v1/authz-bindings", s.requireAdminPermission(s.handleAdminAuthzBindings, adminEffectiveAuthzPermission))
+	s.mux.HandleFunc("/admin/v1/authz-bindings/", s.requireAdminPermission(s.handleAdminAuthzBindings, adminEffectiveAuthzPermission))
 	s.mux.HandleFunc("/admin/v1/csr-requests", s.requireAdminPermission(s.handleAdminCSRRequests, adminCSRCollectionPermission))
 	s.mux.HandleFunc("/admin/v1/csr-requests/", s.requireAdminPermission(s.handleAdminCSRRequests, adminCSRItemPermission))
+	s.mux.HandleFunc("/admin/v1/subjects", s.requireAdminPermission(s.handleAdminSubjects, adminSubjectCollectionPermission))
+	s.mux.HandleFunc("/admin/v1/subjects/", s.requireAdminPermission(s.handleAdminSubjects, adminSubjectItemPermission))
+	s.mux.HandleFunc("/admin/v1/subject-auto-approvals", s.requireAdminPermission(s.handleAdminSubjectAutoApprovals, adminSubjectAutoApprovalCollectionPermission))
+	s.mux.HandleFunc("/admin/v1/subject-auto-approvals/", s.requireAdminPermission(s.handleAdminSubjectAutoApprovals, adminSubjectAutoApprovalItemPermission))
 	if s.cfg.EnableMetrics {
 		s.mux.Handle("/metrics", s.requireMetricsPermission(s.handleMetrics, metricsPermission))
 	}
@@ -163,6 +184,40 @@ func (s *Server) autoApprovalSnapshot() map[string]int {
 		out[key] = value
 	}
 	return out
+}
+
+func (s *Server) recordIssuerProbe(issuer string, err error) {
+	issuer = strings.TrimSpace(issuer)
+	if issuer == "" {
+		return
+	}
+	status := issuerProbeStatus{
+		Status:    "ok",
+		CheckedAt: time.Now().UTC(),
+	}
+	if err != nil {
+		status.Status = "error"
+		status.Message = err.Error()
+	}
+	s.mu.Lock()
+	s.issuerProbes[issuer] = status
+	s.mu.Unlock()
+}
+
+func (s *Server) issuerProbeSnapshot() map[string]issuerProbeStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]issuerProbeStatus, len(s.issuerProbes))
+	for key, value := range s.issuerProbes {
+		out[key] = value
+	}
+	return out
+}
+
+func (s *Server) probeAuthIssuer(ctx context.Context, issuer storage.AuthIssuer) error {
+	err := s.authVerifier.CheckIssuerConnectivity(ctx, issuer)
+	s.recordIssuerProbe(issuer.Issuer, err)
+	return err
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -392,6 +447,13 @@ func maxViewsReached(sh storage.CertShare) bool {
 func formatTime(t time.Time) string {
 	if t.IsZero() {
 		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
+func formatTimeValue(t time.Time) any {
+	if t.IsZero() {
+		return nil
 	}
 	return t.UTC().Format(time.RFC3339)
 }

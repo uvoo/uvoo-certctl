@@ -42,6 +42,7 @@ Use `doctor` for structure and expiry checks:
 certctl doctor
 certctl doctor --warn-days 14
 certctl doctor --warn-days 0 --json
+certctl doctor --auth-only --json
 ```
 
 `doctor` also checks enabled JWT/OIDC issuers for broken discovery or JWKS connectivity, flags disabled issuers that are still referenced by enabled authz bindings, warns on bindings that still point at unknown issuers, highlights unused or unreachable issuer relationships, and highlights overly broad or duplicate/conflicting authz bindings and subject auto-approval rules.
@@ -68,6 +69,42 @@ certctl create-auth-issuer --preset google --name google-login --audience <clien
 certctl create-auth-issuer --preset microsoft-tenant --name microsoft-login --issuer https://login.microsoftonline.com/<tenant>/v2.0 --audience <app-id>
 certctl create-auth-issuer --preset keycloak --name keycloak-login --issuer https://sso.example.com/realms/certctl --audience certctl
 certctl create-auth-issuer --preset aws-cognito --name cognito-login --issuer https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example --audience <app-client-id>
+```
+
+Remote issuer management is also available over the admin API:
+
+```bash
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/auth-provider-presets
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/auth-provider-presets/keycloak
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X POST https://certctl.example.com:8443/admin/v1/auth-issuers \
+  -d '{"preset":"keycloak","name":"keycloak-dev","issuer":"https://sso.example.com/realms/certctl","audiences":["certctl"],"required_claims":{"azp":"certctl"},"discovery_url":"https://sso.example.com/realms/certctl/.well-known/openid-configuration"}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X PUT https://certctl.example.com:8443/admin/v1/auth-issuers/keycloak-dev \
+  -d '{"name":"keycloak-prod","enabled":true}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -X DELETE 'https://certctl.example.com:8443/admin/v1/auth-issuers/keycloak-prod?force=true'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X POST https://certctl.example.com:8443/admin/v1/authz-bindings \
+  -d '{"principal":"role:https://sso.example.com/realms/certctl:certctl_admin","permission":"subject.read","resource_kind":"subject","resource_ref":"*"}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X PUT https://certctl.example.com:8443/admin/v1/authz-bindings/<binding-id> \
+  -d '{"permission":"subject.update","enabled":true}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -X DELETE https://certctl.example.com:8443/admin/v1/authz-bindings/<binding-id>
 ```
 
 Recommended routine:
@@ -207,6 +244,40 @@ curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
 
 curl -sS -u metrics:"$CERTCTL_METRICS_PASSWORD" \
   https://certctl.example.com:8443/metrics
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/subjects?status=pending
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X POST https://certctl.example.com:8443/admin/v1/subjects/approve \
+  -d '{"issuer":"https://accounts.google.com","subject":"user-123","local_groups":["viewers"]}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/subjects/<subject-id>
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X PUT https://certctl.example.com:8443/admin/v1/subjects/<subject-id> \
+  -d '{"status":"active","local_groups":["employees"]}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -X DELETE https://certctl.example.com:8443/admin/v1/subjects/<subject-id>
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/subject-auto-approvals
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/effective-authz
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/doctor/auth
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/auth-issuers?probe=true
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/authz-bindings
 ```
 
 Notes:
@@ -217,7 +288,14 @@ Notes:
 - the built-in NACL checks the TCP client address, not forwarded-for headers
 - `/metrics` can use its own Basic auth credentials with `--metrics-username` and `--metrics-password`
 - `/metrics` otherwise accepts the admin Basic auth or bearer auth
-- `/metrics` includes low-cardinality counts for CSR backlog, pickup-ready requests, configured auth issuers and bindings, auth request outcomes, subject auto-approval rules and matches, pending-subject counts, and locally tracked JWT subjects
+- `/admin/v1/subjects` supports remote listing, item get/update/delete by subject ID, plus approve/update actions for locally tracked JWT subjects
+- `/admin/v1/subject-auto-approvals` supports remote list/get/upsert/delete for subject auto-approval rules
+- `/admin/v1/effective-authz` shows the caller's current effective permissions and matching bindings
+- `/admin/v1/doctor/auth` returns only auth-related doctor findings
+- `/admin/v1/auth-provider-presets` exposes the built-in provider presets for remote operators
+- `/admin/v1/auth-issuers` supports remote list, create, update, delete, and live connectivity probe status with `?probe=true`
+- `/admin/v1/authz-bindings` supports remote list, create, update, delete, and item inspection for current authz bindings
+- `/metrics` includes low-cardinality counts for CSR backlog, pickup-ready requests, configured auth issuers and bindings, cached auth issuer connectivity states, doctor findings by severity and check, issuer binding coverage, binding permission and principal-kind mix, risky authz and subject auto-approval counts, auth request outcomes, subject auto-approval rules and matches, pending-subject counts, and locally tracked JWT subjects
 - for local end-to-end testing with Keycloak and the built-in server, use the Docker stack in [`DOCKER_DEV.md`](DOCKER_DEV.md)
 
 ## 6. Backup and restore

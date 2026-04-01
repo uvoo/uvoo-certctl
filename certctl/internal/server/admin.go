@@ -10,8 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"certctl/internal/auth"
 	"certctl/internal/ops"
 	"certctl/internal/storage"
+	"certctl/internal/util"
 )
 
 const (
@@ -42,6 +44,77 @@ type adminApproveCSRRequest struct {
 
 type adminRejectCSRRequest struct {
 	Reason string `json:"reason"`
+}
+
+type adminApproveSubjectRequest struct {
+	Issuer      string   `json:"issuer"`
+	Subject     string   `json:"subject"`
+	LocalRoles  []string `json:"local_roles"`
+	LocalGroups []string `json:"local_groups"`
+}
+
+type adminUpdateSubjectRequest struct {
+	Issuer      string   `json:"issuer"`
+	Subject     string   `json:"subject"`
+	Status      string   `json:"status"`
+	LocalRoles  []string `json:"local_roles"`
+	LocalGroups []string `json:"local_groups"`
+}
+
+type adminUpsertSubjectAutoApprovalRuleRequest struct {
+	Enabled        *bool    `json:"enabled"`
+	Issuer         string   `json:"issuer"`
+	EmailDomain    string   `json:"email_domain"`
+	RequiredRoles  []string `json:"required_roles"`
+	RequiredGroups []string `json:"required_groups"`
+	LocalRoles     []string `json:"local_roles"`
+	LocalGroups    []string `json:"local_groups"`
+}
+
+type adminCreateAuthIssuerRequest struct {
+	Preset         string            `json:"preset"`
+	Name           string            `json:"name"`
+	Issuer         string            `json:"issuer"`
+	Audiences      []string          `json:"audiences"`
+	RequiredClaims map[string]string `json:"required_claims"`
+	DiscoveryURL   string            `json:"discovery_url"`
+	JWKSURL        string            `json:"jwks_url"`
+	Enabled        *bool             `json:"enabled"`
+	SubjectClaim   string            `json:"subject_claim"`
+	UsernameClaim  string            `json:"username_claim"`
+	EmailClaim     string            `json:"email_claim"`
+	RolesClaims    []string          `json:"roles_claims"`
+	GroupsClaims   []string          `json:"groups_claims"`
+}
+
+type adminUpdateAuthIssuerRequest struct {
+	Name           *string           `json:"name"`
+	Audiences      []string          `json:"audiences"`
+	RequiredClaims map[string]string `json:"required_claims"`
+	DiscoveryURL   *string           `json:"discovery_url"`
+	JWKSURL        *string           `json:"jwks_url"`
+	Enabled        *bool             `json:"enabled"`
+	SubjectClaim   *string           `json:"subject_claim"`
+	UsernameClaim  *string           `json:"username_claim"`
+	EmailClaim     *string           `json:"email_claim"`
+	RolesClaims    []string          `json:"roles_claims"`
+	GroupsClaims   []string          `json:"groups_claims"`
+}
+
+type adminCreateAuthzBindingRequest struct {
+	Principal    string `json:"principal"`
+	Permission   string `json:"permission"`
+	ResourceKind string `json:"resource_kind"`
+	ResourceRef  string `json:"resource_ref"`
+	Enabled      *bool  `json:"enabled"`
+}
+
+type adminUpdateAuthzBindingRequest struct {
+	Principal    *string `json:"principal"`
+	Permission   *string `json:"permission"`
+	ResourceKind *string `json:"resource_kind"`
+	ResourceRef  *string `json:"resource_ref"`
+	Enabled      *bool   `json:"enabled"`
 }
 
 func (s *Server) handleAdminDoctor(w http.ResponseWriter, r *http.Request) {
@@ -76,7 +149,7 @@ func (s *Server) handleAdminDoctor(w http.ResponseWriter, r *http.Request) {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
-			return s.authVerifier.CheckIssuerConnectivity(ctx, issuer)
+			return s.probeAuthIssuer(ctx, issuer)
 		},
 	})
 	if err != nil {
@@ -88,6 +161,560 @@ func (s *Server) handleAdminDoctor(w http.ResponseWriter, r *http.Request) {
 		"status":    ops.DoctorStatus(findings),
 		"warn_days": warnDays,
 		"findings":  findings,
+	})
+}
+
+func (s *Server) handleAdminAuthDoctor(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	warnDays := s.cfg.AdminWarnDays
+	if raw := strings.TrimSpace(r.URL.Query().Get("warn_days")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "warn_days must be an integer")
+			return
+		}
+		warnDays = parsed
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	findings, err := ops.RunDoctorWithOptions(store, ops.DoctorOptions{
+		WarnDays: warnDays,
+		AuthIssuerProbe: func(issuer storage.AuthIssuer) error {
+			timeout := s.cfg.ProviderHTTPTimeout
+			if timeout <= 0 {
+				timeout = 10 * time.Second
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			defer cancel()
+			return s.probeAuthIssuer(ctx, issuer)
+		},
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to run doctor")
+		return
+	}
+
+	authFindings := ops.AuthRelatedDoctorFindings(findings)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":    ops.DoctorStatus(authFindings),
+		"warn_days": warnDays,
+		"findings":  authFindings,
+	})
+}
+
+func (s *Server) handleAdminEffectiveAuthz(w http.ResponseWriter, r *http.Request) {
+	identity, ok := authIdentityFromRequest(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "missing authenticated identity")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	bindings, err := store.ListAuthzBindings(true)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load authz bindings")
+		return
+	}
+
+	var matchedIssuer any
+	if !identity.Superuser && strings.TrimSpace(identity.Issuer) != "" {
+		if issuers, err := store.ListAuthIssuers(true); err == nil {
+			if issuer, ok := findAuthIssuerByIssuer(issuers, identity.Issuer); ok {
+				matchedIssuer = authIssuerPayload(issuer)
+			}
+		}
+	}
+
+	var subjectRecord any
+	if !identity.Superuser && strings.TrimSpace(identity.Issuer) != "" && strings.TrimSpace(identity.Subject) != "" {
+		if rec, err := store.GetSubject(identity.Issuer, identity.Subject); err == nil {
+			subjectRecord = subjectPayload(rec)
+		}
+	}
+
+	effectivePermissions := auth.EffectivePermissions(identity, bindings)
+	matchingBindings := collectMatchingBindings(identity, bindings, effectivePermissions)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"matched_issuer":        matchedIssuer,
+		"subject_record":        subjectRecord,
+		"superuser":             identity.Superuser,
+		"auth_method":           identity.AuthMethod,
+		"issuer":                emptyStringToNil(identity.Issuer),
+		"subject":               emptyStringToNil(identity.Subject),
+		"username":              emptyStringToNil(identity.Username),
+		"email":                 emptyStringToNil(identity.Email),
+		"principals":            identity.Principals,
+		"roles":                 identity.Roles,
+		"groups":                identity.Groups,
+		"local_roles":           identity.LocalRoles,
+		"local_groups":          identity.LocalGroups,
+		"effective_permissions": effectivePermissions,
+		"matching_bindings":     matchingBindings,
+	})
+}
+
+func (s *Server) handleAdminAuthIssuers(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.URL.Path == "/admin/v1/auth-issuers" && r.Method == http.MethodGet:
+		s.handleAdminAuthIssuerList(w, r)
+		return
+	case r.URL.Path == "/admin/v1/auth-issuers" && r.Method == http.MethodPost:
+		s.handleAdminAuthIssuerCreate(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/auth-issuers/") && r.Method == http.MethodGet:
+		s.handleAdminAuthIssuerGet(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/auth-issuers/") && r.Method == http.MethodPut:
+		s.handleAdminAuthIssuerUpdate(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/auth-issuers/") && r.Method == http.MethodDelete:
+		s.handleAdminAuthIssuerDelete(w, r)
+		return
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+}
+
+func (s *Server) handleAdminAuthProviderPresets(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.URL.Path == "/admin/v1/auth-provider-presets" && r.Method == http.MethodGet:
+		s.handleAdminAuthProviderPresetList(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/auth-provider-presets/") && r.Method == http.MethodGet:
+		s.handleAdminAuthProviderPresetGet(w, r)
+		return
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+}
+
+func (s *Server) handleAdminAuthzBindings(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.URL.Path == "/admin/v1/authz-bindings" && r.Method == http.MethodGet:
+		s.handleAdminAuthzBindingList(w, r)
+		return
+	case r.URL.Path == "/admin/v1/authz-bindings" && r.Method == http.MethodPost:
+		s.handleAdminAuthzBindingCreate(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/authz-bindings/") && r.Method == http.MethodGet:
+		s.handleAdminAuthzBindingGet(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/authz-bindings/") && r.Method == http.MethodPut:
+		s.handleAdminAuthzBindingUpdate(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/authz-bindings/") && r.Method == http.MethodDelete:
+		s.handleAdminAuthzBindingDelete(w, r)
+		return
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+}
+
+func (s *Server) handleAdminAuthIssuerList(w http.ResponseWriter, r *http.Request) {
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rows, err := store.ListAuthIssuers(!parseBoolQuery(r, "all"))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list auth issuers")
+		return
+	}
+	nameFilter := strings.TrimSpace(r.URL.Query().Get("name"))
+	issuerFilter := strings.TrimSpace(r.URL.Query().Get("issuer"))
+	probe := parseBoolQuery(r, "probe")
+	payload := make([]map[string]any, 0, len(rows))
+	for _, rec := range rows {
+		if nameFilter != "" && rec.Name != nameFilter {
+			continue
+		}
+		if issuerFilter != "" && rec.Issuer != issuerFilter {
+			continue
+		}
+		payload = append(payload, s.authIssuerStatusPayload(rec, probe))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": payload,
+		"count": len(payload),
+	})
+}
+
+func (s *Server) handleAdminAuthIssuerGet(w http.ResponseWriter, r *http.Request) {
+	issuerID := adminAuthIssuerID(r.URL.Path)
+	if issuerID == "" {
+		writeError(w, http.StatusNotFound, "auth issuer not found")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rows, err := store.ListAuthIssuers(false)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list auth issuers")
+		return
+	}
+	for _, rec := range rows {
+		if rec.Name == issuerID || rec.Issuer == issuerID {
+			writeJSON(w, http.StatusOK, s.authIssuerStatusPayload(rec, parseBoolQuery(r, "probe")))
+			return
+		}
+	}
+	writeError(w, http.StatusNotFound, "auth issuer not found")
+}
+
+func (s *Server) handleAdminAuthProviderPresetList(w http.ResponseWriter, r *http.Request) {
+	names := auth.ProviderPresetNames()
+	payload := make([]map[string]any, 0, len(names))
+	for _, name := range names {
+		rec, _ := auth.ProviderPresetByName(name)
+		payload = append(payload, authProviderPresetPayload(rec))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": payload,
+		"count": len(payload),
+	})
+}
+
+func (s *Server) handleAdminAuthProviderPresetGet(w http.ResponseWriter, r *http.Request) {
+	name := adminAuthProviderPresetName(r.URL.Path)
+	if name == "" {
+		writeError(w, http.StatusNotFound, "auth provider preset not found")
+		return
+	}
+	rec, ok := auth.ProviderPresetByName(name)
+	if !ok {
+		writeError(w, http.StatusNotFound, "auth provider preset not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, authProviderPresetPayload(rec))
+}
+
+func (s *Server) handleAdminAuthIssuerCreate(w http.ResponseWriter, r *http.Request) {
+	var body adminCreateAuthIssuerRequest
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	rec, err := buildAdminAuthIssuer(body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	if existing, err := store.GetAuthIssuerByIssuer(rec.Issuer); err == nil {
+		writeError(w, http.StatusConflict, fmt.Sprintf("auth issuer %s already exists", existing.Issuer))
+		return
+	} else if err != sql.ErrNoRows {
+		writeError(w, http.StatusInternalServerError, "failed to check auth issuer")
+		return
+	}
+
+	if err := store.UpsertAuthIssuer(rec); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	rec, err = store.GetAuthIssuerByIssuer(rec.Issuer)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load auth issuer")
+		return
+	}
+	ops.LogAuditEvent(store, "create_auth_issuer", "auth_issuer", rec.Issuer, fmt.Sprintf("created auth issuer %s", rec.Name))
+	writeJSON(w, http.StatusCreated, authIssuerPayload(rec))
+}
+
+func (s *Server) handleAdminAuthIssuerUpdate(w http.ResponseWriter, r *http.Request) {
+	issuerID := adminAuthIssuerID(r.URL.Path)
+	if issuerID == "" {
+		writeError(w, http.StatusNotFound, "auth issuer not found")
+		return
+	}
+
+	var body adminUpdateAuthIssuerRequest
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := findAdminAuthIssuer(store, issuerID)
+	if err != nil {
+		writeAdminStorageError(w, err, "auth issuer")
+		return
+	}
+	if err := applyAdminAuthIssuerUpdate(&rec, body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := store.UpsertAuthIssuer(rec); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	rec, err = store.GetAuthIssuerByIssuer(rec.Issuer)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load auth issuer")
+		return
+	}
+	ops.LogAuditEvent(store, "update_auth_issuer", "auth_issuer", rec.Issuer, fmt.Sprintf("updated auth issuer %s", rec.Name))
+	writeJSON(w, http.StatusOK, authIssuerPayload(rec))
+}
+
+func (s *Server) handleAdminAuthIssuerDelete(w http.ResponseWriter, r *http.Request) {
+	issuerID := adminAuthIssuerID(r.URL.Path)
+	if issuerID == "" {
+		writeError(w, http.StatusNotFound, "auth issuer not found")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := findAdminAuthIssuer(store, issuerID)
+	if err != nil {
+		writeAdminStorageError(w, err, "auth issuer")
+		return
+	}
+
+	bindings, err := store.ListAuthzBindings(false)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load authz bindings")
+		return
+	}
+	var refs []string
+	for _, binding := range bindings {
+		if authzBindingReferencesIssuer(binding, rec.Issuer) {
+			refs = append(refs, binding.ID)
+		}
+	}
+	force := parseBoolQuery(r, "force")
+	if len(refs) > 0 && !force {
+		writeError(w, http.StatusConflict, fmt.Sprintf("auth issuer %s is still referenced by authz bindings: %s", rec.Issuer, strings.Join(refs, ", ")))
+		return
+	}
+	if force {
+		for _, bindingID := range refs {
+			if err := store.DeleteAuthzBinding(bindingID); err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to delete referenced authz binding")
+				return
+			}
+			ops.LogAuditEvent(store, "delete_authz_binding", "authz_binding", bindingID, fmt.Sprintf("deleted authz binding %s during forced auth issuer deletion", bindingID))
+		}
+	}
+	if err := store.DeleteAuthIssuer(rec.Issuer); err != nil {
+		writeAdminStorageError(w, err, "auth issuer")
+		return
+	}
+	summary := fmt.Sprintf("deleted auth issuer %s", rec.Name)
+	if len(refs) > 0 {
+		summary = fmt.Sprintf("deleted auth issuer %s and %d referenced authz binding(s)", rec.Name, len(refs))
+	}
+	ops.LogAuditEvent(store, "delete_auth_issuer", "auth_issuer", rec.Issuer, summary)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":                  rec.ID,
+		"name":                rec.Name,
+		"issuer":              rec.Issuer,
+		"deleted":             true,
+		"forced":              force,
+		"deleted_binding_ids": refs,
+	})
+}
+
+func (s *Server) handleAdminAuthzBindingList(w http.ResponseWriter, r *http.Request) {
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rows, err := store.ListAuthzBindingsFiltered(!parseBoolQuery(r, "all"), storage.AuthzBindingFilter{
+		ID:           strings.TrimSpace(r.URL.Query().Get("id")),
+		Principal:    strings.TrimSpace(r.URL.Query().Get("principal")),
+		Permission:   strings.TrimSpace(r.URL.Query().Get("permission")),
+		ResourceKind: strings.TrimSpace(r.URL.Query().Get("resource_kind")),
+		ResourceRef:  strings.TrimSpace(r.URL.Query().Get("resource_ref")),
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list authz bindings")
+		return
+	}
+	payload := make([]map[string]any, 0, len(rows))
+	for _, rec := range rows {
+		payload = append(payload, authzBindingPayload(rec))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": payload,
+		"count": len(payload),
+	})
+}
+
+func (s *Server) handleAdminAuthzBindingGet(w http.ResponseWriter, r *http.Request) {
+	id := adminAuthzBindingID(r.URL.Path)
+	if id == "" {
+		writeError(w, http.StatusNotFound, "authz binding not found")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := store.GetAuthzBindingByID(id)
+	if err != nil {
+		writeAdminStorageError(w, err, "authz binding")
+		return
+	}
+	writeJSON(w, http.StatusOK, authzBindingPayload(rec))
+}
+
+func (s *Server) handleAdminAuthzBindingCreate(w http.ResponseWriter, r *http.Request) {
+	var body adminCreateAuthzBindingRequest
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	rec, err := buildAdminAuthzBinding(body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	if err := store.CreateAuthzBinding(rec); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	rec, err = store.GetAuthzBindingByID(rec.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load authz binding")
+		return
+	}
+	ops.LogAuditEvent(store, "create_authz_binding", "authz_binding", rec.ID, fmt.Sprintf("created authz binding %s", rec.ID))
+	writeJSON(w, http.StatusCreated, authzBindingPayload(rec))
+}
+
+func (s *Server) handleAdminAuthzBindingUpdate(w http.ResponseWriter, r *http.Request) {
+	id := adminAuthzBindingID(r.URL.Path)
+	if id == "" {
+		writeError(w, http.StatusNotFound, "authz binding not found")
+		return
+	}
+
+	var body adminUpdateAuthzBindingRequest
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := store.GetAuthzBindingByID(id)
+	if err != nil {
+		writeAdminStorageError(w, err, "authz binding")
+		return
+	}
+	if err := applyAdminAuthzBindingUpdate(&rec, body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := store.UpdateAuthzBinding(rec); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	rec, err = store.GetAuthzBindingByID(rec.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load authz binding")
+		return
+	}
+	ops.LogAuditEvent(store, "update_authz_binding", "authz_binding", rec.ID, fmt.Sprintf("updated authz binding %s", rec.ID))
+	writeJSON(w, http.StatusOK, authzBindingPayload(rec))
+}
+
+func (s *Server) handleAdminAuthzBindingDelete(w http.ResponseWriter, r *http.Request) {
+	id := adminAuthzBindingID(r.URL.Path)
+	if id == "" {
+		writeError(w, http.StatusNotFound, "authz binding not found")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := store.GetAuthzBindingByID(id)
+	if err != nil {
+		writeAdminStorageError(w, err, "authz binding")
+		return
+	}
+	if err := store.DeleteAuthzBinding(id); err != nil {
+		writeAdminStorageError(w, err, "authz binding")
+		return
+	}
+	ops.LogAuditEvent(store, "delete_authz_binding", "authz_binding", rec.ID, fmt.Sprintf("deleted authz binding %s", rec.ID))
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":      rec.ID,
+		"deleted": true,
 	})
 }
 
@@ -107,6 +734,52 @@ func (s *Server) handleAdminCSRRequests(w http.ResponseWriter, r *http.Request) 
 		return
 	case strings.HasSuffix(r.URL.Path, "/reject") && r.Method == http.MethodPost:
 		s.handleAdminCSRReject(w, r)
+		return
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+}
+
+func (s *Server) handleAdminSubjects(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.URL.Path == "/admin/v1/subjects" && r.Method == http.MethodGet:
+		s.handleAdminSubjectList(w, r)
+		return
+	case r.URL.Path == "/admin/v1/subjects/approve" && r.Method == http.MethodPost:
+		s.handleAdminSubjectApprove(w, r)
+		return
+	case r.URL.Path == "/admin/v1/subjects/update" && r.Method == http.MethodPost:
+		s.handleAdminSubjectUpdate(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/subjects/") && r.Method == http.MethodGet:
+		s.handleAdminSubjectGet(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/subjects/") && r.Method == http.MethodPut:
+		s.handleAdminSubjectUpdateByID(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/subjects/") && r.Method == http.MethodDelete:
+		s.handleAdminSubjectDelete(w, r)
+		return
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+}
+
+func (s *Server) handleAdminSubjectAutoApprovals(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.URL.Path == "/admin/v1/subject-auto-approvals" && r.Method == http.MethodGet:
+		s.handleAdminSubjectAutoApprovalList(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/subject-auto-approvals/") && r.Method == http.MethodGet:
+		s.handleAdminSubjectAutoApprovalGet(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/subject-auto-approvals/") && r.Method == http.MethodPut:
+		s.handleAdminSubjectAutoApprovalUpsert(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/admin/v1/subject-auto-approvals/") && r.Method == http.MethodDelete:
+		s.handleAdminSubjectAutoApprovalDelete(w, r)
 		return
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -143,6 +816,314 @@ func (s *Server) handleAdminCSRList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items": payload,
 		"count": len(payload),
+	})
+}
+
+func (s *Server) handleAdminSubjectList(w http.ResponseWriter, r *http.Request) {
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rows, err := ops.ListSubjects(store, ops.SubjectFilter{
+		ActiveOnly: !parseBoolQuery(r, "all"),
+		Issuer:     strings.TrimSpace(r.URL.Query().Get("issuer")),
+		Subject:    strings.TrimSpace(r.URL.Query().Get("subject")),
+		Status:     strings.TrimSpace(r.URL.Query().Get("status")),
+		LocalRole:  strings.TrimSpace(r.URL.Query().Get("local_role")),
+		LocalGroup: strings.TrimSpace(r.URL.Query().Get("local_group")),
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list subjects")
+		return
+	}
+
+	payload := make([]map[string]any, 0, len(rows))
+	for _, rec := range rows {
+		payload = append(payload, subjectPayload(rec))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": payload,
+		"count": len(payload),
+	})
+}
+
+func (s *Server) handleAdminSubjectGet(w http.ResponseWriter, r *http.Request) {
+	id := adminSubjectID(r.URL.Path)
+	if id == "" {
+		writeError(w, http.StatusNotFound, "subject not found")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := store.GetSubjectByID(id)
+	if err != nil {
+		writeAdminStorageError(w, err, "subject")
+		return
+	}
+	writeJSON(w, http.StatusOK, subjectPayload(rec))
+}
+
+func (s *Server) handleAdminSubjectApprove(w http.ResponseWriter, r *http.Request) {
+	var body adminApproveSubjectRequest
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := ops.ApproveSubject(
+		store,
+		body.Issuer,
+		body.Subject,
+		body.LocalRoles,
+		body.LocalGroups,
+		body.LocalRoles != nil,
+		body.LocalGroups != nil,
+	)
+	if err != nil {
+		writeAdminStorageError(w, err, "subject")
+		return
+	}
+	writeJSON(w, http.StatusOK, subjectPayload(rec))
+}
+
+func (s *Server) handleAdminSubjectUpdate(w http.ResponseWriter, r *http.Request) {
+	var body adminUpdateSubjectRequest
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if strings.TrimSpace(body.Status) == "" && body.LocalRoles == nil && body.LocalGroups == nil {
+		writeError(w, http.StatusBadRequest, "at least one of status, local_roles, or local_groups is required")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := ops.UpdateSubject(store, ops.UpdateSubjectParams{
+		Issuer:       body.Issuer,
+		Subject:      body.Subject,
+		Status:       body.Status,
+		LocalRoles:   body.LocalRoles,
+		LocalGroups:  body.LocalGroups,
+		ChangeStatus: strings.TrimSpace(body.Status) != "",
+		ChangeRoles:  body.LocalRoles != nil,
+		ChangeGroups: body.LocalGroups != nil,
+	})
+	if err != nil {
+		writeAdminStorageError(w, err, "subject")
+		return
+	}
+	writeJSON(w, http.StatusOK, subjectPayload(rec))
+}
+
+func (s *Server) handleAdminSubjectUpdateByID(w http.ResponseWriter, r *http.Request) {
+	id := adminSubjectID(r.URL.Path)
+	if id == "" {
+		writeError(w, http.StatusNotFound, "subject not found")
+		return
+	}
+
+	var body adminUpdateSubjectRequest
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if strings.TrimSpace(body.Status) == "" && body.LocalRoles == nil && body.LocalGroups == nil {
+		writeError(w, http.StatusBadRequest, "at least one of status, local_roles, or local_groups is required")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	current, err := store.GetSubjectByID(id)
+	if err != nil {
+		writeAdminStorageError(w, err, "subject")
+		return
+	}
+	rec, err := ops.UpdateSubject(store, ops.UpdateSubjectParams{
+		Issuer:       current.Issuer,
+		Subject:      current.Subject,
+		Status:       body.Status,
+		LocalRoles:   body.LocalRoles,
+		LocalGroups:  body.LocalGroups,
+		ChangeStatus: strings.TrimSpace(body.Status) != "",
+		ChangeRoles:  body.LocalRoles != nil,
+		ChangeGroups: body.LocalGroups != nil,
+	})
+	if err != nil {
+		writeAdminStorageError(w, err, "subject")
+		return
+	}
+	writeJSON(w, http.StatusOK, subjectPayload(rec))
+}
+
+func (s *Server) handleAdminSubjectDelete(w http.ResponseWriter, r *http.Request) {
+	id := adminSubjectID(r.URL.Path)
+	if id == "" {
+		writeError(w, http.StatusNotFound, "subject not found")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := ops.DeleteSubject(store, id)
+	if err != nil {
+		writeAdminStorageError(w, err, "subject")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":      rec.ID,
+		"issuer":  rec.Issuer,
+		"subject": rec.Subject,
+		"deleted": true,
+	})
+}
+
+func (s *Server) handleAdminSubjectAutoApprovalList(w http.ResponseWriter, r *http.Request) {
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rows, err := ops.ListSubjectAutoApprovalRules(store, ops.SubjectAutoApprovalRuleFilter{
+		EnabledOnly: !parseBoolQuery(r, "all"),
+		Name:        strings.TrimSpace(r.URL.Query().Get("name")),
+		Issuer:      strings.TrimSpace(r.URL.Query().Get("issuer")),
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list subject auto approval rules")
+		return
+	}
+
+	payload := make([]map[string]any, 0, len(rows))
+	for _, rec := range rows {
+		payload = append(payload, subjectAutoApprovalRulePayload(rec))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": payload,
+		"count": len(payload),
+	})
+}
+
+func (s *Server) handleAdminSubjectAutoApprovalGet(w http.ResponseWriter, r *http.Request) {
+	name := adminSubjectAutoApprovalRuleName(r.URL.Path)
+	if name == "" {
+		writeError(w, http.StatusNotFound, "subject auto approval rule not found")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := store.GetSubjectAutoApprovalRuleByName(name)
+	if err != nil {
+		writeAdminStorageError(w, err, "subject auto approval rule")
+		return
+	}
+	writeJSON(w, http.StatusOK, subjectAutoApprovalRulePayload(rec))
+}
+
+func (s *Server) handleAdminSubjectAutoApprovalUpsert(w http.ResponseWriter, r *http.Request) {
+	name := adminSubjectAutoApprovalRuleName(r.URL.Path)
+	if name == "" {
+		writeError(w, http.StatusNotFound, "subject auto approval rule not found")
+		return
+	}
+
+	var body adminUpsertSubjectAutoApprovalRuleRequest
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	enabled := true
+	if body.Enabled != nil {
+		enabled = *body.Enabled
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := ops.UpsertSubjectAutoApprovalRule(store, ops.UpsertSubjectAutoApprovalRuleParams{
+		Name:           name,
+		Enabled:        enabled,
+		Issuer:         body.Issuer,
+		EmailDomain:    body.EmailDomain,
+		RequiredRoles:  body.RequiredRoles,
+		RequiredGroups: body.RequiredGroups,
+		LocalRoles:     body.LocalRoles,
+		LocalGroups:    body.LocalGroups,
+	})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, subjectAutoApprovalRulePayload(rec))
+}
+
+func (s *Server) handleAdminSubjectAutoApprovalDelete(w http.ResponseWriter, r *http.Request) {
+	name := adminSubjectAutoApprovalRuleName(r.URL.Path)
+	if name == "" {
+		writeError(w, http.StatusNotFound, "subject auto approval rule not found")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	rec, err := ops.DeleteSubjectAutoApprovalRule(store, name)
+	if err != nil {
+		writeAdminStorageError(w, err, "subject auto approval rule")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"name":    rec.Name,
+		"issuer":  rec.Issuer,
+		"deleted": true,
 	})
 }
 
@@ -380,7 +1361,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	defer store.Close()
 
-	payload, err := buildMetrics(store, s.cfg.AdminWarnDays, s.authResultSnapshot(), s.autoApprovalSnapshot())
+	payload, err := buildMetrics(store, s.cfg.AdminWarnDays, s.authResultSnapshot(), s.autoApprovalSnapshot(), s.issuerProbeSnapshot())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to build metrics")
 		return
@@ -390,7 +1371,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(payload))
 }
 
-func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int, autoApprovals map[string]int) (string, error) {
+func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int, autoApprovals map[string]int, issuerProbes map[string]issuerProbeStatus) (string, error) {
 	publicRows, err := store.List("", true)
 	if err != nil {
 		return "", err
@@ -523,6 +1504,18 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 		writeMetricSample(&b, "certctl_auth_issuers_total", map[string]string{"enabled": enabled}, float64(count))
 	}
 
+	writeMetricHeader(&b, "certctl_auth_issuers_connectivity_status_total", "Trusted auth issuers by cached connectivity status.")
+	authIssuerConnectivity := summarizeAuthIssuerConnectivityStatus(authIssuers, issuerProbes)
+	for status, count := range authIssuerConnectivity {
+		writeMetricSample(&b, "certctl_auth_issuers_connectivity_status_total", map[string]string{"status": status}, float64(count))
+	}
+
+	writeMetricHeader(&b, "certctl_auth_issuer_binding_coverage_total", "Trusted auth issuer coverage by enabled binding relationships.")
+	authIssuerCoverage := summarizeAuthIssuerCoverage(authIssuers, authzBindings)
+	for state, count := range authIssuerCoverage {
+		writeMetricSample(&b, "certctl_auth_issuer_binding_coverage_total", map[string]string{"state": state}, float64(count))
+	}
+
 	writeMetricHeader(&b, "certctl_authz_bindings_total", "Authorization bindings by enabled state and scope breadth.")
 	authzBindingCounts := map[string]int{}
 	for _, binding := range authzBindings {
@@ -537,6 +1530,34 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 		}, float64(count))
 	}
 
+	writeMetricHeader(&b, "certctl_authz_bindings_by_permission_total", "Authorization bindings by enabled state and permission.")
+	authzByPermission := summarizeAuthzBindingsByPermission(authzBindings)
+	for key, count := range authzByPermission {
+		parts := strings.SplitN(key, "|", 2)
+		labels := map[string]string{"enabled": parts[0], "permission": ""}
+		if len(parts) == 2 {
+			labels["permission"] = parts[1]
+		}
+		writeMetricSample(&b, "certctl_authz_bindings_by_permission_total", labels, float64(count))
+	}
+
+	writeMetricHeader(&b, "certctl_authz_bindings_by_principal_kind_total", "Authorization bindings by enabled state and principal kind.")
+	authzByPrincipalKind := summarizeAuthzBindingsByPrincipalKind(authzBindings)
+	for key, count := range authzByPrincipalKind {
+		parts := strings.SplitN(key, "|", 2)
+		labels := map[string]string{"enabled": parts[0], "principal_kind": ""}
+		if len(parts) == 2 {
+			labels["principal_kind"] = parts[1]
+		}
+		writeMetricSample(&b, "certctl_authz_bindings_by_principal_kind_total", labels, float64(count))
+	}
+
+	writeMetricHeader(&b, "certctl_authz_bindings_risky_total", "Enabled authorization bindings with risky authz characteristics.")
+	authzRiskCounts := summarizeRiskyAuthzBindings(authzBindings)
+	for risk, count := range authzRiskCounts {
+		writeMetricSample(&b, "certctl_authz_bindings_risky_total", map[string]string{"risk": risk}, float64(count))
+	}
+
 	writeMetricHeader(&b, "certctl_subject_auto_approval_rules_total", "Subject auto-approval rules by enabled state.")
 	subjectRuleCounts := map[string]int{}
 	for _, rule := range subjectAutoApprovalRules {
@@ -544,6 +1565,12 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 	}
 	for enabled, count := range subjectRuleCounts {
 		writeMetricSample(&b, "certctl_subject_auto_approval_rules_total", map[string]string{"enabled": enabled}, float64(count))
+	}
+
+	writeMetricHeader(&b, "certctl_subject_auto_approval_rules_risky_total", "Enabled subject auto-approval rules with risky auth relationships.")
+	subjectRuleRiskCounts := summarizeRiskySubjectAutoApprovalRules(authIssuers, subjectAutoApprovalRules)
+	for risk, count := range subjectRuleRiskCounts {
+		writeMetricSample(&b, "certctl_subject_auto_approval_rules_risky_total", map[string]string{"risk": risk}, float64(count))
 	}
 
 	writeMetricHeader(&b, "certctl_auth_requests_total", "Admin and metrics authentication attempts by result and auth method since process start.")
@@ -617,6 +1644,38 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 		}, float64(countStalePendingSubjects(subjects, now, warnWindow)))
 	}
 
+	doctorFindings, err := ops.RunDoctorWithOptions(store, ops.DoctorOptions{
+		WarnDays: warnDays,
+		Now:      now,
+		AuthIssuerProbe: func(issuer storage.AuthIssuer) error {
+			if !issuer.Enabled {
+				return nil
+			}
+			if probe, ok := issuerProbes[issuer.Issuer]; ok {
+				if probe.Status == "error" {
+					if strings.TrimSpace(probe.Message) != "" {
+						return fmt.Errorf("%s", probe.Message)
+					}
+					return fmt.Errorf("cached connectivity error")
+				}
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	writeMetricHeader(&b, "certctl_doctor_findings_total", "Doctor findings by severity and check.")
+	doctorCounts := summarizeDoctorFindings(doctorFindings)
+	for key, count := range doctorCounts {
+		parts := strings.SplitN(key, "|", 2)
+		labels := map[string]string{"severity": parts[0], "check": ""}
+		if len(parts) == 2 {
+			labels["check"] = parts[1]
+		}
+		writeMetricSample(&b, "certctl_doctor_findings_total", labels, float64(count))
+	}
+
 	return b.String(), nil
 }
 
@@ -639,6 +1698,192 @@ func authzBindingScope(binding storage.AuthzBinding) string {
 		return "wildcard"
 	}
 	return "scoped"
+}
+
+func summarizeAuthIssuerCoverage(issuers []storage.AuthIssuer, bindings []storage.AuthzBinding) map[string]int {
+	counts := map[string]int{}
+	issuerEnabledBindings := map[string]bool{}
+	knownIssuers := map[string]storage.AuthIssuer{}
+
+	for _, issuer := range issuers {
+		knownIssuers[issuer.Issuer] = issuer
+	}
+	for _, binding := range bindings {
+		if !binding.Enabled {
+			continue
+		}
+		issuer, ok := bindingPrincipalIssuer(binding.Principal)
+		if !ok {
+			continue
+		}
+		if rec, exists := knownIssuers[issuer]; exists {
+			issuerEnabledBindings[rec.Issuer] = true
+			if !rec.Enabled {
+				counts["disabled_referenced"]++
+			}
+		} else {
+			counts["unknown_referenced"]++
+		}
+	}
+	for _, issuer := range issuers {
+		if !issuer.Enabled {
+			continue
+		}
+		if issuerEnabledBindings[issuer.Issuer] {
+			counts["enabled_with_bindings"]++
+		} else {
+			counts["enabled_without_bindings"]++
+		}
+	}
+	return counts
+}
+
+func summarizeAuthzBindingsByPermission(bindings []storage.AuthzBinding) map[string]int {
+	counts := map[string]int{}
+	for _, binding := range bindings {
+		key := strconv.FormatBool(binding.Enabled) + "|" + strings.TrimSpace(binding.Permission)
+		counts[key]++
+	}
+	return counts
+}
+
+func summarizeAuthzBindingsByPrincipalKind(bindings []storage.AuthzBinding) map[string]int {
+	counts := map[string]int{}
+	for _, binding := range bindings {
+		key := strconv.FormatBool(binding.Enabled) + "|" + bindingPrincipalKind(binding.Principal)
+		counts[key]++
+	}
+	return counts
+}
+
+func summarizeRiskyAuthzBindings(bindings []storage.AuthzBinding) map[string]int {
+	counts := map[string]int{}
+	for _, binding := range bindings {
+		if !binding.Enabled {
+			continue
+		}
+		if strings.TrimSpace(binding.Permission) == "*" {
+			counts["wildcard_permission"]++
+		}
+		if strings.TrimSpace(binding.Principal) == "superuser" {
+			counts["superuser"]++
+		}
+		if isScopedMutationPermission(binding.Permission) && strings.TrimSpace(binding.ResourceKind) == "" {
+			counts["unscoped_mutation"]++
+		}
+		if isScopedMutationPermission(binding.Permission) && strings.TrimSpace(binding.ResourceRef) == "*" {
+			counts["wildcard_scope"]++
+		}
+	}
+	return counts
+}
+
+func summarizeRiskySubjectAutoApprovalRules(issuers []storage.AuthIssuer, rules []storage.SubjectAutoApprovalRule) map[string]int {
+	counts := map[string]int{}
+	knownIssuers := map[string]storage.AuthIssuer{}
+	for _, issuer := range issuers {
+		knownIssuers[issuer.Issuer] = issuer
+	}
+	for _, rule := range rules {
+		if !rule.Enabled {
+			continue
+		}
+		rec, ok := knownIssuers[rule.Issuer]
+		if !ok {
+			counts["unknown_issuer"]++
+			continue
+		}
+		if !rec.Enabled {
+			counts["disabled_issuer"]++
+		}
+		if strings.TrimSpace(rule.EmailDomain) == "" && len(rule.RequiredRoles) == 0 && len(rule.RequiredGroups) == 0 {
+			counts["broad"]++
+		}
+	}
+	return counts
+}
+
+func summarizeAuthIssuerConnectivityStatus(issuers []storage.AuthIssuer, probes map[string]issuerProbeStatus) map[string]int {
+	counts := map[string]int{}
+	for _, issuer := range issuers {
+		if !issuer.Enabled {
+			counts["disabled"]++
+			continue
+		}
+		if probe, ok := probes[issuer.Issuer]; ok {
+			switch probe.Status {
+			case "ok":
+				counts["ok"]++
+			case "error":
+				counts["error"]++
+			default:
+				counts["unknown"]++
+			}
+			continue
+		}
+		counts["unknown"]++
+	}
+	return counts
+}
+
+func summarizeDoctorFindings(findings []ops.DoctorFinding) map[string]int {
+	counts := map[string]int{}
+	for _, finding := range findings {
+		key := strings.TrimSpace(finding.Severity) + "|" + strings.TrimSpace(finding.Check)
+		counts[key]++
+	}
+	return counts
+}
+
+func bindingPrincipalIssuer(principal string) (string, bool) {
+	for _, prefix := range []string{"sub:", "role:", "group:"} {
+		if !strings.HasPrefix(principal, prefix) {
+			continue
+		}
+		remainder := strings.TrimPrefix(principal, prefix)
+		if !strings.Contains(remainder, "://") {
+			return "", false
+		}
+		idx := strings.LastIndex(remainder, ":")
+		if idx <= 0 || idx == len(remainder)-1 {
+			return "", false
+		}
+		issuer := strings.TrimSpace(remainder[:idx])
+		if issuer == "" {
+			return "", false
+		}
+		return issuer, true
+	}
+	return "", false
+}
+
+func bindingPrincipalKind(principal string) string {
+	principal = strings.TrimSpace(principal)
+	switch {
+	case principal == "superuser":
+		return "superuser"
+	case strings.HasPrefix(principal, "sub:"):
+		return "sub"
+	case strings.HasPrefix(principal, "role:"):
+		return "role"
+	case strings.HasPrefix(principal, "group:"):
+		return "group"
+	case strings.HasPrefix(principal, "local_role:"):
+		return "local_role"
+	case strings.HasPrefix(principal, "local_group:"):
+		return "local_group"
+	default:
+		return "other"
+	}
+}
+
+func isScopedMutationPermission(permission string) bool {
+	switch strings.TrimSpace(permission) {
+	case "csr.approve", "csr.reject", "csr.submit", "subject.approve", "subject.update", "subject_auto_approval.write":
+		return true
+	default:
+		return false
+	}
 }
 
 func countExpiringPrivateCerts(rows []storage.PrivateCert, now time.Time, warnWindow time.Duration) int {
@@ -842,4 +2087,406 @@ func intToNil(v int) any {
 		return nil
 	}
 	return v
+}
+
+func authIdentityFromRequest(r *http.Request) (auth.Identity, bool) {
+	return auth.IdentityFromContext(r.Context())
+}
+
+func writeAdminStorageError(w http.ResponseWriter, err error, noun string) {
+	if err == nil {
+		return
+	}
+	if err == sql.ErrNoRows || strings.Contains(strings.ToLower(err.Error()), "not found") {
+		writeError(w, http.StatusNotFound, noun+" not found")
+		return
+	}
+	writeError(w, http.StatusBadRequest, err.Error())
+}
+
+func adminSubjectAutoApprovalRuleName(path string) string {
+	name := strings.TrimSpace(strings.TrimPrefix(path, "/admin/v1/subject-auto-approvals/"))
+	if name == "" || strings.Contains(name, "/") {
+		return ""
+	}
+	return name
+}
+
+func adminSubjectID(path string) string {
+	id := strings.TrimSpace(strings.TrimPrefix(path, "/admin/v1/subjects/"))
+	if id == "" || strings.Contains(id, "/") {
+		return ""
+	}
+	return id
+}
+
+func adminAuthProviderPresetName(path string) string {
+	name := strings.TrimSpace(strings.TrimPrefix(path, "/admin/v1/auth-provider-presets/"))
+	if name == "" || strings.Contains(name, "/") {
+		return ""
+	}
+	return name
+}
+
+func compactStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if v := strings.TrimSpace(value); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+func normalizedRequiredClaims(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := map[string]string{}
+	for key, value := range values {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key == "" || value == "" {
+			continue
+		}
+		out[key] = value
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func buildAdminAuthIssuer(body adminCreateAuthIssuerRequest) (storage.AuthIssuer, error) {
+	presetName := strings.TrimSpace(body.Preset)
+	if presetName != "" {
+		rec, ok := auth.ProviderPresetByName(presetName)
+		if !ok {
+			return storage.AuthIssuer{}, fmt.Errorf("unknown auth provider preset %q", presetName)
+		}
+		if strings.TrimSpace(body.Name) == "" {
+			body.Name = rec.Name
+		}
+		if strings.TrimSpace(body.Issuer) == "" {
+			body.Issuer = rec.Issuer
+		}
+		if strings.TrimSpace(body.DiscoveryURL) == "" {
+			body.DiscoveryURL = rec.DiscoveryURL
+		}
+		if strings.TrimSpace(body.SubjectClaim) == "" {
+			body.SubjectClaim = rec.SubjectClaim
+		}
+		if strings.TrimSpace(body.UsernameClaim) == "" {
+			body.UsernameClaim = rec.UsernameClaim
+		}
+		if strings.TrimSpace(body.EmailClaim) == "" {
+			body.EmailClaim = rec.EmailClaim
+		}
+		if len(body.RolesClaims) == 0 {
+			body.RolesClaims = rec.RolesClaims
+		}
+		if len(body.GroupsClaims) == 0 {
+			body.GroupsClaims = rec.GroupsClaims
+		}
+		if len(body.Audiences) == 0 {
+			return storage.AuthIssuer{}, fmt.Errorf("audiences is required when using preset %q", presetName)
+		}
+	}
+
+	name := strings.TrimSpace(body.Name)
+	issuer := strings.TrimSpace(body.Issuer)
+	if name == "" {
+		return storage.AuthIssuer{}, fmt.Errorf("name is required")
+	}
+	if issuer == "" {
+		return storage.AuthIssuer{}, fmt.Errorf("issuer is required")
+	}
+	enabled := true
+	if body.Enabled != nil {
+		enabled = *body.Enabled
+	}
+	return storage.AuthIssuer{
+		ID:             util.NewID(),
+		Name:           name,
+		Enabled:        enabled,
+		Issuer:         issuer,
+		Audiences:      compactStrings(body.Audiences),
+		RequiredClaims: normalizedRequiredClaims(body.RequiredClaims),
+		DiscoveryURL:   strings.TrimSpace(body.DiscoveryURL),
+		JWKSURL:        strings.TrimSpace(body.JWKSURL),
+		SubjectClaim:   strings.TrimSpace(body.SubjectClaim),
+		UsernameClaim:  strings.TrimSpace(body.UsernameClaim),
+		EmailClaim:     strings.TrimSpace(body.EmailClaim),
+		RolesClaims:    compactStrings(body.RolesClaims),
+		GroupsClaims:   compactStrings(body.GroupsClaims),
+	}, nil
+}
+
+func findAdminAuthIssuer(store *storage.Store, id string) (storage.AuthIssuer, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return storage.AuthIssuer{}, sql.ErrNoRows
+	}
+	rows, err := store.ListAuthIssuers(false)
+	if err != nil {
+		return storage.AuthIssuer{}, err
+	}
+	for _, rec := range rows {
+		if rec.Name == id || rec.Issuer == id {
+			return rec, nil
+		}
+	}
+	return storage.AuthIssuer{}, sql.ErrNoRows
+}
+
+func applyAdminAuthIssuerUpdate(rec *storage.AuthIssuer, body adminUpdateAuthIssuerRequest) error {
+	if rec == nil {
+		return fmt.Errorf("auth issuer is required")
+	}
+	if body.Name != nil {
+		rec.Name = strings.TrimSpace(*body.Name)
+	}
+	if body.Audiences != nil {
+		rec.Audiences = compactStrings(body.Audiences)
+	}
+	if body.RequiredClaims != nil {
+		rec.RequiredClaims = normalizedRequiredClaims(body.RequiredClaims)
+	}
+	if body.DiscoveryURL != nil {
+		rec.DiscoveryURL = strings.TrimSpace(*body.DiscoveryURL)
+	}
+	if body.JWKSURL != nil {
+		rec.JWKSURL = strings.TrimSpace(*body.JWKSURL)
+	}
+	if body.Enabled != nil {
+		rec.Enabled = *body.Enabled
+	}
+	if body.SubjectClaim != nil {
+		rec.SubjectClaim = strings.TrimSpace(*body.SubjectClaim)
+	}
+	if body.UsernameClaim != nil {
+		rec.UsernameClaim = strings.TrimSpace(*body.UsernameClaim)
+	}
+	if body.EmailClaim != nil {
+		rec.EmailClaim = strings.TrimSpace(*body.EmailClaim)
+	}
+	if body.RolesClaims != nil {
+		rec.RolesClaims = compactStrings(body.RolesClaims)
+	}
+	if body.GroupsClaims != nil {
+		rec.GroupsClaims = compactStrings(body.GroupsClaims)
+	}
+	if strings.TrimSpace(rec.Name) == "" {
+		return fmt.Errorf("name is required")
+	}
+	return nil
+}
+
+func authzBindingReferencesIssuer(binding storage.AuthzBinding, issuer string) bool {
+	for _, prefix := range []string{"sub:", "role:", "group:"} {
+		if strings.HasPrefix(binding.Principal, prefix+issuer+":") {
+			return true
+		}
+	}
+	return false
+}
+
+func authProviderPresetPayload(rec auth.ProviderPreset) map[string]any {
+	return map[string]any{
+		"name":            rec.Name,
+		"description":     emptyStringToNil(rec.Description),
+		"issuer":          emptyStringToNil(rec.Issuer),
+		"discovery_url":   emptyStringToNil(rec.DiscoveryURL),
+		"requires_issuer": rec.Issuer == "",
+		"subject_claim":   emptyStringToNil(rec.SubjectClaim),
+		"username_claim":  emptyStringToNil(rec.UsernameClaim),
+		"email_claim":     emptyStringToNil(rec.EmailClaim),
+		"roles_claims":    rec.RolesClaims,
+		"groups_claims":   rec.GroupsClaims,
+	}
+}
+
+func buildAdminAuthzBinding(body adminCreateAuthzBindingRequest) (storage.AuthzBinding, error) {
+	principal := strings.TrimSpace(body.Principal)
+	permission := strings.TrimSpace(body.Permission)
+	if principal == "" {
+		return storage.AuthzBinding{}, fmt.Errorf("principal is required")
+	}
+	if permission == "" {
+		return storage.AuthzBinding{}, fmt.Errorf("permission is required")
+	}
+	enabled := true
+	if body.Enabled != nil {
+		enabled = *body.Enabled
+	}
+	return storage.AuthzBinding{
+		ID:           util.NewID(),
+		Enabled:      enabled,
+		Principal:    principal,
+		Permission:   permission,
+		ResourceKind: strings.TrimSpace(body.ResourceKind),
+		ResourceRef:  strings.TrimSpace(body.ResourceRef),
+	}, nil
+}
+
+func applyAdminAuthzBindingUpdate(rec *storage.AuthzBinding, body adminUpdateAuthzBindingRequest) error {
+	if rec == nil {
+		return fmt.Errorf("authz binding is required")
+	}
+	if body.Principal != nil {
+		rec.Principal = strings.TrimSpace(*body.Principal)
+	}
+	if body.Permission != nil {
+		rec.Permission = strings.TrimSpace(*body.Permission)
+	}
+	if body.ResourceKind != nil {
+		rec.ResourceKind = strings.TrimSpace(*body.ResourceKind)
+	}
+	if body.ResourceRef != nil {
+		rec.ResourceRef = strings.TrimSpace(*body.ResourceRef)
+	}
+	if body.Enabled != nil {
+		rec.Enabled = *body.Enabled
+	}
+	if strings.TrimSpace(rec.Principal) == "" {
+		return fmt.Errorf("principal is required")
+	}
+	if strings.TrimSpace(rec.Permission) == "" {
+		return fmt.Errorf("permission is required")
+	}
+	return nil
+}
+
+func subjectPayload(rec storage.Subject) map[string]any {
+	return map[string]any{
+		"id":            rec.ID,
+		"issuer":        rec.Issuer,
+		"subject":       rec.Subject,
+		"status":        rec.Status,
+		"username":      emptyStringToNil(rec.Username),
+		"email":         emptyStringToNil(rec.Email),
+		"roles":         rec.Roles,
+		"groups":        rec.Groups,
+		"local_roles":   rec.LocalRoles,
+		"local_groups":  rec.LocalGroups,
+		"auth_count":    rec.AuthCount,
+		"first_seen_at": formatTimeValue(rec.FirstSeenAt),
+		"last_seen_at":  formatTimeValue(rec.LastSeenAt),
+		"updated_at":    formatTimeValue(rec.UpdatedAt),
+	}
+}
+
+func subjectAutoApprovalRulePayload(rec storage.SubjectAutoApprovalRule) map[string]any {
+	return map[string]any{
+		"id":              rec.ID,
+		"name":            rec.Name,
+		"enabled":         rec.Enabled,
+		"issuer":          rec.Issuer,
+		"email_domain":    emptyStringToNil(rec.EmailDomain),
+		"required_roles":  rec.RequiredRoles,
+		"required_groups": rec.RequiredGroups,
+		"local_roles":     rec.LocalRoles,
+		"local_groups":    rec.LocalGroups,
+		"created_at":      formatTimeValue(rec.CreatedAt),
+		"updated_at":      formatTimeValue(rec.UpdatedAt),
+	}
+}
+
+func collectMatchingBindings(identity auth.Identity, bindings []storage.AuthzBinding, permissions []string) []map[string]any {
+	seen := map[string]struct{}{}
+	var out []map[string]any
+	for _, permission := range permissions {
+		req := auth.PermissionRequest{Permission: permission}
+		for _, binding := range auth.MatchingBindings(identity, bindings, req) {
+			if _, ok := seen[binding.ID]; ok {
+				continue
+			}
+			seen[binding.ID] = struct{}{}
+			out = append(out, authzBindingPayload(binding))
+		}
+	}
+	return out
+}
+
+func authzBindingPayload(binding storage.AuthzBinding) map[string]any {
+	return map[string]any{
+		"id":            binding.ID,
+		"enabled":       binding.Enabled,
+		"principal":     binding.Principal,
+		"permission":    binding.Permission,
+		"resource_kind": emptyStringToNil(binding.ResourceKind),
+		"resource_ref":  emptyStringToNil(binding.ResourceRef),
+		"created_at":    formatTimeValue(binding.CreatedAt),
+		"updated_at":    formatTimeValue(binding.UpdatedAt),
+	}
+}
+
+func findAuthIssuerByIssuer(rows []storage.AuthIssuer, issuer string) (storage.AuthIssuer, bool) {
+	for _, row := range rows {
+		if row.Issuer == issuer {
+			return row, true
+		}
+	}
+	return storage.AuthIssuer{}, false
+}
+
+func authIssuerPayload(rec storage.AuthIssuer) map[string]any {
+	return map[string]any{
+		"id":              rec.ID,
+		"name":            rec.Name,
+		"enabled":         rec.Enabled,
+		"issuer":          rec.Issuer,
+		"audiences":       rec.Audiences,
+		"required_claims": rec.RequiredClaims,
+		"discovery_url":   emptyStringToNil(rec.DiscoveryURL),
+		"jwks_url":        emptyStringToNil(rec.JWKSURL),
+		"subject_claim":   emptyStringToNil(rec.SubjectClaim),
+		"username_claim":  emptyStringToNil(rec.UsernameClaim),
+		"email_claim":     emptyStringToNil(rec.EmailClaim),
+		"roles_claims":    rec.RolesClaims,
+		"groups_claims":   rec.GroupsClaims,
+		"created_at":      formatTimeValue(rec.CreatedAt),
+		"updated_at":      formatTimeValue(rec.UpdatedAt),
+	}
+}
+
+func (s *Server) authIssuerStatusPayload(rec storage.AuthIssuer, probe bool) map[string]any {
+	payload := authIssuerPayload(rec)
+	status := "skipped"
+	var errMsg any
+	if probe && rec.Enabled {
+		timeout := s.cfg.ProviderHTTPTimeout
+		if timeout <= 0 {
+			timeout = 10 * time.Second
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		if err := s.authVerifier.CheckIssuerConnectivity(ctx, rec); err != nil {
+			status = "error"
+			errMsg = err.Error()
+		} else {
+			status = "ok"
+		}
+	} else if probe && !rec.Enabled {
+		status = "disabled"
+	}
+	payload["connectivity_status"] = status
+	payload["connectivity_error"] = errMsg
+	return payload
+}
+
+func adminAuthIssuerID(path string) string {
+	id := strings.TrimSpace(strings.TrimPrefix(path, "/admin/v1/auth-issuers/"))
+	if id == "" || strings.Contains(id, "/") {
+		return ""
+	}
+	return id
+}
+
+func adminAuthzBindingID(path string) string {
+	id := strings.TrimSpace(strings.TrimPrefix(path, "/admin/v1/authz-bindings/"))
+	if id == "" || strings.Contains(id, "/") {
+		return ""
+	}
+	return id
 }

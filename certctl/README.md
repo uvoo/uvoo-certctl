@@ -9,6 +9,7 @@ A Cobra-based refactor of the original single-file ACME utility.
 - Admin runbook: [`docs/RUNBOOK.md`](docs/RUNBOOK.md)
 - Auth/authz design: [`docs/AUTHZ_DESIGN.md`](docs/AUTHZ_DESIGN.md)
 - Docker dev guide: [`docs/DOCKER_DEV.md`](docs/DOCKER_DEV.md)
+- Prometheus watchdog guide: [`docs/PROMALERT.md`](docs/PROMALERT.md)
 - Release process: [`docs/RELEASING.md`](docs/RELEASING.md)
 
 ## What changed
@@ -184,6 +185,7 @@ go run . check-auth-issuer --issuer https://sso.example.com/realms/certctl
 go run . update-auth-issuer --issuer https://sso.example.com/realms/certctl --name keycloak-prod
 go run . delete-auth-issuer --issuer https://sso.example.com/realms/certctl
 go run . delete-auth-issuer --issuer https://sso.example.com/realms/certctl --force
+go run . doctor --auth-only --json
 go run . create-subject-auto-approval --name google-employees --issuer https://accounts.google.com --email-domain example.com --local-group employees
 go run . list-subject-auto-approvals
 go run . list-effective-authz --principal 'role:https://sso.example.com/realms/certctl:certctl_admin'
@@ -215,13 +217,84 @@ go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt 
 go run . serve-certs --listen :8443 --tls-cert-file /etc/certctl/tls/server.crt --tls-key-file /etc/certctl/tls/server.key --admin-username admin --admin-password env:CERTCTL_ADMIN_PASSWORD --metrics --metrics-username metrics --metrics-password env:CERTCTL_METRICS_PASSWORD
 ```
 
-With `--admin-username` and `--admin-password`, the built-in server also exposes a small authenticated JSON admin API under `/admin/v1` for remote `doctor` and CSR queue actions. `--metrics` enables a Prometheus-style `/metrics` endpoint. If `--metrics-username` and `--metrics-password` are set, `/metrics` uses that dedicated Basic auth pair; otherwise it accepts the admin Basic auth or bearer auth. The metrics output includes certificate and CA status totals, CSR queue totals, pending and pickup-ready CSR counters, share totals, auth issuer/binding counts, auth request outcomes, subject auto-approval rule matches, pending-subject counts, and locally tracked JWT subject counts.
+With `--admin-username` and `--admin-password`, the built-in server also exposes a small authenticated JSON admin API under `/admin/v1` for remote `doctor`, CSR queue, subject, subject auto-approval, and auth issuer actions. `--metrics` enables a Prometheus-style `/metrics` endpoint. If `--metrics-username` and `--metrics-password` are set, `/metrics` uses that dedicated Basic auth pair; otherwise it accepts the admin Basic auth or bearer auth. The metrics output includes certificate and CA status totals, CSR queue totals, pending and pickup-ready CSR counters, share totals, auth issuer/binding counts, auth issuer binding coverage, authz binding permission and principal-kind summaries, risky authz and subject-auto-approval counts, auth request outcomes, subject auto-approval rule matches, pending-subject counts, and locally tracked JWT subject counts.
+
+Useful remote auth/admin paths include `/admin/v1/doctor/auth`, `/admin/v1/effective-authz`, `/admin/v1/auth-provider-presets`, `/admin/v1/auth-issuers`, and `/admin/v1/authz-bindings`. The metrics output also includes `certctl_auth_issuers_connectivity_status_total` from cached issuer probe results and `certctl_doctor_findings_total` for low-cardinality alerting by severity and check.
 
 The admin API can also use bearer tokens from trusted JWT/OIDC issuers configured in the local database. The auth model and claim mapping are documented in [`docs/AUTHZ_DESIGN.md`](docs/AUTHZ_DESIGN.md).
 
 New JWT subjects are tracked locally on first successful token verification and begin in `pending` state until an operator approves them, unless a matching subject auto-approval rule activates them and assigns local roles or groups.
 
 `explain-authz` and `list-effective-authz --bearer-token ...` now also show local subject status, matching subject auto-approval rules, and the predicted local roles/groups that would apply to that token.
+
+Remote admin examples:
+
+```bash
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/subjects?status=pending
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X POST https://certctl.example.com:8443/admin/v1/subjects/approve \
+  -d '{"issuer":"https://accounts.google.com","subject":"user-123","local_groups":["viewers"]}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/subjects/<subject-id>
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X PUT https://certctl.example.com:8443/admin/v1/subjects/<subject-id> \
+  -d '{"status":"active","local_groups":["employees"]}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -X DELETE https://certctl.example.com:8443/admin/v1/subjects/<subject-id>
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X PUT https://certctl.example.com:8443/admin/v1/subject-auto-approvals/google-employees \
+  -d '{"issuer":"https://accounts.google.com","email_domain":"example.com","local_groups":["employees"]}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/auth-provider-presets
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/auth-provider-presets/keycloak
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X POST https://certctl.example.com:8443/admin/v1/auth-issuers \
+  -d '{"preset":"keycloak","name":"keycloak-dev","issuer":"https://sso.example.com/realms/certctl","audiences":["certctl"],"required_claims":{"azp":"certctl"},"discovery_url":"https://sso.example.com/realms/certctl/.well-known/openid-configuration"}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X PUT https://certctl.example.com:8443/admin/v1/auth-issuers/keycloak-dev \
+  -d '{"name":"keycloak-prod","enabled":true}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -X DELETE 'https://certctl.example.com:8443/admin/v1/auth-issuers/keycloak-prod?force=true'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X POST https://certctl.example.com:8443/admin/v1/authz-bindings \
+  -d '{"principal":"role:https://sso.example.com/realms/certctl:certctl_admin","permission":"subject.read","resource_kind":"subject","resource_ref":"*"}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X PUT https://certctl.example.com:8443/admin/v1/authz-bindings/<binding-id> \
+  -d '{"permission":"subject.update","enabled":true}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -X DELETE https://certctl.example.com:8443/admin/v1/authz-bindings/<binding-id>
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/effective-authz
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/doctor/auth
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/auth-issuers?probe=true
+```
 
 For local Docker-based Keycloak and `certctl` smoke testing, including private CSR approval and optional public provider checks, see [`docs/DOCKER_DEV.md`](docs/DOCKER_DEV.md).
 
