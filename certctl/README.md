@@ -9,6 +9,7 @@ A Cobra-based refactor of the original single-file ACME utility.
 - Admin runbook: [`docs/RUNBOOK.md`](docs/RUNBOOK.md)
 - Auth/authz design: [`docs/AUTHZ_DESIGN.md`](docs/AUTHZ_DESIGN.md)
 - Docker dev guide: [`docs/DOCKER_DEV.md`](docs/DOCKER_DEV.md)
+- Prometheus watchdog guide: [`docs/PROMALERT.md`](docs/PROMALERT.md)
 - Release process: [`docs/RELEASING.md`](docs/RELEASING.md)
 
 ## What changed

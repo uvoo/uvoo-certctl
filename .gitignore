@@ -16,3 +16,5 @@ certs.db-wal
 dist
 tls.crt
 tls.key
+promalert
+promalert.yaml
