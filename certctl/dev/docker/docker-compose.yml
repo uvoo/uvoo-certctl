@@ -23,6 +23,7 @@ services:
       - keycloak
     environment:
       CERTCTL_CSR_SUBMIT_PASSWORD: submit-secret
+      CERTCTL_ADMIN_PASSWORD: admin-secret
       CERTCTL_METRICS_PASSWORD: metrics-secret
     ports:
       - "${CERTCTL_HOST_PORT:-18081}:8080"
@@ -38,6 +39,10 @@ services:
       - 0.0.0.0/0,::/0
       - --csr-submit-password
       - env:CERTCTL_CSR_SUBMIT_PASSWORD
+      - --admin-username
+      - "${CERTCTL_ADMIN_USERNAME:-admin}"
+      - --admin-password
+      - env:CERTCTL_ADMIN_PASSWORD
       - --admin-warn-days
       - "0"
       - --metrics

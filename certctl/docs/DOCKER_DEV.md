@@ -14,6 +14,11 @@ The stack runs:
 - Keycloak on `http://127.0.0.1:18080` by default
 - `certctl serve-certs` on `http://127.0.0.1:18081` by default
 
+Default built-in auth for the dev stack:
+
+- admin Basic auth: `admin` / `admin-secret`
+- metrics Basic auth: `metrics` / `metrics-secret`
+
 Realm defaults:
 
 - realm: `certctl`
@@ -61,6 +66,8 @@ This smoke path:
 - submits a private CSR over HTTP
 - approves it over the admin API
 - verifies certificate pickup with the requester token
+
+The stack keeps both admin Basic auth and JWT bearer auth enabled, so you can use either for local testing.
 
 To keep the stack running after the script exits:
 

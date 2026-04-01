@@ -17,10 +17,13 @@ From the repo:
 
 ```bash
 go run ./cmd/promalert --config promalert.yaml
+go run ./cmd/promalert --config promalert.yaml --state-file promalert-state.json
 go run ./cmd/promalert --config promalert.yaml --check-config
 go run ./cmd/promalert --config promalert.yaml --once
 go run ./cmd/promalert --check-config promalert.yaml
 ```
+
+By default, `promalert` stores active alert state in `promalert-state.json` so it can avoid retriggering the same firing alerts immediately after a restart. Set `--state-file ''` to disable persistence.
 
 ## Config
 
@@ -185,3 +188,19 @@ SMTP notifiers send a plain-text email with:
 - a short subject line
 - the event message
 - the full event JSON in the body
+
+## Persistent state
+
+`promalert` stores only a tiny amount of state:
+
+- currently firing alerts
+- last notification timestamp
+- notifier names used for that alert
+
+It does not store full metric history or raw scrape data.
+
+This lets it:
+
+- avoid duplicate firing notifications on restart
+- keep cooldown behavior consistent across restarts
+- still send a `resolved` notification when the condition clears later

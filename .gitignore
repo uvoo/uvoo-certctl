@@ -18,3 +18,6 @@ tls.crt
 tls.key
 promalert
 promalert.yaml
+server.csr
+server.key
+promalert-state.json
