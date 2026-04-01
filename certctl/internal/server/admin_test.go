@@ -33,6 +33,27 @@ func TestAdminDoctorRequiresAuth(t *testing.T) {
 	}
 }
 
+func TestAdminEffectiveAuthzForBasicAdmin(t *testing.T) {
+	srv := New(Config{
+		DBPath:        filepath.Join(t.TempDir(), "certs.db"),
+		AdminUsername: "admin",
+		AdminPassword: "admin-secret",
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/v1/effective-authz", nil)
+	req.SetBasicAuth("admin", "admin-secret")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"superuser":true`) || !strings.Contains(body, `"effective_permissions":["*"]`) {
+		t.Fatalf("expected effective authz payload, got %s", body)
+	}
+}
+
 func TestAdminCSRSubmitListAndRejectFlow(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "certs.db")
 	srv := New(Config{

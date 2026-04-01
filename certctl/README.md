@@ -238,6 +238,9 @@ curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -H 'Content-Type: application/json' \
   -X PUT https://certctl.example.com:8443/admin/v1/subject-auto-approvals/google-employees \
   -d '{"issuer":"https://accounts.google.com","email_domain":"example.com","local_groups":["employees"]}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/effective-authz
 ```
 
 For local Docker-based Keycloak and `certctl` smoke testing, including private CSR approval and optional public provider checks, see [`docs/DOCKER_DEV.md`](docs/DOCKER_DEV.md).

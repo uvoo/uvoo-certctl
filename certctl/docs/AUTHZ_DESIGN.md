@@ -186,6 +186,7 @@ Keep permissions as short explicit strings.
 Initial set:
 
 - `doctor.read`
+- `authz.read`
 - `metrics.read`
 - `csr.submit`
 - `csr.read`
@@ -253,6 +254,7 @@ No nested role expansion in v1.
 Initial built-in server mapping:
 
 - `GET /admin/v1/doctor` -> `doctor.read`
+- `GET /admin/v1/effective-authz` -> `authz.read`
 - `GET /metrics` -> `metrics.read`
 - `POST /admin/v1/csr-requests` -> `csr.submit`
 - `GET /admin/v1/csr-requests` -> `csr.read`

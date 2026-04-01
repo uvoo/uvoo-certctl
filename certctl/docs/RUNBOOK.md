@@ -218,6 +218,9 @@ curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   https://certctl.example.com:8443/admin/v1/subject-auto-approvals
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  https://certctl.example.com:8443/admin/v1/effective-authz
 ```
 
 Notes:
@@ -230,6 +233,7 @@ Notes:
 - `/metrics` otherwise accepts the admin Basic auth or bearer auth
 - `/admin/v1/subjects` supports remote listing plus approve/update actions for locally tracked JWT subjects
 - `/admin/v1/subject-auto-approvals` supports remote list/get/upsert/delete for subject auto-approval rules
+- `/admin/v1/effective-authz` shows the caller's current effective permissions and matching bindings
 - `/metrics` includes low-cardinality counts for CSR backlog, pickup-ready requests, configured auth issuers and bindings, auth request outcomes, subject auto-approval rules and matches, pending-subject counts, and locally tracked JWT subjects
 - for local end-to-end testing with Keycloak and the built-in server, use the Docker stack in [`DOCKER_DEV.md`](DOCKER_DEV.md)
 

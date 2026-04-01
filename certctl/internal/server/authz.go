@@ -304,6 +304,13 @@ func adminDoctorPermission(r *http.Request) (auth.PermissionRequest, bool) {
 	return auth.PermissionRequest{Permission: "doctor.read"}, true
 }
 
+func adminEffectiveAuthzPermission(r *http.Request) (auth.PermissionRequest, bool) {
+	if r.Method != http.MethodGet {
+		return auth.PermissionRequest{}, false
+	}
+	return auth.PermissionRequest{Permission: "authz.read"}, true
+}
+
 func metricsPermission(r *http.Request) (auth.PermissionRequest, bool) {
 	if r.Method != http.MethodGet {
 		return auth.PermissionRequest{}, false

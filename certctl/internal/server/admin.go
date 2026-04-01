@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"certctl/internal/auth"
 	"certctl/internal/ops"
 	"certctl/internal/storage"
 )
@@ -113,6 +114,63 @@ func (s *Server) handleAdminDoctor(w http.ResponseWriter, r *http.Request) {
 		"status":    ops.DoctorStatus(findings),
 		"warn_days": warnDays,
 		"findings":  findings,
+	})
+}
+
+func (s *Server) handleAdminEffectiveAuthz(w http.ResponseWriter, r *http.Request) {
+	identity, ok := authIdentityFromRequest(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "missing authenticated identity")
+		return
+	}
+
+	store, err := storage.Open(s.cfg.DBPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open database")
+		return
+	}
+	defer store.Close()
+
+	bindings, err := store.ListAuthzBindings(true)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load authz bindings")
+		return
+	}
+
+	var matchedIssuer any
+	if !identity.Superuser && strings.TrimSpace(identity.Issuer) != "" {
+		if issuers, err := store.ListAuthIssuers(true); err == nil {
+			if issuer, ok := findAuthIssuerByIssuer(issuers, identity.Issuer); ok {
+				matchedIssuer = authIssuerPayload(issuer)
+			}
+		}
+	}
+
+	var subjectRecord any
+	if !identity.Superuser && strings.TrimSpace(identity.Issuer) != "" && strings.TrimSpace(identity.Subject) != "" {
+		if rec, err := store.GetSubject(identity.Issuer, identity.Subject); err == nil {
+			subjectRecord = subjectPayload(rec)
+		}
+	}
+
+	effectivePermissions := auth.EffectivePermissions(identity, bindings)
+	matchingBindings := collectMatchingBindings(identity, bindings, effectivePermissions)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"matched_issuer":        matchedIssuer,
+		"subject_record":        subjectRecord,
+		"superuser":             identity.Superuser,
+		"auth_method":           identity.AuthMethod,
+		"issuer":                emptyStringToNil(identity.Issuer),
+		"subject":               emptyStringToNil(identity.Subject),
+		"username":              emptyStringToNil(identity.Username),
+		"email":                 emptyStringToNil(identity.Email),
+		"principals":            identity.Principals,
+		"roles":                 identity.Roles,
+		"groups":                identity.Groups,
+		"local_roles":           identity.LocalRoles,
+		"local_groups":          identity.LocalGroups,
+		"effective_permissions": effectivePermissions,
+		"matching_bindings":     matchingBindings,
 	})
 }
 
@@ -1119,6 +1177,10 @@ func intToNil(v int) any {
 	return v
 }
 
+func authIdentityFromRequest(r *http.Request) (auth.Identity, bool) {
+	return auth.IdentityFromContext(r.Context())
+}
+
 func writeAdminStorageError(w http.ResponseWriter, err error, noun string) {
 	if err == nil {
 		return
@@ -1168,6 +1230,64 @@ func subjectAutoApprovalRulePayload(rec storage.SubjectAutoApprovalRule) map[str
 		"required_groups": rec.RequiredGroups,
 		"local_roles":     rec.LocalRoles,
 		"local_groups":    rec.LocalGroups,
+		"created_at":      formatTimeValue(rec.CreatedAt),
+		"updated_at":      formatTimeValue(rec.UpdatedAt),
+	}
+}
+
+func collectMatchingBindings(identity auth.Identity, bindings []storage.AuthzBinding, permissions []string) []map[string]any {
+	seen := map[string]struct{}{}
+	var out []map[string]any
+	for _, permission := range permissions {
+		req := auth.PermissionRequest{Permission: permission}
+		for _, binding := range auth.MatchingBindings(identity, bindings, req) {
+			if _, ok := seen[binding.ID]; ok {
+				continue
+			}
+			seen[binding.ID] = struct{}{}
+			out = append(out, authzBindingPayload(binding))
+		}
+	}
+	return out
+}
+
+func authzBindingPayload(binding storage.AuthzBinding) map[string]any {
+	return map[string]any{
+		"id":            binding.ID,
+		"enabled":       binding.Enabled,
+		"principal":     binding.Principal,
+		"permission":    binding.Permission,
+		"resource_kind": emptyStringToNil(binding.ResourceKind),
+		"resource_ref":  emptyStringToNil(binding.ResourceRef),
+		"created_at":    formatTimeValue(binding.CreatedAt),
+		"updated_at":    formatTimeValue(binding.UpdatedAt),
+	}
+}
+
+func findAuthIssuerByIssuer(rows []storage.AuthIssuer, issuer string) (storage.AuthIssuer, bool) {
+	for _, row := range rows {
+		if row.Issuer == issuer {
+			return row, true
+		}
+	}
+	return storage.AuthIssuer{}, false
+}
+
+func authIssuerPayload(rec storage.AuthIssuer) map[string]any {
+	return map[string]any{
+		"id":              rec.ID,
+		"name":            rec.Name,
+		"enabled":         rec.Enabled,
+		"issuer":          rec.Issuer,
+		"audiences":       rec.Audiences,
+		"required_claims": rec.RequiredClaims,
+		"discovery_url":   emptyStringToNil(rec.DiscoveryURL),
+		"jwks_url":        emptyStringToNil(rec.JWKSURL),
+		"subject_claim":   emptyStringToNil(rec.SubjectClaim),
+		"username_claim":  emptyStringToNil(rec.UsernameClaim),
+		"email_claim":     emptyStringToNil(rec.EmailClaim),
+		"roles_claims":    rec.RolesClaims,
+		"groups_claims":   rec.GroupsClaims,
 		"created_at":      formatTimeValue(rec.CreatedAt),
 		"updated_at":      formatTimeValue(rec.UpdatedAt),
 	}

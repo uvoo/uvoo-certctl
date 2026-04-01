@@ -196,6 +196,21 @@ configure_auth() {
     certctl_exec create-authz-binding \
       --principal "local_group:docker-smoke-admin" \
       --permission metrics.read >/dev/null
+    certctl_exec create-authz-binding \
+      --principal "local_group:docker-smoke-admin" \
+      --permission authz.read >/dev/null
+    certctl_exec create-authz-binding \
+      --principal "local_group:docker-smoke-admin" \
+      --permission subject.read >/dev/null
+    certctl_exec create-authz-binding \
+      --principal "local_group:docker-smoke-admin" \
+      --permission subject.update >/dev/null
+    certctl_exec create-authz-binding \
+      --principal "local_group:docker-smoke-admin" \
+      --permission subject_auto_approval.read >/dev/null
+    certctl_exec create-authz-binding \
+      --principal "local_group:docker-smoke-admin" \
+      --permission subject_auto_approval.write >/dev/null
     return 0
   fi
 
@@ -205,6 +220,21 @@ configure_auth() {
   certctl_exec create-authz-binding \
     --principal "role:$ISSUER_URL:certctl_admin" \
     --permission metrics.read >/dev/null
+  certctl_exec create-authz-binding \
+    --principal "role:$ISSUER_URL:certctl_admin" \
+    --permission authz.read >/dev/null
+  certctl_exec create-authz-binding \
+    --principal "role:$ISSUER_URL:certctl_admin" \
+    --permission subject.read >/dev/null
+  certctl_exec create-authz-binding \
+    --principal "role:$ISSUER_URL:certctl_admin" \
+    --permission subject.update >/dev/null
+  certctl_exec create-authz-binding \
+    --principal "role:$ISSUER_URL:certctl_admin" \
+    --permission subject_auto_approval.read >/dev/null
+  certctl_exec create-authz-binding \
+    --principal "role:$ISSUER_URL:certctl_admin" \
+    --permission subject_auto_approval.write >/dev/null
 }
 
 configure_private_csr_auth() {
@@ -270,12 +300,114 @@ PY
     -u "$METRICS_USERNAME:$METRICS_PASSWORD")"
   grep -q 'certctl_certificates_total' <<<"$metrics"
   grep -q 'certctl_csr_requests_total' <<<"$metrics"
-  grep -q 'certctl_auth_requests_total{auth_method="basic_metrics",result="allowed"}' <<<"$metrics"
+  grep -q 'certctl_auth_requests_total{' <<<"$metrics"
+  grep -q 'auth_method="basic_metrics"' <<<"$metrics"
+  grep -q 'result="allowed"' <<<"$metrics"
 
   echo "Calling /metrics with bearer auth..."
   metrics="$(curl -fsS "$CERTCTL_BASE_URL/metrics" \
     -H "Authorization: Bearer $ACCESS_TOKEN")"
   grep -q 'certctl_certificates_total' <<<"$metrics"
+
+  echo "Calling /admin/v1/effective-authz with bearer auth..."
+  local effective_json
+  effective_json="$(curl -fsS "$CERTCTL_BASE_URL/admin/v1/effective-authz" \
+    -H "Authorization: Bearer $ACCESS_TOKEN")"
+  python3 - <<'PY' "$effective_json"
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+assert "doctor.read" in payload["effective_permissions"], payload
+assert "authz.read" in payload["effective_permissions"], payload
+print("effective authz ok")
+PY
+
+  echo "Listing subjects over the admin API..."
+  local subjects_json
+  subjects_json="$(curl -fsS "$CERTCTL_BASE_URL/admin/v1/subjects" \
+    -H "Authorization: Bearer $ACCESS_TOKEN")"
+  python3 - <<'PY' "$subjects_json" "$TOKEN_SUBJECT"
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+subject = sys.argv[2]
+assert any(item["subject"] == subject for item in payload["items"]), payload
+print("subject list ok")
+PY
+
+  echo "Updating the current subject over the admin API..."
+  python3 - <<'PY' "$WORK_DIR/subject-update.json" "$ISSUER_URL" "$TOKEN_SUBJECT"
+import json
+import sys
+from pathlib import Path
+
+out_path, issuer, subject = sys.argv[1:]
+payload = {
+    "issuer": issuer,
+    "subject": subject,
+    "local_roles": ["docker-smoke-verified"],
+}
+Path(out_path).write_text(json.dumps(payload))
+PY
+  local subject_update_json
+  subject_update_json="$(curl -fsS -X POST "$CERTCTL_BASE_URL/admin/v1/subjects/update" \
+    -H "Authorization: Bearer $ACCESS_TOKEN" \
+    -H 'Content-Type: application/json' \
+    --data-binary "@$WORK_DIR/subject-update.json")"
+  python3 - <<'PY' "$subject_update_json"
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+assert "docker-smoke-verified" in payload["local_roles"], payload
+print("subject update ok")
+PY
+
+  echo "Listing subject auto-approval rules over the admin API..."
+  local rules_json
+  rules_json="$(curl -fsS "$CERTCTL_BASE_URL/admin/v1/subject-auto-approvals" \
+    -H "Authorization: Bearer $ACCESS_TOKEN")"
+  python3 - <<'PY' "$rules_json"
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+assert any(item["name"] == "keycloak-example-users" for item in payload["items"]), payload
+print("subject auto approval list ok")
+PY
+
+  echo "Upserting and deleting a temporary subject auto-approval rule over the admin API..."
+  python3 - <<'PY' "$WORK_DIR/temp-subject-rule.json" "$ISSUER_URL"
+import json
+import sys
+from pathlib import Path
+
+out_path, issuer = sys.argv[1:]
+payload = {
+    "issuer": issuer,
+    "email_domain": "contractors.example.com",
+    "local_groups": ["contractors"],
+    "enabled": True,
+}
+Path(out_path).write_text(json.dumps(payload))
+PY
+  local temp_rule_json
+  temp_rule_json="$(curl -fsS -X PUT "$CERTCTL_BASE_URL/admin/v1/subject-auto-approvals/docker-smoke-temp" \
+    -H "Authorization: Bearer $ACCESS_TOKEN" \
+    -H 'Content-Type: application/json' \
+    --data-binary "@$WORK_DIR/temp-subject-rule.json")"
+  python3 - <<'PY' "$temp_rule_json"
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+assert payload["name"] == "docker-smoke-temp", payload
+print("subject auto approval put ok")
+PY
+  curl -fsS -X DELETE "$CERTCTL_BASE_URL/admin/v1/subject-auto-approvals/docker-smoke-temp" \
+    -H "Authorization: Bearer $ACCESS_TOKEN" >/dev/null
 }
 
 run_private_csr_smoke() {

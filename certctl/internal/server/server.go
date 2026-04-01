@@ -72,6 +72,7 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("/csr-requests", s.handleCSRRequests)
 	s.mux.HandleFunc("/csr-requests/", s.handleCSRRequests)
 	s.mux.HandleFunc("/admin/v1/doctor", s.requireAdminPermission(s.handleAdminDoctor, adminDoctorPermission))
+	s.mux.HandleFunc("/admin/v1/effective-authz", s.requireAdminPermission(s.handleAdminEffectiveAuthz, adminEffectiveAuthzPermission))
 	s.mux.HandleFunc("/admin/v1/csr-requests", s.requireAdminPermission(s.handleAdminCSRRequests, adminCSRCollectionPermission))
 	s.mux.HandleFunc("/admin/v1/csr-requests/", s.requireAdminPermission(s.handleAdminCSRRequests, adminCSRItemPermission))
 	s.mux.HandleFunc("/admin/v1/subjects", s.requireAdminPermission(s.handleAdminSubjects, adminSubjectCollectionPermission))
