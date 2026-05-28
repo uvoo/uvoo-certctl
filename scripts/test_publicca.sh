@@ -1,4 +1,4 @@
-  ./certctl get \
+  ./uvoocertctl get \
   --provider namecheap \
   --common-name 'test13.uvoo.io' \
   --sans test13.uvoo.io \

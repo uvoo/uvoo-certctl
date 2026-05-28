@@ -1,5 +1,5 @@
 {
-  "realm": "certctl",
+  "realm": "uvoocertctl",
   "enabled": true,
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
@@ -8,8 +8,8 @@
   "editUsernameAllowed": false,
   "clients": [
     {
-      "clientId": "certctl",
-      "name": "certctl",
+      "clientId": "uvoocertctl",
+      "name": "uvoocertctl",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": true,
@@ -17,7 +17,7 @@
       "standardFlowEnabled": false,
       "serviceAccountsEnabled": false,
       "fullScopeAllowed": true,
-      "defaultClientScopes": ["basic", "profile", "email", "roles", "aud-certctl"],
+      "defaultClientScopes": ["basic", "profile", "email", "roles", "aud-uvoocertctl"],
       "optionalClientScopes": ["offline_access"]
     }
   ],
@@ -115,7 +115,7 @@
       ]
     },
     {
-      "name": "aud-certctl",
+      "name": "aud-uvoocertctl",
       "protocol": "openid-connect",
       "attributes": {
         "display.on.consent.screen": "false",
@@ -123,12 +123,12 @@
       },
       "protocolMappers": [
         {
-          "name": "aud-certctl",
+          "name": "aud-uvoocertctl",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
           "consentRequired": false,
           "config": {
-            "included.custom.audience": "certctl",
+            "included.custom.audience": "uvoocertctl",
             "id.token.claim": "false",
             "access.token.claim": "true",
             "userinfo.token.claim": "false"
@@ -139,7 +139,7 @@
   ],
   "roles": {
     "realm": [
-      { "name": "certctl_admin", "description": "Can administer certctl routes allowed by local bindings" }
+      { "name": "uvoocertctl_admin", "description": "Can administer uvoocertctl routes allowed by local bindings" }
     ]
   },
   "groups": [
@@ -156,7 +156,7 @@
       "credentials": [
         { "type": "password", "value": "alicepass", "temporary": false }
       ],
-      "realmRoles": ["certctl_admin"],
+      "realmRoles": ["uvoocertctl_admin"],
       "groups": ["platform"]
     }
   ]

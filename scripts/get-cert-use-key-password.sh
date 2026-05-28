@@ -1,7 +1,7 @@
 #!/bin/bash
 set -eux
 
-./certctl get \
+./uvoocertctl get \
   --domain test6.uvoo.io \
   --san test6.uvoo.io \
   --email $ACME_EMAIL \

@@ -283,19 +283,19 @@ func TestSetAuthIssuerEnabled(t *testing.T) {
 		ID:           "issuer-1",
 		Name:         "keycloak-local",
 		Enabled:      true,
-		Issuer:       "https://issuer.example.test/realms/certctl",
-		Audiences:    []string{"certctl"},
+		Issuer:       "https://issuer.example.test/realms/uvoocertctl",
+		Audiences:    []string{"uvoocertctl"},
 		RolesClaims:  []string{"realm_access.roles"},
 		GroupsClaims: []string{"groups"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := store.SetAuthIssuerEnabled("https://issuer.example.test/realms/certctl", false); err != nil {
+	if err := store.SetAuthIssuerEnabled("https://issuer.example.test/realms/uvoocertctl", false); err != nil {
 		t.Fatal(err)
 	}
 
-	rec, err := store.GetAuthIssuerByIssuer("https://issuer.example.test/realms/certctl")
+	rec, err := store.GetAuthIssuerByIssuer("https://issuer.example.test/realms/uvoocertctl")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,17 +316,17 @@ func TestDeleteAuthIssuerRemovesRecord(t *testing.T) {
 		ID:        "issuer-1",
 		Name:      "keycloak-local",
 		Enabled:   true,
-		Issuer:    "https://issuer.example.test/realms/certctl",
-		Audiences: []string{"certctl"},
+		Issuer:    "https://issuer.example.test/realms/uvoocertctl",
+		Audiences: []string{"uvoocertctl"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := store.DeleteAuthIssuer("https://issuer.example.test/realms/certctl"); err != nil {
+	if err := store.DeleteAuthIssuer("https://issuer.example.test/realms/uvoocertctl"); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := store.GetAuthIssuerByIssuer("https://issuer.example.test/realms/certctl"); err == nil {
+	if _, err := store.GetAuthIssuerByIssuer("https://issuer.example.test/realms/uvoocertctl"); err == nil {
 		t.Fatal("expected deleted issuer lookup to fail")
 	}
 }
@@ -343,18 +343,18 @@ func TestAuthIssuerRoundTripRequiredClaims(t *testing.T) {
 		ID:             "issuer-1",
 		Name:           "keycloak-local",
 		Enabled:        true,
-		Issuer:         "https://issuer.example.test/realms/certctl",
-		Audiences:      []string{"certctl"},
-		RequiredClaims: map[string]string{"azp": "certctl-cli", "tid": "tenant-1"},
+		Issuer:         "https://issuer.example.test/realms/uvoocertctl",
+		Audiences:      []string{"uvoocertctl"},
+		RequiredClaims: map[string]string{"azp": "uvoocertctl-cli", "tid": "tenant-1"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	rec, err := store.GetAuthIssuerByIssuer("https://issuer.example.test/realms/certctl")
+	rec, err := store.GetAuthIssuerByIssuer("https://issuer.example.test/realms/uvoocertctl")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rec.RequiredClaims["azp"] != "certctl-cli" || rec.RequiredClaims["tid"] != "tenant-1" {
+	if rec.RequiredClaims["azp"] != "uvoocertctl-cli" || rec.RequiredClaims["tid"] != "tenant-1" {
 		t.Fatalf("unexpected required claims: %+v", rec.RequiredClaims)
 	}
 }
@@ -419,7 +419,7 @@ func TestUpdateAuthzBindingPersistsChanges(t *testing.T) {
 	if err := store.CreateAuthzBinding(AuthzBinding{
 		ID:         "binding-1",
 		Enabled:    true,
-		Principal:  "role:https://issuer.example.test/realms/certctl:certctl_admin",
+		Principal:  "role:https://issuer.example.test/realms/uvoocertctl:uvoocertctl_admin",
 		Permission: "doctor.read",
 	}); err != nil {
 		t.Fatal(err)
@@ -428,7 +428,7 @@ func TestUpdateAuthzBindingPersistsChanges(t *testing.T) {
 	if err := store.UpdateAuthzBinding(AuthzBinding{
 		ID:           "binding-1",
 		Enabled:      false,
-		Principal:    "role:https://issuer.example.test/realms/certctl:certctl_ops",
+		Principal:    "role:https://issuer.example.test/realms/uvoocertctl:uvoocertctl_ops",
 		Permission:   "csr.approve",
 		ResourceKind: "csr_request",
 		ResourceRef:  "*",
@@ -459,7 +459,7 @@ func TestDeleteAuthzBindingRemovesRecord(t *testing.T) {
 	if err := store.CreateAuthzBinding(AuthzBinding{
 		ID:         "binding-1",
 		Enabled:    true,
-		Principal:  "role:https://issuer.example.test/realms/certctl:certctl_admin",
+		Principal:  "role:https://issuer.example.test/realms/uvoocertctl:uvoocertctl_admin",
 		Permission: "doctor.read",
 	}); err != nil {
 		t.Fatal(err)

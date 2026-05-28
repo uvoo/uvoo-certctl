@@ -11,7 +11,7 @@ services:
     volumes:
       - ./keycloak:/opt/keycloak/data/import:ro
 
-  certctl:
+  uvoocertctl:
     build:
       context: ../..
       dockerfile: Dockerfile
@@ -28,7 +28,7 @@ services:
     ports:
       - "${CERTCTL_HOST_PORT:-18081}:8080"
     volumes:
-      - certctl-data:/data
+      - uvoocertctl-data:/data
     command:
       - serve-certs
       - --db
@@ -52,4 +52,4 @@ services:
       - env:CERTCTL_METRICS_PASSWORD
 
 volumes:
-  certctl-data:
+  uvoocertctl-data:

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"certctl/internal/storage"
+	"uvoocertctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 

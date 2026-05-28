@@ -7,7 +7,7 @@ ICA_ID=$1
 
 echo "Issueing private client cert from ICA ID: $ICA_ID"
 
-certctl issue-private-cert \
+uvoocertctl issue-private-cert \
   --intermediate-id $ICA_ID \
   --common-name workstation-123 \
   --cert-type client \

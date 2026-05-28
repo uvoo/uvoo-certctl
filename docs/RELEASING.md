@@ -1,6 +1,6 @@
-# Releasing certctl
+# Releasing uvoocertctl
 
-`certctl` keeps release operations intentionally simple:
+`uvoocertctl` keeps release operations intentionally simple:
 
 - run tests
 - build release archives

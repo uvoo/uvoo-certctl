@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"certctl/internal/storage"
+	"uvoocertctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 

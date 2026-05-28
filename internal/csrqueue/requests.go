@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"certctl/internal/privateca"
-	"certctl/internal/storage"
-	"certctl/internal/util"
+	"uvoocertctl/internal/privateca"
+	"uvoocertctl/internal/storage"
+	"uvoocertctl/internal/util"
 )
 
 type Submission struct {

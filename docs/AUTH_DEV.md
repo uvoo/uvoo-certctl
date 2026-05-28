@@ -1,11 +1,11 @@
 # Auth Dev Guide
 
-`certctl` includes a small development-only Keycloak stack for exercising JWT bearer auth against the built-in admin API.
+`uvoocertctl` includes a small development-only Keycloak stack for exercising JWT bearer auth against the built-in admin API.
 
 Files:
 
 - `dev/docker/docker-compose.yml`
-- `dev/docker/keycloak/certctl-realm.json`
+- `dev/docker/keycloak/uvoocertctl-realm.json`
 - `scripts/smoke-jwt-auth.sh`
  
 Note: the active local stack now lives under `dev/docker/`. `scripts/smoke-jwt-auth.sh` remains as a compatibility wrapper around the fuller Docker smoke.
@@ -22,11 +22,11 @@ Keycloak will be available at:
 
 Realm:
 
-- `certctl`
+- `uvoocertctl`
 
 Public client:
 
-- `certctl`
+- `uvoocertctl`
 
 Test user:
 
@@ -35,41 +35,41 @@ Test user:
 
 Realm role:
 
-- `certctl_admin`
+- `uvoocertctl_admin`
 
-## Configure certctl
+## Configure uvoocertctl
 
 ```bash
-certctl create-auth-issuer \
+uvoocertctl create-auth-issuer \
   --preset keycloak \
   --name keycloak-dev \
-  --issuer http://127.0.0.1:18080/realms/certctl \
-  --audience certctl \
-  --required-claim azp=certctl \
-  --discovery-url http://127.0.0.1:18080/realms/certctl/.well-known/openid-configuration
+  --issuer http://127.0.0.1:18080/realms/uvoocertctl \
+  --audience uvoocertctl \
+  --required-claim azp=uvoocertctl \
+  --discovery-url http://127.0.0.1:18080/realms/uvoocertctl/.well-known/openid-configuration
 
-certctl create-subject-auto-approval \
+uvoocertctl create-subject-auto-approval \
   --name keycloak-example-users \
-  --issuer http://127.0.0.1:18080/realms/certctl \
+  --issuer http://127.0.0.1:18080/realms/uvoocertctl \
   --email-domain example.com \
   --local-group employees
 
-certctl create-authz-binding \
+uvoocertctl create-authz-binding \
   --principal 'local_group:employees' \
   --permission doctor.read
 
-certctl create-authz-binding \
+uvoocertctl create-authz-binding \
   --principal 'local_group:employees' \
   --permission metrics.read
 
-certctl list-auth-issuers --all
-certctl list-authz-bindings --all
+uvoocertctl list-auth-issuers --all
+uvoocertctl list-authz-bindings --all
 ```
 
 ## Run the built-in server
 
 ```bash
-certctl serve-certs \
+uvoocertctl serve-certs \
   --listen 127.0.0.1:18081 \
   --nacl 127.0.0.0/8,::1/128 \
   --admin-warn-days 0 \
@@ -80,10 +80,10 @@ certctl serve-certs \
 
 ```bash
 curl -sS -X POST \
-  http://127.0.0.1:18080/realms/certctl/protocol/openid-connect/token \
+  http://127.0.0.1:18080/realms/uvoocertctl/protocol/openid-connect/token \
   -H 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode grant_type=password \
-  --data-urlencode client_id=certctl \
+  --data-urlencode client_id=uvoocertctl \
   --data-urlencode username=alice \
   --data-urlencode password=alicepass
 ```
@@ -101,7 +101,7 @@ curl -sS http://127.0.0.1:18081/metrics \
 For a dedicated metrics Basic auth fallback:
 
 ```bash
-certctl serve-certs \
+uvoocertctl serve-certs \
   --listen 127.0.0.1:18081 \
   --nacl 127.0.0.0/8,::1/128 \
   --admin-warn-days 0 \
@@ -121,7 +121,7 @@ The smoke script:
 - starts Keycloak
 - configures the trusted issuer and local bindings
 - creates a subject auto-approval rule
-- starts `certctl serve-certs`
+- starts `uvoocertctl serve-certs`
 - fetches a Keycloak access token
 - calls `/admin/v1/doctor`
 - calls `/metrics`
@@ -129,13 +129,13 @@ The smoke script:
 Useful follow-up commands:
 
 ```bash
-certctl update-auth-issuer --issuer http://127.0.0.1:18080/realms/certctl --name keycloak-dev-local
-certctl check-auth-issuer --issuer http://127.0.0.1:18080/realms/certctl
-certctl update-authz-binding --id <binding-id> --permission csr.read
-certctl list-authz-bindings --principal 'role:http://127.0.0.1:18080/realms/certctl:certctl_admin'
-certctl disable-auth-issuer --issuer http://127.0.0.1:18080/realms/certctl
-certctl enable-auth-issuer --issuer http://127.0.0.1:18080/realms/certctl
-certctl delete-auth-issuer --issuer http://127.0.0.1:18080/realms/certctl --force
+uvoocertctl update-auth-issuer --issuer http://127.0.0.1:18080/realms/uvoocertctl --name keycloak-dev-local
+uvoocertctl check-auth-issuer --issuer http://127.0.0.1:18080/realms/uvoocertctl
+uvoocertctl update-authz-binding --id <binding-id> --permission csr.read
+uvoocertctl list-authz-bindings --principal 'role:http://127.0.0.1:18080/realms/uvoocertctl:uvoocertctl_admin'
+uvoocertctl disable-auth-issuer --issuer http://127.0.0.1:18080/realms/uvoocertctl
+uvoocertctl enable-auth-issuer --issuer http://127.0.0.1:18080/realms/uvoocertctl
+uvoocertctl delete-auth-issuer --issuer http://127.0.0.1:18080/realms/uvoocertctl --force
 ```
 
 When you are done:

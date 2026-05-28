@@ -14,10 +14,10 @@ import (
 	"sync"
 	"time"
 
-	"certctl/internal/auth"
-	"certctl/internal/cli"
-	"certctl/internal/storage"
-	"certctl/internal/util"
+	"uvoocertctl/internal/auth"
+	"uvoocertctl/internal/cli"
+	"uvoocertctl/internal/storage"
+	"uvoocertctl/internal/util"
 )
 
 type Config struct {

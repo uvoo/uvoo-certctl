@@ -1,4 +1,4 @@
-# certctl v0.2.0
+# uvoocertctl v0.2.0
 
 Adds queued CSR workflows and hardens the built-in certificate server.
 
@@ -11,7 +11,7 @@ Adds queued CSR workflows and hardens the built-in certificate server.
 
 ## Operator-focused improvements
 
-- Requesters can generate keys and CSRs on their own hosts and keep private keys off the `certctl` server.
+- Requesters can generate keys and CSRs on their own hosts and keep private keys off the `uvoocertctl` server.
 - CSR-backed private certificates are stored without private keys, which blocks accidental key export or `cert_key` sharing.
 - CSR requests capture reviewer-friendly metadata such as requester name, email, phone number, organization, department, and notes.
 - The built-in server now supports direct HTTPS deployment without requiring a reverse proxy in front.

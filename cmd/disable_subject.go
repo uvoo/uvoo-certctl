@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"certctl/internal/storage"
+	"uvoocertctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -15,8 +15,8 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "disable-subject",
 		Short: "Disable a locally tracked JWT subject",
-		Example: `  certctl disable-subject --issuer https://sso.example.com/realms/certctl --subject user-123
-  certctl disable-subject --issuer https://sso.example.com/realms/certctl --subject user-123 --json`,
+		Example: `  uvoocertctl disable-subject --issuer https://sso.example.com/realms/uvoocertctl --subject user-123
+  uvoocertctl disable-subject --issuer https://sso.example.com/realms/uvoocertctl --subject user-123 --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {

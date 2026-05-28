@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"certctl/internal/cli"
-	"certctl/internal/privateca"
-	"certctl/internal/storage"
+	"uvoocertctl/internal/cli"
+	"uvoocertctl/internal/privateca"
+	"uvoocertctl/internal/storage"
 )
 
 func TestApprovePrivateCSRRequestEndToEnd(t *testing.T) {

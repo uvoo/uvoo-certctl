@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"certctl/internal/storage"
+	"uvoocertctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -16,9 +16,9 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "delete-auth-issuer",
 		Short: "Delete a trusted JWT/OIDC issuer",
-		Example: `  certctl delete-auth-issuer --issuer https://sso.example.com/realms/certctl
-  certctl delete-auth-issuer --issuer https://sso.example.com/realms/certctl --force
-  certctl delete-auth-issuer --issuer https://sso.example.com/realms/certctl --json`,
+		Example: `  uvoocertctl delete-auth-issuer --issuer https://sso.example.com/realms/uvoocertctl
+  uvoocertctl delete-auth-issuer --issuer https://sso.example.com/realms/uvoocertctl --force
+  uvoocertctl delete-auth-issuer --issuer https://sso.example.com/realms/uvoocertctl --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {

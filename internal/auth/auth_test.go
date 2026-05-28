@@ -3,26 +3,26 @@ package auth
 import (
 	"testing"
 
-	"certctl/internal/storage"
+	"uvoocertctl/internal/storage"
 )
 
 func TestEffectivePermissionsAndMatchingBindings(t *testing.T) {
 	identity := Identity{
 		Issuer:     "https://issuer.example.test",
 		Subject:    "user-1",
-		Principals: []string{"sub:https://issuer.example.test:user-1", "role:https://issuer.example.test:certctl_admin"},
+		Principals: []string{"sub:https://issuer.example.test:user-1", "role:https://issuer.example.test:uvoocertctl_admin"},
 	}
 	bindings := []storage.AuthzBinding{
 		{
 			ID:         "binding-1",
 			Enabled:    true,
-			Principal:  "role:https://issuer.example.test:certctl_admin",
+			Principal:  "role:https://issuer.example.test:uvoocertctl_admin",
 			Permission: "doctor.read",
 		},
 		{
 			ID:           "binding-2",
 			Enabled:      true,
-			Principal:    "role:https://issuer.example.test:certctl_admin",
+			Principal:    "role:https://issuer.example.test:uvoocertctl_admin",
 			Permission:   "csr.approve",
 			ResourceKind: "csr_request",
 			ResourceRef:  "*",
@@ -30,7 +30,7 @@ func TestEffectivePermissionsAndMatchingBindings(t *testing.T) {
 		{
 			ID:         "binding-3",
 			Enabled:    false,
-			Principal:  "role:https://issuer.example.test:certctl_admin",
+			Principal:  "role:https://issuer.example.test:uvoocertctl_admin",
 			Permission: "metrics.read",
 		},
 	}

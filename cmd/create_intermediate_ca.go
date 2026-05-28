@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"certctl/internal/ops"
-	"certctl/internal/storage"
-	"certctl/internal/util"
+	"uvoocertctl/internal/ops"
+	"uvoocertctl/internal/storage"
+	"uvoocertctl/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -32,7 +32,7 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "create-intermediate-ca",
 		Short: "Create a private intermediate CA signed by a private root CA",
-		Example: `  certctl create-intermediate-ca \
+		Example: `  uvoocertctl create-intermediate-ca \
     --root-name corp-root \
     --name corp-issuing \
     --common-name "Corp Issuing CA" \

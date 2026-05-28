@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"certctl/internal/cli"
-	"certctl/internal/privateca"
-	"certctl/internal/storage"
-	"certctl/internal/util"
+	"uvoocertctl/internal/cli"
+	"uvoocertctl/internal/privateca"
+	"uvoocertctl/internal/storage"
+	"uvoocertctl/internal/util"
 
 	"github.com/fullsailor/pkcs7"
 	"github.com/spf13/cobra"

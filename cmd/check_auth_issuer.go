@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"certctl/internal/auth"
-	"certctl/internal/storage"
+	"uvoocertctl/internal/auth"
+	"uvoocertctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -17,8 +17,8 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "check-auth-issuer",
 		Short: "Check live discovery and JWKS connectivity for a trusted JWT/OIDC issuer",
-		Example: `  certctl check-auth-issuer --issuer https://sso.example.com/realms/certctl
-  certctl check-auth-issuer --issuer https://sso.example.com/realms/certctl --json`,
+		Example: `  uvoocertctl check-auth-issuer --issuer https://sso.example.com/realms/uvoocertctl
+  uvoocertctl check-auth-issuer --issuer https://sso.example.com/realms/uvoocertctl --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {

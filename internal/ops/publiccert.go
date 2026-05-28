@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"time"
 
-	"certctl/internal/acme"
-	"certctl/internal/cli"
-	"certctl/internal/dns"
-	"certctl/internal/storage"
-	"certctl/internal/util"
+	"uvoocertctl/internal/acme"
+	"uvoocertctl/internal/cli"
+	"uvoocertctl/internal/dns"
+	"uvoocertctl/internal/storage"
+	"uvoocertctl/internal/util"
 )
 
 type IssuePublicCertParams struct {

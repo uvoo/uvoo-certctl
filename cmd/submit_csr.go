@@ -5,8 +5,8 @@ import (
 	"io"
 	"os"
 
-	"certctl/internal/ops"
-	"certctl/internal/storage"
+	"uvoocertctl/internal/ops"
+	"uvoocertctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -27,7 +27,7 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "submit-csr",
 		Short: "Submit a public or private CSR into the approval queue",
-		Example: `  certctl submit-csr \
+		Example: `  uvoocertctl submit-csr \
     --kind private \
     --csr-file server.csr \
     --requester-name "Jane Doe" \

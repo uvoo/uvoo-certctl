@@ -7,7 +7,7 @@ ROOT_ID=$1
 
 echo "Processing Root ID: $ROOT_ID"
 
-certctl create-intermediate-ca \
+uvoocertctl create-intermediate-ca \
   --root-id $ROOT_ID \
   --name corp-ica-1 \
   --common-name "Corp Intermediate CA 1" \

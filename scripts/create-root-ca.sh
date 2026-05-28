@@ -1,7 +1,7 @@
 #!/bin/bash
  set -eu
 
-certctl create-root-ca \
+uvoocertctl create-root-ca \
   --name corp-root-1 \
   --common-name "Corp Root CA 1" \
   --key-type ec256 \

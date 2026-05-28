@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
-	"certctl/internal/ops"
-	"certctl/internal/storage"
+	"uvoocertctl/internal/ops"
+	"uvoocertctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -16,7 +16,7 @@ func init() {
 	cmd := &cobra.Command{
 		Use:     "reject-csr",
 		Short:   "Reject a queued CSR request",
-		Example: `  certctl reject-csr --id <request-id> --reason "unable to verify requester"`,
+		Example: `  uvoocertctl reject-csr --id <request-id> --reason "unable to verify requester"`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if reason == "" {
 				return fmt.Errorf("--reason is required")

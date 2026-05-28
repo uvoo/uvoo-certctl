@@ -3,9 +3,9 @@ package cmd
 import (
 	"fmt"
 
-	"certctl/internal/auth"
-	"certctl/internal/storage"
-	"certctl/internal/util"
+	"uvoocertctl/internal/auth"
+	"uvoocertctl/internal/storage"
+	"uvoocertctl/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -17,9 +17,9 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "list-effective-authz",
 		Short: "List effective permissions and matching bindings for principals or a bearer token",
-		Example: `  certctl list-effective-authz --principal 'role:https://sso.example.com/realms/certctl:certctl_admin'
-  certctl list-effective-authz --principal 'role:https://sso.example.com/realms/certctl:certctl_admin' --principal 'group:https://sso.example.com/realms/certctl:platform'
-  certctl list-effective-authz --bearer-token env:CERTCTL_BEARER_TOKEN --json`,
+		Example: `  uvoocertctl list-effective-authz --principal 'role:https://sso.example.com/realms/uvoocertctl:uvoocertctl_admin'
+  uvoocertctl list-effective-authz --principal 'role:https://sso.example.com/realms/uvoocertctl:uvoocertctl_admin' --principal 'group:https://sso.example.com/realms/uvoocertctl:platform'
+  uvoocertctl list-effective-authz --bearer-token env:CERTCTL_BEARER_TOKEN --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(principals) == 0 && bearerToken == "" {
 				return fmt.Errorf("either --principal or --bearer-token is required")

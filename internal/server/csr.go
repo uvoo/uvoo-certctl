@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"certctl/internal/csrqueue"
-	"certctl/internal/storage"
-	"certctl/internal/util"
+	"uvoocertctl/internal/csrqueue"
+	"uvoocertctl/internal/storage"
+	"uvoocertctl/internal/util"
 )
 
 type csrSubmitJSON struct {

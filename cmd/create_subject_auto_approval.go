@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
-	"certctl/internal/storage"
-	"certctl/internal/util"
+	"uvoocertctl/internal/storage"
+	"uvoocertctl/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -22,15 +22,15 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "create-subject-auto-approval",
 		Short: "Create or update a subject auto-approval rule",
-		Example: `  certctl create-subject-auto-approval \
+		Example: `  uvoocertctl create-subject-auto-approval \
     --name google-employees \
     --issuer https://accounts.google.com \
     --email-domain example.com \
     --local-group employees
-  certctl create-subject-auto-approval \
+  uvoocertctl create-subject-auto-approval \
     --name keycloak-admins \
-    --issuer https://sso.example.com/realms/certctl \
-    --required-role certctl_admin \
+    --issuer https://sso.example.com/realms/uvoocertctl \
+    --required-role uvoocertctl_admin \
     --local-role admin --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := storage.Open(rootCfg.DBPath)

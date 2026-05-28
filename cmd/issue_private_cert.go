@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"certctl/internal/ops"
-	"certctl/internal/storage"
-	"certctl/internal/util"
+	"uvoocertctl/internal/ops"
+	"uvoocertctl/internal/storage"
+	"uvoocertctl/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -35,7 +35,7 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "issue-private-cert",
 		Short: "Issue a private leaf certificate from an intermediate CA",
-		Example: `  certctl issue-private-cert \
+		Example: `  uvoocertctl issue-private-cert \
     --intermediate-name corp-issuing \
     --common-name api.internal.example \
     --domain api.internal.example \

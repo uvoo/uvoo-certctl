@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"certctl/internal/auth"
-	"certctl/internal/storage"
+	"uvoocertctl/internal/auth"
+	"uvoocertctl/internal/storage"
 )
 
 type DoctorFinding struct {

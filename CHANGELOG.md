@@ -11,7 +11,7 @@
 
 ## v0.1.0 - 2026-03-30
 
-Initial tagged release of `certctl`.
+Initial tagged release of `uvoocertctl`.
 
 - Added immutable rotation for public and private leaf certificates with supersede lineage.
 - Added private root and intermediate CA generations with separate lifecycle, trust, and issuing state.

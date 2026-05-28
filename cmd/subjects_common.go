@@ -1,6 +1,6 @@
 package cmd
 
-import "certctl/internal/storage"
+import "uvoocertctl/internal/storage"
 
 func subjectPayload(rec storage.Subject) map[string]any {
 	return map[string]any{

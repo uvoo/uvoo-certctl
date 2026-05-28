@@ -45,17 +45,17 @@ done
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-$ROOT_DIR/dev/docker/docker-compose.yml}"
-PROJECT_NAME="${PROJECT_NAME:-certctl-smoke-$(date +%s)}"
-WORK_DIR="${WORK_DIR:-$(mktemp -d /tmp/certctl-docker-smoke.XXXXXX)}"
-CERTCTL_SERVICE="${CERTCTL_SERVICE:-certctl}"
+PROJECT_NAME="${PROJECT_NAME:-uvoocertctl-smoke-$(date +%s)}"
+WORK_DIR="${WORK_DIR:-$(mktemp -d /tmp/uvoocertctl-docker-smoke.XXXXXX)}"
+CERTCTL_SERVICE="${CERTCTL_SERVICE:-uvoocertctl}"
 KEYCLOAK_SERVICE="${KEYCLOAK_SERVICE:-keycloak}"
 DB_PATH_IN_CONTAINER="${DB_PATH_IN_CONTAINER:-/data/certs.db}"
 KEYCLOAK_HOST_PORT="${KEYCLOAK_HOST_PORT:-18080}"
 CERTCTL_HOST_PORT="${CERTCTL_HOST_PORT:-18081}"
 CERTCTL_BASE_URL="${CERTCTL_BASE_URL:-http://127.0.0.1:${CERTCTL_HOST_PORT}}"
-ISSUER_URL="${ISSUER_URL:-http://127.0.0.1:${KEYCLOAK_HOST_PORT}/realms/certctl}"
-INTERNAL_ISSUER_URL="${INTERNAL_ISSUER_URL:-http://${KEYCLOAK_SERVICE}:8080/realms/certctl}"
-CLIENT_ID="${CLIENT_ID:-certctl}"
+ISSUER_URL="${ISSUER_URL:-http://127.0.0.1:${KEYCLOAK_HOST_PORT}/realms/uvoocertctl}"
+INTERNAL_ISSUER_URL="${INTERNAL_ISSUER_URL:-http://${KEYCLOAK_SERVICE}:8080/realms/uvoocertctl}"
+CLIENT_ID="${CLIENT_ID:-uvoocertctl}"
 USERNAME="${USERNAME:-alice}"
 PASSWORD="${PASSWORD:-alicepass}"
 CSR_SUBMIT_PASSWORD="${CSR_SUBMIT_PASSWORD:-submit-secret}"
@@ -85,8 +85,8 @@ compose() {
   docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" "$@"
 }
 
-certctl_exec() {
-  compose exec -T "$CERTCTL_SERVICE" certctl --db "$DB_PATH_IN_CONTAINER" "$@"
+uvoocertctl_exec() {
+  compose exec -T "$CERTCTL_SERVICE" uvoocertctl --db "$DB_PATH_IN_CONTAINER" "$@"
 }
 
 cleanup_stack() {
@@ -175,7 +175,7 @@ require_env() {
 
 configure_auth() {
   echo "Configuring trusted issuer and local bindings..."
-  certctl_exec create-auth-issuer \
+  uvoocertctl_exec create-auth-issuer \
     --preset keycloak \
     --name keycloak-dev \
     --issuer "$ISSUER_URL" \
@@ -184,88 +184,88 @@ configure_auth() {
     --discovery-url "$INTERNAL_ISSUER_URL/.well-known/openid-configuration" >/dev/null
 
   if [[ "$SMOKE_AUTO_APPROVE_JWT_SUBJECT" == "1" ]]; then
-    certctl_exec create-subject-auto-approval \
+    uvoocertctl_exec create-subject-auto-approval \
       --name keycloak-example-users \
       --issuer "$ISSUER_URL" \
       --email-domain example.com \
       --local-group docker-smoke-admin >/dev/null
 
-    certctl_exec create-authz-binding \
+    uvoocertctl_exec create-authz-binding \
       --principal "local_group:docker-smoke-admin" \
       --permission doctor.read >/dev/null
-    certctl_exec create-authz-binding \
+    uvoocertctl_exec create-authz-binding \
       --principal "local_group:docker-smoke-admin" \
       --permission auth_issuer.read >/dev/null
-    certctl_exec create-authz-binding \
+    uvoocertctl_exec create-authz-binding \
       --principal "local_group:docker-smoke-admin" \
       --permission auth_issuer.write >/dev/null
-    certctl_exec create-authz-binding \
+    uvoocertctl_exec create-authz-binding \
       --principal "local_group:docker-smoke-admin" \
       --permission metrics.read >/dev/null
-    certctl_exec create-authz-binding \
+    uvoocertctl_exec create-authz-binding \
       --principal "local_group:docker-smoke-admin" \
       --permission authz.read >/dev/null
-    certctl_exec create-authz-binding \
+    uvoocertctl_exec create-authz-binding \
       --principal "local_group:docker-smoke-admin" \
       --permission authz.write >/dev/null
-    certctl_exec create-authz-binding \
+    uvoocertctl_exec create-authz-binding \
       --principal "local_group:docker-smoke-admin" \
       --permission subject.read >/dev/null
-    certctl_exec create-authz-binding \
+    uvoocertctl_exec create-authz-binding \
       --principal "local_group:docker-smoke-admin" \
       --permission subject.update >/dev/null
-    certctl_exec create-authz-binding \
+    uvoocertctl_exec create-authz-binding \
       --principal "local_group:docker-smoke-admin" \
       --permission subject_auto_approval.read >/dev/null
-    certctl_exec create-authz-binding \
+    uvoocertctl_exec create-authz-binding \
       --principal "local_group:docker-smoke-admin" \
       --permission subject_auto_approval.write >/dev/null
     return 0
   fi
 
-  certctl_exec create-authz-binding \
-    --principal "role:$ISSUER_URL:certctl_admin" \
+  uvoocertctl_exec create-authz-binding \
+    --principal "role:$ISSUER_URL:uvoocertctl_admin" \
     --permission doctor.read >/dev/null
-  certctl_exec create-authz-binding \
-    --principal "role:$ISSUER_URL:certctl_admin" \
+  uvoocertctl_exec create-authz-binding \
+    --principal "role:$ISSUER_URL:uvoocertctl_admin" \
     --permission auth_issuer.read >/dev/null
-  certctl_exec create-authz-binding \
-    --principal "role:$ISSUER_URL:certctl_admin" \
+  uvoocertctl_exec create-authz-binding \
+    --principal "role:$ISSUER_URL:uvoocertctl_admin" \
     --permission auth_issuer.write >/dev/null
-  certctl_exec create-authz-binding \
-    --principal "role:$ISSUER_URL:certctl_admin" \
+  uvoocertctl_exec create-authz-binding \
+    --principal "role:$ISSUER_URL:uvoocertctl_admin" \
     --permission metrics.read >/dev/null
-  certctl_exec create-authz-binding \
-    --principal "role:$ISSUER_URL:certctl_admin" \
+  uvoocertctl_exec create-authz-binding \
+    --principal "role:$ISSUER_URL:uvoocertctl_admin" \
     --permission authz.read >/dev/null
-  certctl_exec create-authz-binding \
-    --principal "role:$ISSUER_URL:certctl_admin" \
+  uvoocertctl_exec create-authz-binding \
+    --principal "role:$ISSUER_URL:uvoocertctl_admin" \
     --permission authz.write >/dev/null
-  certctl_exec create-authz-binding \
-    --principal "role:$ISSUER_URL:certctl_admin" \
+  uvoocertctl_exec create-authz-binding \
+    --principal "role:$ISSUER_URL:uvoocertctl_admin" \
     --permission subject.read >/dev/null
-  certctl_exec create-authz-binding \
-    --principal "role:$ISSUER_URL:certctl_admin" \
+  uvoocertctl_exec create-authz-binding \
+    --principal "role:$ISSUER_URL:uvoocertctl_admin" \
     --permission subject.update >/dev/null
-  certctl_exec create-authz-binding \
-    --principal "role:$ISSUER_URL:certctl_admin" \
+  uvoocertctl_exec create-authz-binding \
+    --principal "role:$ISSUER_URL:uvoocertctl_admin" \
     --permission subject_auto_approval.read >/dev/null
-  certctl_exec create-authz-binding \
-    --principal "role:$ISSUER_URL:certctl_admin" \
+  uvoocertctl_exec create-authz-binding \
+    --principal "role:$ISSUER_URL:uvoocertctl_admin" \
     --permission subject_auto_approval.write >/dev/null
 }
 
 configure_private_csr_auth() {
-  local principal="role:$ISSUER_URL:certctl_admin"
+  local principal="role:$ISSUER_URL:uvoocertctl_admin"
   if [[ "$SMOKE_AUTO_APPROVE_JWT_SUBJECT" == "1" ]]; then
     principal="local_group:docker-smoke-admin"
   fi
-  certctl_exec create-authz-binding \
+  uvoocertctl_exec create-authz-binding \
     --principal "$principal" \
     --permission csr.read \
     --resource-kind csr_request \
     --resource-ref '*' >/dev/null
-  certctl_exec create-authz-binding \
+  uvoocertctl_exec create-authz-binding \
     --principal "$principal" \
     --permission csr.approve \
     --resource-kind csr_request \
@@ -294,7 +294,7 @@ verify_admin_endpoints() {
   doctor_json="$(cat "$WORK_DIR/doctor.json")"
   if [[ "$doctor_code" == "403" ]] && grep -q "pending local approval" "$WORK_DIR/doctor.json"; then
     echo "Approving pending subject for docker smoke..."
-    certctl_exec approve-subject \
+    uvoocertctl_exec approve-subject \
       --issuer "$ISSUER_URL" \
       --subject "$TOKEN_SUBJECT" >/dev/null
     doctor_json="$(curl -fsS "$CERTCTL_BASE_URL/admin/v1/doctor" \
@@ -316,16 +316,16 @@ PY
   local metrics
   metrics="$(curl -fsS "$CERTCTL_BASE_URL/metrics" \
     -u "$METRICS_USERNAME:$METRICS_PASSWORD")"
-  grep -q 'certctl_certificates_total' <<<"$metrics"
-  grep -q 'certctl_csr_requests_total' <<<"$metrics"
-  grep -q 'certctl_auth_requests_total{' <<<"$metrics"
+  grep -q 'uvoocertctl_certificates_total' <<<"$metrics"
+  grep -q 'uvoocertctl_csr_requests_total' <<<"$metrics"
+  grep -q 'uvoocertctl_auth_requests_total{' <<<"$metrics"
   grep -q 'auth_method="basic_metrics"' <<<"$metrics"
   grep -q 'result="allowed"' <<<"$metrics"
 
   echo "Calling /metrics with bearer auth..."
   metrics="$(curl -fsS "$CERTCTL_BASE_URL/metrics" \
     -H "Authorization: Bearer $ACCESS_TOKEN")"
-  grep -q 'certctl_certificates_total' <<<"$metrics"
+  grep -q 'uvoocertctl_certificates_total' <<<"$metrics"
 
   echo "Calling /admin/v1/effective-authz with bearer auth..."
   local effective_json
@@ -405,8 +405,8 @@ Path(sys.argv[1]).write_text(json.dumps({
     "preset": "keycloak",
     "name": "docker-smoke-temp",
     "issuer": "http://issuer.invalid/docker-smoke",
-    "audiences": ["certctl"],
-    "required_claims": {"azp": "certctl"},
+    "audiences": ["uvoocertctl"],
+    "required_claims": {"azp": "uvoocertctl"},
     "enabled": True,
 }))
 PY
@@ -473,7 +473,7 @@ from pathlib import Path
 
 out_path, issuer = sys.argv[1:]
 Path(out_path).write_text(json.dumps({
-    "principal": f"role:{issuer}:certctl_admin",
+    "principal": f"role:{issuer}:uvoocertctl_admin",
     "permission": "subject.read",
     "resource_kind": "subject",
     "resource_ref": "*",
@@ -638,12 +638,12 @@ run_private_csr_smoke() {
   configure_private_csr_auth
 
   echo "Creating private root and intermediate CAs inside the container..."
-  certctl_exec create-root-ca \
+  uvoocertctl_exec create-root-ca \
     --name "$ROOT_CA_NAME" \
     --common-name "$ROOT_CA_CN" \
     --key-password "$ROOT_CA_PASSWORD" >/dev/null
 
-  certctl_exec create-intermediate-ca \
+  uvoocertctl_exec create-intermediate-ca \
     --root-name "$ROOT_CA_NAME" \
     --name "$INTERMEDIATE_CA_NAME" \
     --common-name "$INTERMEDIATE_CA_CN" \
@@ -779,7 +779,7 @@ run_public_provider_smoke() {
   if [[ "$PUBLIC_WRITE_TEST" == "1" ]]; then
     args+=(--write-test)
   fi
-  certctl_exec "${args[@]}"
+  uvoocertctl_exec "${args[@]}"
 
   if [[ "$SMOKE_PUBLIC_CERT_ISSUE" != "1" ]]; then
     echo "Public certificate issuance smoke disabled."
@@ -808,7 +808,7 @@ run_public_provider_smoke() {
   if [[ "$PUBLIC_STAGING" == "1" ]]; then
     issue_args+=(--staging)
   fi
-  certctl_exec "${issue_args[@]}"
+  uvoocertctl_exec "${issue_args[@]}"
 }
 
 mkdir -p "$WORK_DIR"
@@ -819,8 +819,8 @@ compose up -d --build
 echo "Waiting for Keycloak..."
 wait_for_url "$ISSUER_URL/.well-known/openid-configuration" "Keycloak"
 
-echo "Waiting for certctl..."
-wait_for_url "$CERTCTL_BASE_URL/healthz" "certctl"
+echo "Waiting for uvoocertctl..."
+wait_for_url "$CERTCTL_BASE_URL/healthz" "uvoocertctl"
 
 configure_auth
 fetch_access_token

@@ -1,6 +1,6 @@
 # Auth And Authz Design
 
-This document defines a minimal authentication and authorization design for `certctl`'s built-in HTTP(S) server.
+This document defines a minimal authentication and authorization design for `uvoocertctl`'s built-in HTTP(S) server.
 
 The goal is to support:
 
@@ -64,7 +64,7 @@ Examples:
 - Google: often only `sub` and profile claims unless extra group mapping is added externally
 - Cognito / other providers: usually provider-specific role/group claims
 
-This is why `certctl` should not hardcode a single roles claim name.
+This is why `uvoocertctl` should not hardcode a single roles claim name.
 
 ## Authentication Model
 
@@ -149,7 +149,7 @@ This keeps provider support generic while avoiding code branches for Azure, AWS,
 
 Using discovery or JWKS URLs is the better default because signing keys rotate.
 
-If `certctl` stored provider certs statically, operators would have to keep them current manually. That is more fragile and usually more code overall.
+If `uvoocertctl` stored provider certs statically, operators would have to keep them current manually. That is more fragile and usually more code overall.
 
 So the default should be:
 
@@ -225,7 +225,7 @@ Examples:
 - `resource_kind = "intermediate_ca", resource_ref = "corp-issuing"`
 - `resource_kind = "private_cert", resource_ref = "api.internal.example"`
 
-For `certctl`, logical names and common names are usually more stable than row UUIDs, so they are the better first scope key.
+For `uvoocertctl`, logical names and common names are usually more stable than row UUIDs, so they are the better first scope key.
 
 Recommended table:
 
@@ -313,7 +313,7 @@ Claim extraction rules:
 Support dotted claim paths like:
 
 - `realm_access.roles`
-- `resource_access.certctl.roles`
+- `resource_access.uvoocertctl.roles`
 
 That adds flexibility without adding provider-specific code.
 
@@ -331,7 +331,7 @@ Do not copy directly:
 - storing raw request auth state in database session context
 - provider-specific assumptions from the example app
 
-`certctl` does not need SQL session auth context to make route-level decisions, so the simpler route middleware approach is a better fit here.
+`uvoocertctl` does not need SQL session auth context to make route-level decisions, so the simpler route middleware approach is a better fit here.
 
 ## Recommended implementation order
 
@@ -356,13 +356,13 @@ Do not copy directly:
 
 ## Development and testing
 
-For local testing, a small Docker Compose stack with Keycloak and `certctl` is worthwhile.
+For local testing, a small Docker Compose stack with Keycloak and `uvoocertctl` is worthwhile.
 
 That should stay development-only and should not leak into the main runtime path.
 
 Suggested dev stack:
 
-- `certctl`
+- `uvoocertctl`
 - Keycloak with realm import
 - optional Prometheus scrape target later
 
@@ -378,4 +378,4 @@ The best minimal model is:
 - local allow-list authz bindings
 - Basic auth retained as a bootstrap superadmin path
 
-That gives you Azure, AWS/Cognito, Google, Keycloak, and similar providers with one implementation path and without turning `certctl` into an auth framework.
+That gives you Azure, AWS/Cognito, Google, Keycloak, and similar providers with one implementation path and without turning `uvoocertctl` into an auth framework.

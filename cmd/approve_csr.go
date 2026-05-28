@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"certctl/internal/ops"
-	"certctl/internal/storage"
-	"certctl/internal/util"
+	"uvoocertctl/internal/ops"
+	"uvoocertctl/internal/storage"
+	"uvoocertctl/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -32,10 +32,10 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "approve-csr",
 		Short: "Approve a queued CSR request and issue the certificate",
-		Example: `  certctl approve-csr --id <request-id> \
+		Example: `  uvoocertctl approve-csr --id <request-id> \
     --provider godaddy --api-user "$GODADDY_API_KEY" --api-key "$GODADDY_API_SECRET"
 
-  certctl approve-csr --id <request-id> \
+  uvoocertctl approve-csr --id <request-id> \
     --intermediate-name corp-issuing \
     --parent-key-password env:CERTCTL_PARENT_KEY_PASSWORD`,
 		RunE: func(cmd *cobra.Command, args []string) error {

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"certctl/internal/storage"
+	"uvoocertctl/internal/storage"
 
 	jose "github.com/go-jose/go-jose/v4"
 	josejwt "github.com/go-jose/go-jose/v4/jwt"

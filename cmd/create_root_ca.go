@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"certctl/internal/ops"
-	"certctl/internal/storage"
-	"certctl/internal/util"
+	"uvoocertctl/internal/ops"
+	"uvoocertctl/internal/storage"
+	"uvoocertctl/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -21,7 +21,7 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "create-root-ca",
 		Short: "Create a private root CA and store it encrypted",
-		Example: `  certctl create-root-ca \
+		Example: `  uvoocertctl create-root-ca \
     --name corp-root \
     --common-name "Corp Root CA" \
     --key-type ec256 \

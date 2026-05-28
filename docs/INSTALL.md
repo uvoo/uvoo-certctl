@@ -1,6 +1,6 @@
-# Installing certctl
+# Installing uvoocertctl
 
-`certctl` ships as a single binary for Linux, macOS, and Windows.
+`uvoocertctl` ships as a single binary for Linux, macOS, and Windows.
 
 ## Verify the download
 
@@ -9,19 +9,19 @@ Each release archive has a matching `.sha256` file. Releases may also include a 
 On Linux or macOS:
 
 ```bash
-sha256sum -c certctl_v0.2.0_linux_amd64.tar.gz.sha256
+sha256sum -c uvoocertctl_v0.2.0_linux_amd64.tar.gz.sha256
 ```
 
 On macOS without `sha256sum`:
 
 ```bash
-shasum -a 256 -c certctl_v0.2.0_darwin_arm64.tar.gz.sha256
+shasum -a 256 -c uvoocertctl_v0.2.0_darwin_arm64.tar.gz.sha256
 ```
 
 On Windows PowerShell:
 
 ```powershell
-Get-FileHash .\certctl_v0.2.0_windows_amd64.zip -Algorithm SHA256
+Get-FileHash .\uvoocertctl_v0.2.0_windows_amd64.zip -Algorithm SHA256
 ```
 
 Compare the output with the contents of the matching `.sha256` file, then extract the archive.
@@ -37,48 +37,48 @@ gpg --verify checksums.txt.asc checksums.txt
 On Linux or macOS:
 
 ```bash
-tar -xzf certctl_v0.2.0_linux_amd64.tar.gz
-cd certctl_v0.2.0_linux_amd64
+tar -xzf uvoocertctl_v0.2.0_linux_amd64.tar.gz
+cd uvoocertctl_v0.2.0_linux_amd64
 ```
 
 On Windows PowerShell:
 
 ```powershell
-Expand-Archive .\certctl_v0.2.0_windows_amd64.zip -DestinationPath .
-Set-Location .\certctl_v0.2.0_windows_amd64
+Expand-Archive .\uvoocertctl_v0.2.0_windows_amd64.zip -DestinationPath .
+Set-Location .\uvoocertctl_v0.2.0_windows_amd64
 ```
 
 ## Install on Linux
 
 ```bash
-chmod +x certctl
-sudo install -m 0755 certctl /usr/local/bin/certctl
-certctl version
+chmod +x uvoocertctl
+sudo install -m 0755 uvoocertctl /usr/local/bin/uvoocertctl
+uvoocertctl version
 ```
 
 ## Install on macOS
 
 ```bash
-chmod +x certctl
-sudo install -m 0755 certctl /usr/local/bin/certctl
-certctl version
+chmod +x uvoocertctl
+sudo install -m 0755 uvoocertctl /usr/local/bin/uvoocertctl
+uvoocertctl version
 ```
 
 ## Install on Windows
 
-1. Rename the downloaded file to `certctl.exe` if needed.
-2. Move it into a directory such as `C:\Tools\certctl\`.
+1. Rename the downloaded file to `uvoocertctl.exe` if needed.
+2. Move it into a directory such as `C:\Tools\uvoocertctl\`.
 3. Add that directory to `Path`.
 4. Open a new PowerShell window and run:
 
 ```powershell
-certctl version
+uvoocertctl version
 ```
 
 ## Build from source
 
 ```bash
-go build -o certctl .
+go build -o uvoocertctl .
 ```
 
 Or build the release matrix:

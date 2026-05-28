@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"certctl/internal/storage"
+	"uvoocertctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -24,14 +24,14 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "update-authz-binding",
 		Short: "Update an authorization binding for a JWT principal",
-		Example: `  certctl update-authz-binding \
+		Example: `  uvoocertctl update-authz-binding \
     --id binding-id \
     --permission csr.approve
-  certctl update-authz-binding \
-    --match-principal 'role:https://sso.example.com/realms/certctl:certctl_admin' \
+  uvoocertctl update-authz-binding \
+    --match-principal 'role:https://sso.example.com/realms/uvoocertctl:uvoocertctl_admin' \
     --match-permission doctor.read \
     --permission metrics.read
-  certctl update-authz-binding \
+  uvoocertctl update-authz-binding \
     --id binding-id \
     --enabled=false --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {

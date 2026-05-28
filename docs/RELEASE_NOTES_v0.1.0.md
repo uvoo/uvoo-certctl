@@ -1,6 +1,6 @@
-# certctl v0.1.0
+# uvoocertctl v0.1.0
 
-Initial public release of `certctl`.
+Initial public release of `uvoocertctl`.
 
 ## Highlights
 

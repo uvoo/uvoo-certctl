@@ -1,13 +1,13 @@
-# certctl Admin Runbook
+# uvoocertctl Admin Runbook
 
-This runbook is for operators managing `certctl` in day-to-day use.
+This runbook is for operators managing `uvoocertctl` in day-to-day use.
 
 Keep it simple:
 
 - protect the SQLite database and backup files
 - keep CA key passwords out of shell history when possible
 - prefer `env:` or `file:` secret references
-- run `certctl doctor` regularly
+- run `uvoocertctl doctor` regularly
 - back up before major lifecycle changes
 
 ## 1. First-time setup
@@ -15,12 +15,12 @@ Keep it simple:
 Create the private PKI:
 
 ```bash
-certctl create-root-ca \
+uvoocertctl create-root-ca \
   --name corp-root \
   --common-name "Corp Root CA" \
   --storage-password env:CERTCTL_STORAGE_PASSWORD
 
-certctl create-intermediate-ca \
+uvoocertctl create-intermediate-ca \
   --root-name corp-root \
   --name corp-issuing \
   --common-name "Corp Issuing CA" \
@@ -31,7 +31,7 @@ certctl create-intermediate-ca \
 Use these defaults in later commands to keep operator workflows shorter:
 
 ```bash
-certctl --default-root-ca corp-root --default-intermediate-ca corp-issuing doctor --warn-days 0
+uvoocertctl --default-root-ca corp-root --default-intermediate-ca corp-issuing doctor --warn-days 0
 ```
 
 ## 2. Routine health checks
@@ -39,10 +39,10 @@ certctl --default-root-ca corp-root --default-intermediate-ca corp-issuing docto
 Use `doctor` for structure and expiry checks:
 
 ```bash
-certctl doctor
-certctl doctor --warn-days 14
-certctl doctor --warn-days 0 --json
-certctl doctor --auth-only --json
+uvoocertctl doctor
+uvoocertctl doctor --warn-days 14
+uvoocertctl doctor --warn-days 0 --json
+uvoocertctl doctor --auth-only --json
 ```
 
 `doctor` also checks enabled JWT/OIDC issuers for broken discovery or JWKS connectivity, flags disabled issuers that are still referenced by enabled authz bindings, warns on bindings that still point at unknown issuers, highlights unused or unreachable issuer relationships, and highlights overly broad or duplicate/conflicting authz bindings and subject auto-approval rules.
@@ -50,61 +50,61 @@ certctl doctor --auth-only --json
 To review locally tracked JWT subjects:
 
 ```bash
-certctl list-subjects --all
-certctl list-subjects --status pending
-certctl list-subjects --local-group employees
-certctl create-subject-auto-approval --name google-employees --issuer https://accounts.google.com --email-domain example.com --local-group employees
-certctl list-subject-auto-approvals
-certctl approve-subject --issuer https://accounts.google.com --subject user-123 --local-group viewers
-certctl update-subject --issuer https://accounts.google.com --subject user-123 --status active --local-group employees
-certctl disable-subject --issuer https://sso.example.com/realms/certctl --subject user-123
-certctl enable-subject --issuer https://sso.example.com/realms/certctl --subject user-123
+uvoocertctl list-subjects --all
+uvoocertctl list-subjects --status pending
+uvoocertctl list-subjects --local-group employees
+uvoocertctl create-subject-auto-approval --name google-employees --issuer https://accounts.google.com --email-domain example.com --local-group employees
+uvoocertctl list-subject-auto-approvals
+uvoocertctl approve-subject --issuer https://accounts.google.com --subject user-123 --local-group viewers
+uvoocertctl update-subject --issuer https://accounts.google.com --subject user-123 --status active --local-group employees
+uvoocertctl disable-subject --issuer https://sso.example.com/realms/uvoocertctl --subject user-123
+uvoocertctl enable-subject --issuer https://sso.example.com/realms/uvoocertctl --subject user-123
 ```
 
 For common public identity providers, start from a preset:
 
 ```bash
-certctl list-auth-provider-presets
-certctl create-auth-issuer --preset google --name google-login --audience <client-id>
-certctl create-auth-issuer --preset microsoft-tenant --name microsoft-login --issuer https://login.microsoftonline.com/<tenant>/v2.0 --audience <app-id>
-certctl create-auth-issuer --preset keycloak --name keycloak-login --issuer https://sso.example.com/realms/certctl --audience certctl
-certctl create-auth-issuer --preset aws-cognito --name cognito-login --issuer https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example --audience <app-client-id>
+uvoocertctl list-auth-provider-presets
+uvoocertctl create-auth-issuer --preset google --name google-login --audience <client-id>
+uvoocertctl create-auth-issuer --preset microsoft-tenant --name microsoft-login --issuer https://login.microsoftonline.com/<tenant>/v2.0 --audience <app-id>
+uvoocertctl create-auth-issuer --preset keycloak --name keycloak-login --issuer https://sso.example.com/realms/uvoocertctl --audience uvoocertctl
+uvoocertctl create-auth-issuer --preset aws-cognito --name cognito-login --issuer https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example --audience <app-client-id>
 ```
 
 Remote issuer management is also available over the admin API:
 
 ```bash
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  https://certctl.example.com:8443/admin/v1/auth-provider-presets
+  https://uvoocertctl.example.com:8443/admin/v1/auth-provider-presets
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  https://certctl.example.com:8443/admin/v1/auth-provider-presets/keycloak
-
-curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  -H 'Content-Type: application/json' \
-  -X POST https://certctl.example.com:8443/admin/v1/auth-issuers \
-  -d '{"preset":"keycloak","name":"keycloak-dev","issuer":"https://sso.example.com/realms/certctl","audiences":["certctl"],"required_claims":{"azp":"certctl"},"discovery_url":"https://sso.example.com/realms/certctl/.well-known/openid-configuration"}'
+  https://uvoocertctl.example.com:8443/admin/v1/auth-provider-presets/keycloak
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -H 'Content-Type: application/json' \
-  -X PUT https://certctl.example.com:8443/admin/v1/auth-issuers/keycloak-dev \
+  -X POST https://uvoocertctl.example.com:8443/admin/v1/auth-issuers \
+  -d '{"preset":"keycloak","name":"keycloak-dev","issuer":"https://sso.example.com/realms/uvoocertctl","audiences":["uvoocertctl"],"required_claims":{"azp":"uvoocertctl"},"discovery_url":"https://sso.example.com/realms/uvoocertctl/.well-known/openid-configuration"}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X PUT https://uvoocertctl.example.com:8443/admin/v1/auth-issuers/keycloak-dev \
   -d '{"name":"keycloak-prod","enabled":true}'
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  -X DELETE 'https://certctl.example.com:8443/admin/v1/auth-issuers/keycloak-prod?force=true'
+  -X DELETE 'https://uvoocertctl.example.com:8443/admin/v1/auth-issuers/keycloak-prod?force=true'
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -H 'Content-Type: application/json' \
-  -X POST https://certctl.example.com:8443/admin/v1/authz-bindings \
-  -d '{"principal":"role:https://sso.example.com/realms/certctl:certctl_admin","permission":"subject.read","resource_kind":"subject","resource_ref":"*"}'
+  -X POST https://uvoocertctl.example.com:8443/admin/v1/authz-bindings \
+  -d '{"principal":"role:https://sso.example.com/realms/uvoocertctl:uvoocertctl_admin","permission":"subject.read","resource_kind":"subject","resource_ref":"*"}'
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -H 'Content-Type: application/json' \
-  -X PUT https://certctl.example.com:8443/admin/v1/authz-bindings/<binding-id> \
+  -X PUT https://uvoocertctl.example.com:8443/admin/v1/authz-bindings/<binding-id> \
   -d '{"permission":"subject.update","enabled":true}'
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  -X DELETE https://certctl.example.com:8443/admin/v1/authz-bindings/<binding-id>
+  -X DELETE https://uvoocertctl.example.com:8443/admin/v1/authz-bindings/<binding-id>
 ```
 
 Recommended routine:
@@ -116,7 +116,7 @@ Recommended routine:
 ## 3. Issue a private certificate
 
 ```bash
-certctl issue-private-cert \
+uvoocertctl issue-private-cert \
   --intermediate-name corp-issuing \
   --common-name api.internal.example \
   --domain api.internal.example \
@@ -127,8 +127,8 @@ certctl issue-private-cert \
 Check the result:
 
 ```bash
-certctl query-private-cert --common-name api.internal.example
-certctl history --kind private --name api.internal.example
+uvoocertctl query-private-cert --common-name api.internal.example
+uvoocertctl history --kind private --name api.internal.example
 ```
 
 ## 4. Submit and approve CSRs
@@ -144,7 +144,7 @@ openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
 ```
 
 ```bash
-certctl submit-csr \
+uvoocertctl submit-csr \
   --kind private \
   --csr-file server.csr \
   --requester-name "Jane Doe" \
@@ -158,14 +158,14 @@ certctl submit-csr \
 Admin side:
 
 ```bash
-certctl list-csr-requests
-certctl list-csr-requests --id <request-id> --json
+uvoocertctl list-csr-requests
+uvoocertctl list-csr-requests --id <request-id> --json
 ```
 
 Approve:
 
 ```bash
-certctl approve-csr \
+uvoocertctl approve-csr \
   --id <request-id> \
   --intermediate-name corp-issuing \
   --parent-key-password env:CERTCTL_ICA_PASSWORD
@@ -174,7 +174,7 @@ certctl approve-csr \
 Reject:
 
 ```bash
-certctl reject-csr --id <request-id> --reason "unable to verify requester"
+uvoocertctl reject-csr --id <request-id> --reason "unable to verify requester"
 ```
 
 ## 5. Run the built-in HTTPS server
@@ -191,7 +191,7 @@ openssl req -x509 -newkey rsa:4096 -sha256 -days 365 -nodes \
 Serve over HTTPS:
 
 ```bash
-certctl serve-certs \
+uvoocertctl serve-certs \
   --listen :8443 \
   --tls-cert-file server.crt \
   --tls-key-file server.key \
@@ -201,7 +201,7 @@ certctl serve-certs \
 Allow local testing plus private networks:
 
 ```bash
-certctl serve-certs \
+uvoocertctl serve-certs \
   --listen :8443 \
   --tls-cert-file server.crt \
   --tls-key-file server.key \
@@ -212,7 +212,7 @@ certctl serve-certs \
 Enable the remote admin API and Prometheus metrics:
 
 ```bash
-certctl serve-certs \
+uvoocertctl serve-certs \
   --listen :8443 \
   --tls-cert-file server.crt \
   --tls-key-file server.key \
@@ -221,7 +221,7 @@ certctl serve-certs \
   --admin-password env:CERTCTL_ADMIN_PASSWORD \
   --metrics
 
-certctl serve-certs \
+uvoocertctl serve-certs \
   --listen :8443 \
   --tls-cert-file server.crt \
   --tls-key-file server.key \
@@ -237,47 +237,47 @@ Useful remote checks:
 
 ```bash
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  https://certctl.example.com:8443/admin/v1/doctor
+  https://uvoocertctl.example.com:8443/admin/v1/doctor
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  https://certctl.example.com:8443/metrics
+  https://uvoocertctl.example.com:8443/metrics
 
 curl -sS -u metrics:"$CERTCTL_METRICS_PASSWORD" \
-  https://certctl.example.com:8443/metrics
+  https://uvoocertctl.example.com:8443/metrics
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  https://certctl.example.com:8443/admin/v1/subjects?status=pending
+  https://uvoocertctl.example.com:8443/admin/v1/subjects?status=pending
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -H 'Content-Type: application/json' \
-  -X POST https://certctl.example.com:8443/admin/v1/subjects/approve \
+  -X POST https://uvoocertctl.example.com:8443/admin/v1/subjects/approve \
   -d '{"issuer":"https://accounts.google.com","subject":"user-123","local_groups":["viewers"]}'
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  https://certctl.example.com:8443/admin/v1/subjects/<subject-id>
+  https://uvoocertctl.example.com:8443/admin/v1/subjects/<subject-id>
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -H 'Content-Type: application/json' \
-  -X PUT https://certctl.example.com:8443/admin/v1/subjects/<subject-id> \
+  -X PUT https://uvoocertctl.example.com:8443/admin/v1/subjects/<subject-id> \
   -d '{"status":"active","local_groups":["employees"]}'
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  -X DELETE https://certctl.example.com:8443/admin/v1/subjects/<subject-id>
+  -X DELETE https://uvoocertctl.example.com:8443/admin/v1/subjects/<subject-id>
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  https://certctl.example.com:8443/admin/v1/subject-auto-approvals
+  https://uvoocertctl.example.com:8443/admin/v1/subject-auto-approvals
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  https://certctl.example.com:8443/admin/v1/effective-authz
+  https://uvoocertctl.example.com:8443/admin/v1/effective-authz
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  https://certctl.example.com:8443/admin/v1/doctor/auth
+  https://uvoocertctl.example.com:8443/admin/v1/doctor/auth
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  https://certctl.example.com:8443/admin/v1/auth-issuers?probe=true
+  https://uvoocertctl.example.com:8443/admin/v1/auth-issuers?probe=true
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  https://certctl.example.com:8443/admin/v1/authz-bindings
+  https://uvoocertctl.example.com:8443/admin/v1/authz-bindings
 ```
 
 Notes:
@@ -303,13 +303,13 @@ Notes:
 Create a backup before lifecycle changes:
 
 ```bash
-certctl backup-db --out certctl-backup.db
+uvoocertctl backup-db --out uvoocertctl-backup.db
 ```
 
 Restore with guardrails:
 
 ```bash
-certctl restore-db --from certctl-backup.db --force
+uvoocertctl restore-db --from uvoocertctl-backup.db --force
 ```
 
 Recommended practice:
@@ -323,7 +323,7 @@ Recommended practice:
 Rotate a root:
 
 ```bash
-certctl create-root-ca \
+uvoocertctl create-root-ca \
   --name corp-root \
   --common-name "Corp Root CA" \
   --storage-password env:CERTCTL_STORAGE_PASSWORD
@@ -332,7 +332,7 @@ certctl create-root-ca \
 Rotate an intermediate:
 
 ```bash
-certctl create-intermediate-ca \
+uvoocertctl create-intermediate-ca \
   --root-name corp-root \
   --name corp-issuing \
   --common-name "Corp Issuing CA" \
@@ -343,10 +343,10 @@ certctl create-intermediate-ca \
 Lifecycle commands:
 
 ```bash
-certctl revoke --kind private --id <cert-id>
-certctl retire --kind intermediate --id <ica-id>
-certctl promote --kind intermediate --id <ica-id>
-certctl history --kind intermediate --name corp-issuing
+uvoocertctl revoke --kind private --id <cert-id>
+uvoocertctl retire --kind intermediate --id <ica-id>
+uvoocertctl promote --kind intermediate --id <ica-id>
+uvoocertctl history --kind intermediate --name corp-issuing
 ```
 
 ## 8. Public certificate workflow
@@ -354,7 +354,7 @@ certctl history --kind intermediate --name corp-issuing
 Issue:
 
 ```bash
-certctl get \
+uvoocertctl get \
   --common-name "*.example.com" \
   --sans "*.example.com,example.com" \
   --provider godaddy \
@@ -368,14 +368,14 @@ certctl get \
 Renew:
 
 ```bash
-certctl renew --common-name "*.example.com"
+uvoocertctl renew --common-name "*.example.com"
 ```
 
 ## 9. Incident checklist
 
 Certificate or CA expiring soon:
 
-- run `certctl doctor --warn-days 14`
+- run `uvoocertctl doctor --warn-days 14`
 - rotate or renew before expiry
 - confirm lineage with `history`
 
@@ -383,7 +383,7 @@ Need to recover:
 
 - create a fresh backup of the current DB if possible
 - restore from the last known-good backup
-- rerun `certctl doctor`
+- rerun `uvoocertctl doctor`
 
 Need to stop new issuance from a CA:
 

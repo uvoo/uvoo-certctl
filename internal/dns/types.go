@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"certctl/internal/util"
+	"uvoocertctl/internal/util"
 )
 
 type Record struct {
@@ -80,8 +80,8 @@ func CheckPrecursors(ctx context.Context, p Provider, domain, resolver string, w
 		if err != nil {
 			return err
 		}
-		name := util.RelativeRecordName(zone, "_certctl-preflight-"+fmt.Sprintf("%d", time.Now().Unix())+"."+zone)
-		value := fmt.Sprintf("certctl-preflight-%d", time.Now().UnixNano())
+		name := util.RelativeRecordName(zone, "_uvoocertctl-preflight-"+fmt.Sprintf("%d", time.Now().Unix())+"."+zone)
+		value := fmt.Sprintf("uvoocertctl-preflight-%d", time.Now().UnixNano())
 		if err := p.CreateRecord(ctx, zone, name, "TXT", value, 60); err != nil {
 			return fmt.Errorf("temporary write test create failed: %w", err)
 		}

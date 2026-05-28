@@ -2,7 +2,7 @@
 .github
 .gocache
 dist
-certctl
+uvoocertctl
 certs.db
 tmp
 trash

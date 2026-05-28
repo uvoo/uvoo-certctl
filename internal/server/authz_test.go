@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"certctl/internal/auth"
-	"certctl/internal/storage"
+	"uvoocertctl/internal/auth"
+	"uvoocertctl/internal/storage"
 
 	jose "github.com/go-jose/go-jose/v4"
 	josejwt "github.com/go-jose/go-jose/v4/jwt"
@@ -33,7 +33,7 @@ func TestAdminDoctorBearerPendingByDefault(t *testing.T) {
 		Name:          "local-keycloak",
 		Enabled:       true,
 		Issuer:        issuerURL,
-		Audiences:     []string{"certctl"},
+		Audiences:     []string{"uvoocertctl"},
 		SubjectClaim:  "sub",
 		UsernameClaim: "preferred_username",
 		EmailClaim:    "email",
@@ -45,7 +45,7 @@ func TestAdminDoctorBearerPendingByDefault(t *testing.T) {
 	if err := store.CreateAuthzBinding(storage.AuthzBinding{
 		ID:         "binding-1",
 		Enabled:    true,
-		Principal:  "role:" + issuerURL + ":certctl_admin",
+		Principal:  "role:" + issuerURL + ":uvoocertctl_admin",
 		Permission: "doctor.read",
 	}); err != nil {
 		t.Fatal(err)
@@ -54,7 +54,7 @@ func TestAdminDoctorBearerPendingByDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	token := signTestToken(t, signer, issuerURL, []string{"certctl_admin"}, []string{"certctl"})
+	token := signTestToken(t, signer, issuerURL, []string{"uvoocertctl_admin"}, []string{"uvoocertctl"})
 
 	srv := New(Config{
 		DBPath:        dbPath,
@@ -105,7 +105,7 @@ func TestAdminDoctorAllowsApprovedBearerSubjectWithBinding(t *testing.T) {
 		Name:          "local-keycloak",
 		Enabled:       true,
 		Issuer:        issuerURL,
-		Audiences:     []string{"certctl"},
+		Audiences:     []string{"uvoocertctl"},
 		SubjectClaim:  "sub",
 		UsernameClaim: "preferred_username",
 		EmailClaim:    "email",
@@ -117,7 +117,7 @@ func TestAdminDoctorAllowsApprovedBearerSubjectWithBinding(t *testing.T) {
 	if err := store.CreateAuthzBinding(storage.AuthzBinding{
 		ID:         "binding-1",
 		Enabled:    true,
-		Principal:  "role:" + issuerURL + ":certctl_admin",
+		Principal:  "role:" + issuerURL + ":uvoocertctl_admin",
 		Permission: "doctor.read",
 	}); err != nil {
 		t.Fatal(err)
@@ -129,7 +129,7 @@ func TestAdminDoctorAllowsApprovedBearerSubjectWithBinding(t *testing.T) {
 		Status:   storage.SubjectStatusActive,
 		Username: "alice",
 		Email:    "alice@example.com",
-		Roles:    []string{"certctl_admin"},
+		Roles:    []string{"uvoocertctl_admin"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestAdminDoctorAllowsApprovedBearerSubjectWithBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	token := signTestToken(t, signer, issuerURL, []string{"certctl_admin"}, []string{"certctl"})
+	token := signTestToken(t, signer, issuerURL, []string{"uvoocertctl_admin"}, []string{"uvoocertctl"})
 
 	srv := New(Config{
 		DBPath:        dbPath,
@@ -182,7 +182,7 @@ func TestAdminDoctorAutoApprovesMatchingSubjectRule(t *testing.T) {
 		Name:          "local-keycloak",
 		Enabled:       true,
 		Issuer:        issuerURL,
-		Audiences:     []string{"certctl"},
+		Audiences:     []string{"uvoocertctl"},
 		SubjectClaim:  "sub",
 		UsernameClaim: "preferred_username",
 		EmailClaim:    "email",
@@ -213,7 +213,7 @@ func TestAdminDoctorAutoApprovesMatchingSubjectRule(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	token := signTestTokenWithClaims(t, signer, issuerURL, []string{"certctl_viewer"}, []string{"certctl"}, map[string]any{
+	token := signTestTokenWithClaims(t, signer, issuerURL, []string{"uvoocertctl_viewer"}, []string{"uvoocertctl"}, map[string]any{
 		"email": "alice@example.com",
 	})
 
@@ -263,7 +263,7 @@ func TestAdminDoctorBearerForbiddenWithoutBinding(t *testing.T) {
 		Name:          "local-keycloak",
 		Enabled:       true,
 		Issuer:        issuerURL,
-		Audiences:     []string{"certctl"},
+		Audiences:     []string{"uvoocertctl"},
 		SubjectClaim:  "sub",
 		UsernameClaim: "preferred_username",
 		EmailClaim:    "email",
@@ -276,7 +276,7 @@ func TestAdminDoctorBearerForbiddenWithoutBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	token := signTestToken(t, signer, issuerURL, []string{"certctl_viewer"}, []string{"certctl"})
+	token := signTestToken(t, signer, issuerURL, []string{"uvoocertctl_viewer"}, []string{"uvoocertctl"})
 
 	srv := New(Config{
 		DBPath:        dbPath,
@@ -307,7 +307,7 @@ func TestAdminDoctorBearerForbiddenWhenSubjectDisabled(t *testing.T) {
 		Name:          "local-keycloak",
 		Enabled:       true,
 		Issuer:        issuerURL,
-		Audiences:     []string{"certctl"},
+		Audiences:     []string{"uvoocertctl"},
 		SubjectClaim:  "sub",
 		UsernameClaim: "preferred_username",
 		EmailClaim:    "email",
@@ -319,7 +319,7 @@ func TestAdminDoctorBearerForbiddenWhenSubjectDisabled(t *testing.T) {
 	if err := store.CreateAuthzBinding(storage.AuthzBinding{
 		ID:         "binding-1",
 		Enabled:    true,
-		Principal:  "role:" + issuerURL + ":certctl_admin",
+		Principal:  "role:" + issuerURL + ":uvoocertctl_admin",
 		Permission: "doctor.read",
 	}); err != nil {
 		t.Fatal(err)
@@ -331,7 +331,7 @@ func TestAdminDoctorBearerForbiddenWhenSubjectDisabled(t *testing.T) {
 		Status:   storage.SubjectStatusActive,
 		Username: "alice",
 		Email:    "alice@example.com",
-		Roles:    []string{"certctl_admin"},
+		Roles:    []string{"uvoocertctl_admin"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ func TestAdminDoctorBearerForbiddenWhenSubjectDisabled(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	token := signTestToken(t, signer, issuerURL, []string{"certctl_admin"}, []string{"certctl"})
+	token := signTestToken(t, signer, issuerURL, []string{"uvoocertctl_admin"}, []string{"uvoocertctl"})
 
 	srv := New(Config{
 		DBPath:        dbPath,

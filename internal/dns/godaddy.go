@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"strings"
 
-	"certctl/internal/util"
+	"uvoocertctl/internal/util"
 )
 
 type godaddyRecord struct {

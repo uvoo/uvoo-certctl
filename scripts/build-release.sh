@@ -8,7 +8,7 @@ COMMIT="${COMMIT:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || ech
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 GO_BIN="${GO_BIN:-go}"
 DEFAULT_CACHE_ROOT="${XDG_CACHE_HOME:-${HOME:-$ROOT_DIR/.cache}}"
-GOCACHE="${GOCACHE:-$DEFAULT_CACHE_ROOT/certctl-gocache}"
+GOCACHE="${GOCACHE:-$DEFAULT_CACHE_ROOT/uvoocertctl-gocache}"
 
 DEFAULT_TARGETS=(
   "linux/amd64"
@@ -21,7 +21,7 @@ DEFAULT_TARGETS=(
 
 usage() {
   cat <<'EOF'
-Build certctl release archives for common platforms.
+Build uvoocertctl release archives for common platforms.
 
 Usage:
   scripts/build-release.sh
@@ -34,7 +34,7 @@ Environment:
   BUILD_DATE Build timestamp embedded into the binary. Default: current UTC time
   OUT_DIR   Output directory for built archives. Default: ./dist
   GO_BIN    Go executable to use. Default: go
-  GOCACHE   Go build cache directory. Default: $HOME/.cache/certctl-gocache
+  GOCACHE   Go build cache directory. Default: $HOME/.cache/uvoocertctl-gocache
 
 Outputs:
   - Per-platform release archives in ./dist
@@ -88,9 +88,9 @@ for target in "${TARGETS[@]}"; do
     ext=".exe"
   fi
 
-  artifact_base="certctl_${VERSION}_${goos}_${goarch}"
+  artifact_base="uvoocertctl_${VERSION}_${goos}_${goarch}"
   artifact_dir="$OUT_DIR/$artifact_base"
-  bin_name="certctl${ext}"
+  bin_name="uvoocertctl${ext}"
   archive_name="${artifact_base}.tar.gz"
   if [[ "$goos" == "windows" ]]; then
     archive_name="${artifact_base}.zip"
@@ -109,7 +109,7 @@ for target in "${TARGETS[@]}"; do
     cd "$ROOT_DIR"
     GOCACHE="$GOCACHE" GOOS="$goos" GOARCH="$goarch" \
       "$GO_BIN" build -trimpath \
-        -ldflags="-s -w -X certctl/cmd.version=$VERSION -X certctl/cmd.commit=$COMMIT -X certctl/cmd.date=$BUILD_DATE" \
+        -ldflags="-s -w -X uvoocertctl/cmd.version=$VERSION -X uvoocertctl/cmd.commit=$COMMIT -X uvoocertctl/cmd.date=$BUILD_DATE" \
         -o "$artifact_dir/$bin_name" .
   )
 

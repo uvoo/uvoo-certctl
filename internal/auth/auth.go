@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"certctl/internal/storage"
+	"uvoocertctl/internal/storage"
 )
 
 type Identity struct {
@@ -32,7 +32,7 @@ type PermissionRequest struct {
 
 type contextKey string
 
-const identityContextKey contextKey = "certctl_auth_identity"
+const identityContextKey contextKey = "uvoocertctl_auth_identity"
 
 func WithIdentity(ctx context.Context, identity Identity) context.Context {
 	return context.WithValue(ctx, identityContextKey, identity)
