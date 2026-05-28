@@ -57,7 +57,7 @@ func init() {
 	cmd.Flags().StringVar(&flags.APIUser, "api-user", "", "provider API user/key id")
 	cmd.Flags().StringVar(&flags.APIKey, "api-key", "", "provider API secret/key")
 	cmd.Flags().StringVar(&flags.ClientIP, "client-ip", "", "namecheap whitelisted client IP")
-	cmd.Flags().StringVar(&flags.DNSResolver, "dns-resolver", "8.8.8.8", "resolver used for prerequisite DNS lookup")
+	cmd.Flags().StringVar(&flags.DNSResolver, "dns-resolver", "8.8.8.8", "resolver used for public DNS checks")
 	cmd.Flags().DurationVar(&timeout, "timeout", 2*time.Minute, "overall timeout")
 	cmd.Flags().BoolVar(&writeTest, "write-test", false, "create and remove a temporary TXT record")
 	_ = cmd.MarkFlagRequired("domain")

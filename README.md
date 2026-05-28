@@ -40,6 +40,7 @@ A Cobra-based refactor of the original single-file ACME utility.
 go run . check-precursors \
   --provider namecheap \
   --domain '*.example.com' \
+  --dns-resolver 8.8.8.8 \
   --api-user "$NAMECHEAP_API_USER" \
   --api-key "$NAMECHEAP_API_KEY" \
   --client-ip "$NAMECHEAP_CLIENT_IP" \
@@ -78,6 +79,7 @@ go run . get \
   --provider godaddy \
   --email admin@example.com \
   --storage-password 'change-me' \
+  --dns-resolver 8.8.8.8 \
   --api-user "$GODADDY_API_KEY" \
   --api-key "$GODADDY_API_SECRET"
 ```
@@ -129,6 +131,7 @@ go run . issue-private-cert \
 - Namecheap requires the client IP to be whitelisted before API calls succeed.
 - Namecheap record updates work by reading all DNS hosts and writing the full set back.
 - `get` runs precursor checks by default. Use `--skip-checks` only when you are sure provider access and DNS are already correct.
+- `--dns-resolver` defaults to `8.8.8.8` and is used for public DNS checks plus lego DNS-01 recursive lookups; use a public resolver here when local split DNS would return internal answers.
 - The ACME flow still uses lego for DNS-01 challenge presentation.
 - Password-like flags accept raw values, `env:VARNAME`, or `file:/path/to/secret`.
 - `--default-root-ca` and `--default-intermediate-ca` can be set once to avoid repeating issuer names on every command.
