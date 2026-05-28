@@ -1,8 +1,0 @@
-dist/
-.gocache/
-certctl
-certs.db
-out-privateca/
-trash/
-tls.crt
-tls.key
