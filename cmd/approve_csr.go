@@ -142,7 +142,7 @@ func init() {
 	cmd.Flags().StringVar(&flags.APIUser, "api-user", "", "provider API user/key id for public requests")
 	cmd.Flags().StringVar(&flags.APIKey, "api-key", "", "provider API secret/key for public requests")
 	cmd.Flags().StringVar(&flags.ClientIP, "client-ip", "", "namecheap whitelisted client IP for public requests")
-	cmd.Flags().StringVar(&flags.DNSResolver, "dns-resolver", "8.8.8.8", "resolver used for public precursor checks")
+	cmd.Flags().StringVar(&flags.DNSResolver, "dns-resolver", "8.8.8.8", "resolver used for public DNS checks and ACME DNS-01 lookups")
 	cmd.Flags().BoolVar(&staging, "staging", false, "use Let's Encrypt staging for public requests")
 	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "overall ACME timeout for public requests")
 	cmd.Flags().DurationVar(&propagation, "propagation-timeout", 30*time.Minute, "DNS propagation timeout for public requests")

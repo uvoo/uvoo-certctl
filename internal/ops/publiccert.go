@@ -84,6 +84,7 @@ func IssuePublicCert(store *storage.Store, params IssuePublicCertParams) (IssueP
 		APIUser:     params.Provider.APIUser,
 		APIKey:      params.Provider.APIKey,
 		ClientIP:    params.Provider.ClientIP,
+		DNSResolver: params.Provider.DNSResolver,
 		Timeout:     params.Timeout,
 		UseStaging:  params.Staging,
 		Propagation: params.Propagation,

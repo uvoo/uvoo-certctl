@@ -360,6 +360,7 @@ certctl get \
   --provider godaddy \
   --email admin@example.com \
   --storage-password env:CERTCTL_STORAGE_PASSWORD \
+  --dns-resolver 8.8.8.8 \
   --api-user "$GODADDY_API_KEY" \
   --api-key "$GODADDY_API_SECRET"
 ```

@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-acme/lego/v4/certcrypto"
 	"github.com/go-acme/lego/v4/certificate"
+	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/lego"
 	"github.com/go-acme/lego/v4/providers/dns/godaddy"
 	legoNamecheap "github.com/go-acme/lego/v4/providers/dns/namecheap"
@@ -37,6 +38,7 @@ type IssueOptions struct {
 	APIUser     string
 	APIKey      string
 	ClientIP    string
+	DNSResolver string
 	Timeout     time.Duration
 	UseStaging  bool
 	Propagation time.Duration
@@ -50,6 +52,7 @@ type IssueForCSROptions struct {
 	APIUser     string
 	APIKey      string
 	ClientIP    string
+	DNSResolver string
 	Timeout     time.Duration
 	UseStaging  bool
 	Propagation time.Duration
@@ -154,6 +157,7 @@ func IssueForCSR(ctx context.Context, opts IssueForCSROptions) (*certificate.Res
 		APIUser:     opts.APIUser,
 		APIKey:      opts.APIKey,
 		ClientIP:    opts.ClientIP,
+		DNSResolver: opts.DNSResolver,
 		Timeout:     opts.Timeout,
 		Propagation: opts.Propagation,
 	}); err != nil {
@@ -188,7 +192,7 @@ func configureDNSProvider(client *lego.Client, opts IssueOptions) error {
 		if err != nil {
 			return err
 		}
-		return client.Challenge.SetDNS01Provider(p)
+		return client.Challenge.SetDNS01Provider(p, dnsChallengeOptions(opts)...)
 
 	case "namecheap":
 		config := legoNamecheap.NewDefaultConfig()
@@ -207,9 +211,30 @@ func configureDNSProvider(client *lego.Client, opts IssueOptions) error {
 		if err != nil {
 			return err
 		}
-		return client.Challenge.SetDNS01Provider(p)
+		return client.Challenge.SetDNS01Provider(p, dnsChallengeOptions(opts)...)
 
 	default:
 		return fmt.Errorf("unsupported provider: %s", opts.Provider)
 	}
+}
+
+func dnsChallengeOptions(opts IssueOptions) []dns01.ChallengeOption {
+	resolvers := resolverList(opts.DNSResolver)
+	if len(resolvers) == 0 {
+		return nil
+	}
+	return []dns01.ChallengeOption{
+		dns01.AddRecursiveNameservers(dns01.ParseNameservers(resolvers)),
+	}
+}
+
+func resolverList(resolver string) []string {
+	var resolvers []string
+	for _, item := range strings.Split(resolver, ",") {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			resolvers = append(resolvers, item)
+		}
+	}
+	return resolvers
 }

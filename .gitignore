@@ -21,3 +21,12 @@ promalert.yaml
 server.csr
 server.key
 promalert-state.json
+dist/
+.gocache/
+certctl
+certs.db
+out-privateca/
+trash/
+tls.crt
+tls.key
+/uvoominicert

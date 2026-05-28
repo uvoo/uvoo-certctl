@@ -32,6 +32,7 @@ func init() {
     --provider godaddy \
     --email admin@example.com \
     --storage-password env:CERTCTL_STORAGE_PASSWORD \
+    --dns-resolver 8.8.8.8 \
     --api-user "$GODADDY_API_KEY" \
     --api-key "$GODADDY_API_SECRET"`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -151,7 +152,7 @@ func init() {
 	cmd.Flags().StringVar(&flags.APIUser, "api-user", "", "provider API user/key id")
 	cmd.Flags().StringVar(&flags.APIKey, "api-key", "", "provider API secret/key")
 	cmd.Flags().StringVar(&flags.ClientIP, "client-ip", "", "namecheap whitelisted client IP")
-	cmd.Flags().StringVar(&flags.DNSResolver, "dns-resolver", "8.8.8.8", "resolver used for prerequisite DNS lookup")
+	cmd.Flags().StringVar(&flags.DNSResolver, "dns-resolver", "8.8.8.8", "resolver used for public DNS checks and ACME DNS-01 lookups")
 	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "overall ACME timeout")
 	cmd.Flags().DurationVar(&propagation, "propagation-timeout", 30*time.Minute, "DNS propagation timeout for provider checks")
 	cmd.Flags().BoolVar(&skipChecks, "skip-checks", false, "skip precursor checks")
