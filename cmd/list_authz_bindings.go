@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"uvoocertctl/internal/storage"
+	"uvoo-certctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -19,9 +19,9 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "list-authz-bindings",
 		Short: "List authorization bindings for JWT principals",
-		Example: `  uvoocertctl list-authz-bindings
-  uvoocertctl list-authz-bindings --principal 'role:https://sso.example.com/realms/uvoocertctl:uvoocertctl_admin'
-  uvoocertctl list-authz-bindings --all --json`,
+		Example: `  uvoo-certctl list-authz-bindings
+  uvoo-certctl list-authz-bindings --principal 'role:https://sso.example.com/realms/uvoo-certctl:uvoo-certctl_admin'
+  uvoo-certctl list-authz-bindings --all --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {

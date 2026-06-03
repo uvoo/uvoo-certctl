@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"uvoocertctl/internal/storage"
+	"uvoo-certctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -16,8 +16,8 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "backup-db",
 		Short: "Create a SQLite backup of the certificate database",
-		Example: `  uvoocertctl backup-db --out uvoocertctl-backup.db
-  uvoocertctl backup-db --out /secure/backups/uvoocertctl.db --force --json`,
+		Example: `  uvoo-certctl backup-db --out uvoo-certctl-backup.db
+  uvoo-certctl backup-db --out /secure/backups/uvoo-certctl.db --force --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if _, err := os.Stat(outPath); err == nil {
 				if !force {

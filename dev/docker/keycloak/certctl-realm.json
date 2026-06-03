@@ -1,5 +1,5 @@
 {
-  "realm": "uvoocertctl",
+  "realm": "uvoo-certctl",
   "enabled": true,
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
@@ -8,8 +8,8 @@
   "editUsernameAllowed": false,
   "clients": [
     {
-      "clientId": "uvoocertctl",
-      "name": "uvoocertctl",
+      "clientId": "uvoo-certctl",
+      "name": "uvoo-certctl",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": true,
@@ -17,7 +17,7 @@
       "standardFlowEnabled": false,
       "serviceAccountsEnabled": false,
       "fullScopeAllowed": true,
-      "defaultClientScopes": ["basic", "profile", "email", "roles", "aud-uvoocertctl"],
+      "defaultClientScopes": ["basic", "profile", "email", "roles", "aud-uvoo-certctl"],
       "optionalClientScopes": ["offline_access"]
     }
   ],
@@ -115,7 +115,7 @@
       ]
     },
     {
-      "name": "aud-uvoocertctl",
+      "name": "aud-uvoo-certctl",
       "protocol": "openid-connect",
       "attributes": {
         "display.on.consent.screen": "false",
@@ -123,12 +123,12 @@
       },
       "protocolMappers": [
         {
-          "name": "aud-uvoocertctl",
+          "name": "aud-uvoo-certctl",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
           "consentRequired": false,
           "config": {
-            "included.custom.audience": "uvoocertctl",
+            "included.custom.audience": "uvoo-certctl",
             "id.token.claim": "false",
             "access.token.claim": "true",
             "userinfo.token.claim": "false"
@@ -139,7 +139,7 @@
   ],
   "roles": {
     "realm": [
-      { "name": "uvoocertctl_admin", "description": "Can administer uvoocertctl routes allowed by local bindings" }
+      { "name": "uvoo-certctl_admin", "description": "Can administer uvoo-certctl routes allowed by local bindings" }
     ]
   },
   "groups": [
@@ -156,7 +156,7 @@
       "credentials": [
         { "type": "password", "value": "alicepass", "temporary": false }
       ],
-      "realmRoles": ["uvoocertctl_admin"],
+      "realmRoles": ["uvoo-certctl_admin"],
       "groups": ["platform"]
     }
   ]

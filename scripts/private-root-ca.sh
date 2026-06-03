@@ -2,7 +2,7 @@
  set -eu
 
 
-uvoocertctl create-root-ca \
+uvoo-certctl create-root-ca \
   --name corp-root-1 \
   --common-name "Corp Root CA 1" \
   --key-type ec256 \
@@ -18,7 +18,7 @@ ROOT_ID=$1
 
 echo "Processing Root ID: $ROOT_ID"
 
-uvoocertctl create-intermediate-ca \
+uvoo-certctl create-intermediate-ca \
   --root-id <root-id> \
   --name corp-ica-1 \
   --common-name "Corp Intermediate CA 1" \
@@ -27,7 +27,7 @@ uvoocertctl create-intermediate-ca \
   --key-password ica-secret \
   --parent-password root-secret
 
-uvoocertctl issue-private-cert \
+uvoo-certctl issue-private-cert \
   --intermediate-id <ica-id> \
   --common-name host1.example.internal \
   --san host1.example.internal,host1 \
@@ -37,7 +37,7 @@ uvoocertctl issue-private-cert \
   --key-password leaf-secret \
   --issuer-password ica-secret
 
-uvoocertctl issue-private-cert \
+uvoo-certctl issue-private-cert \
   --intermediate-id <ica-id> \
   --common-name workstation-123 \
   --cert-type client \

@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"uvoocertctl/internal/storage"
+	"uvoo-certctl/internal/storage"
 )
 
 func TestCSRSubmitAndPickupFlow(t *testing.T) {

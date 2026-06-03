@@ -1,4 +1,4 @@
-./uvoocertctl share-cert \
+./uvoo-certctl share-cert \
   --kind public \
   --name test13.uvoo.io \
   --mode cert \
@@ -7,7 +7,7 @@
   --base-url https://certs.example.com
 exit
 
-./uvoocertctl share-cert \
+./uvoo-certctl share-cert \
   --kind private \
   --name host1.example.internal \
   --mode cert_key \

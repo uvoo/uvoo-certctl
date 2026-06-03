@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
-	"uvoocertctl/internal/acme"
-	"uvoocertctl/internal/cli"
-	"uvoocertctl/internal/storage"
-	"uvoocertctl/internal/util"
+	"uvoo-certctl/internal/acme"
+	"uvoo-certctl/internal/cli"
+	"uvoo-certctl/internal/storage"
+	"uvoo-certctl/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -22,8 +22,8 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "renew",
 		Short: "Renew a stored certificate",
-		Example: `  uvoocertctl renew --common-name api.example.com
-  uvoocertctl renew --common-name api.example.com --force --json`,
+		Example: `  uvoo-certctl renew --common-name api.example.com
+  uvoo-certctl renew --common-name api.example.com --force --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			password, err := util.ResolveSecretValue(password, "CERTCTL_KEY_PASSWORD", "CERTCTL_STORAGE_PASSWORD")
 			if err != nil {

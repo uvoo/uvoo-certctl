@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"uvoocertctl/internal/storage"
+	"uvoo-certctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -19,8 +19,8 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "restore-db",
 		Short: "Restore the certificate database from a backup file",
-		Example: `  uvoocertctl restore-db --from uvoocertctl-backup.db --force
-  uvoocertctl restore-db --from /secure/backups/uvoocertctl.db --force --json`,
+		Example: `  uvoo-certctl restore-db --from uvoo-certctl-backup.db --force
+  uvoo-certctl restore-db --from /secure/backups/uvoo-certctl.db --force --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fromAbs, err := filepath.Abs(fromPath)
 			if err != nil {

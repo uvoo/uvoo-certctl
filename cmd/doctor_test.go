@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"uvoocertctl/internal/ops"
-	"uvoocertctl/internal/storage"
+	"uvoo-certctl/internal/ops"
+	"uvoo-certctl/internal/storage"
 )
 
 func TestRunDoctorReportsMissingIntermediateReference(t *testing.T) {
@@ -157,7 +157,7 @@ func TestRunDoctorWarnsOnDisabledIssuerStillReferenced(t *testing.T) {
 			{
 				ID:      "issuer-1",
 				Name:    "keycloak-local",
-				Issuer:  "https://issuer.example.test/realms/uvoocertctl",
+				Issuer:  "https://issuer.example.test/realms/uvoo-certctl",
 				Enabled: false,
 			},
 		},
@@ -165,7 +165,7 @@ func TestRunDoctorWarnsOnDisabledIssuerStillReferenced(t *testing.T) {
 			{
 				ID:         "binding-1",
 				Enabled:    true,
-				Principal:  "role:https://issuer.example.test/realms/uvoocertctl:uvoocertctl_admin",
+				Principal:  "role:https://issuer.example.test/realms/uvoo-certctl:uvoo-certctl_admin",
 				Permission: "doctor.read",
 			},
 		},
@@ -191,7 +191,7 @@ func TestRunDoctorWarnsOnBrokenIssuerDiscovery(t *testing.T) {
 			{
 				ID:      "issuer-1",
 				Name:    "keycloak-local",
-				Issuer:  "https://issuer.example.test/realms/uvoocertctl",
+				Issuer:  "https://issuer.example.test/realms/uvoo-certctl",
 				Enabled: true,
 			},
 		},
@@ -199,14 +199,14 @@ func TestRunDoctorWarnsOnBrokenIssuerDiscovery(t *testing.T) {
 			{
 				ID:         "binding-1",
 				Enabled:    true,
-				Principal:  "role:https://issuer.example.test/realms/uvoocertctl:uvoocertctl_admin",
+				Principal:  "role:https://issuer.example.test/realms/uvoo-certctl:uvoo-certctl_admin",
 				Permission: "doctor.read",
 			},
 		},
 	}, ops.DoctorOptions{
 		WarnDays: 0,
 		AuthIssuerProbe: func(issuer storage.AuthIssuer) error {
-			if issuer.Issuer == "https://issuer.example.test/realms/uvoocertctl" {
+			if issuer.Issuer == "https://issuer.example.test/realms/uvoo-certctl" {
 				return assertErr("oidc discovery failed with status 500")
 			}
 			return nil
@@ -238,7 +238,7 @@ func TestRunDoctorWarnsOnBindingReferencingUnknownIssuer(t *testing.T) {
 			{
 				ID:      "issuer-1",
 				Name:    "keycloak-local",
-				Issuer:  "https://issuer.example.test/realms/uvoocertctl",
+				Issuer:  "https://issuer.example.test/realms/uvoo-certctl",
 				Enabled: true,
 			},
 		},
@@ -246,7 +246,7 @@ func TestRunDoctorWarnsOnBindingReferencingUnknownIssuer(t *testing.T) {
 			{
 				ID:         "binding-1",
 				Enabled:    true,
-				Principal:  "role:https://missing-issuer.example.test/realms/uvoocertctl:uvoocertctl_admin",
+				Principal:  "role:https://missing-issuer.example.test/realms/uvoo-certctl:uvoo-certctl_admin",
 				Permission: "doctor.read",
 			},
 		},
@@ -278,7 +278,7 @@ func TestRunDoctorWarnsOnBroadAuthzBindings(t *testing.T) {
 			{
 				ID:           "binding-2",
 				Enabled:      true,
-				Principal:    "role:https://issuer.example.test/realms/uvoocertctl:approver",
+				Principal:    "role:https://issuer.example.test/realms/uvoo-certctl:approver",
 				Permission:   "csr.approve",
 				ResourceKind: "csr_request",
 				ResourceRef:  "*",
@@ -286,7 +286,7 @@ func TestRunDoctorWarnsOnBroadAuthzBindings(t *testing.T) {
 			{
 				ID:         "binding-3",
 				Enabled:    true,
-				Principal:  "role:https://issuer.example.test/realms/uvoocertctl:submitter",
+				Principal:  "role:https://issuer.example.test/realms/uvoo-certctl:submitter",
 				Permission: "csr.submit",
 			},
 		},
@@ -319,19 +319,19 @@ func TestRunDoctorWarnsOnDuplicateAndConflictingBindings(t *testing.T) {
 			{
 				ID:         "binding-1",
 				Enabled:    true,
-				Principal:  "role:https://issuer.example.test/realms/uvoocertctl:uvoocertctl_admin",
+				Principal:  "role:https://issuer.example.test/realms/uvoo-certctl:uvoo-certctl_admin",
 				Permission: "doctor.read",
 			},
 			{
 				ID:         "binding-2",
 				Enabled:    true,
-				Principal:  "role:https://issuer.example.test/realms/uvoocertctl:uvoocertctl_admin",
+				Principal:  "role:https://issuer.example.test/realms/uvoo-certctl:uvoo-certctl_admin",
 				Permission: "doctor.read",
 			},
 			{
 				ID:         "binding-3",
 				Enabled:    false,
-				Principal:  "role:https://issuer.example.test/realms/uvoocertctl:uvoocertctl_admin",
+				Principal:  "role:https://issuer.example.test/realms/uvoo-certctl:uvoo-certctl_admin",
 				Permission: "doctor.read",
 			},
 		},
@@ -362,7 +362,7 @@ func TestRunDoctorWarnsOnUnusedIssuer(t *testing.T) {
 			{
 				ID:      "issuer-1",
 				Name:    "keycloak-local",
-				Issuer:  "https://issuer.example.test/realms/uvoocertctl",
+				Issuer:  "https://issuer.example.test/realms/uvoo-certctl",
 				Enabled: true,
 			},
 		},
@@ -424,7 +424,7 @@ func TestRunDoctorWarnsOnBroadAndUnknownSubjectAutoApprovalRules(t *testing.T) {
 			{
 				ID:      "issuer-2",
 				Name:    "disabled-keycloak",
-				Issuer:  "https://issuer.example.test/realms/uvoocertctl",
+				Issuer:  "https://issuer.example.test/realms/uvoo-certctl",
 				Enabled: false,
 			},
 		},
@@ -439,13 +439,13 @@ func TestRunDoctorWarnsOnBroadAndUnknownSubjectAutoApprovalRules(t *testing.T) {
 				ID:      "rule-2",
 				Name:    "unknown-issuer",
 				Enabled: true,
-				Issuer:  "https://missing-issuer.example.test/realms/uvoocertctl",
+				Issuer:  "https://missing-issuer.example.test/realms/uvoo-certctl",
 			},
 			{
 				ID:      "rule-3",
 				Name:    "disabled-issuer",
 				Enabled: true,
-				Issuer:  "https://issuer.example.test/realms/uvoocertctl",
+				Issuer:  "https://issuer.example.test/realms/uvoo-certctl",
 			},
 		},
 	}, ops.DoctorOptions{WarnDays: 0})

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"sort"
 
-	"uvoocertctl/internal/auth"
-	"uvoocertctl/internal/storage"
-	"uvoocertctl/internal/util"
+	"uvoo-certctl/internal/auth"
+	"uvoo-certctl/internal/storage"
+	"uvoo-certctl/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -17,8 +17,8 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "explain-authz",
 		Short: "Verify a JWT bearer token and show derived principals and effective permissions",
-		Example: `  uvoocertctl explain-authz --bearer-token env:CERTCTL_BEARER_TOKEN
-  uvoocertctl explain-authz --bearer-token file:/tmp/token.txt --json`,
+		Example: `  uvoo-certctl explain-authz --bearer-token env:CERTCTL_BEARER_TOKEN
+  uvoo-certctl explain-authz --bearer-token file:/tmp/token.txt --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			token, err := util.ResolveSecretValue(bearerToken, "CERTCTL_BEARER_TOKEN")
 			if err != nil {

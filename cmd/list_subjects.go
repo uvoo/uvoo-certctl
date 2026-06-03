@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"uvoocertctl/internal/storage"
+	"uvoo-certctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -20,11 +20,11 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "list-subjects",
 		Short: "List observed JWT subjects",
-		Example: `  uvoocertctl list-subjects
-			  uvoocertctl list-subjects --all --json
-			  uvoocertctl list-subjects --issuer https://sso.example.com/realms/uvoocertctl
-			  uvoocertctl list-subjects --status pending
-			  uvoocertctl list-subjects --local-group employees`,
+		Example: `  uvoo-certctl list-subjects
+			  uvoo-certctl list-subjects --all --json
+			  uvoo-certctl list-subjects --issuer https://sso.example.com/realms/uvoo-certctl
+			  uvoo-certctl list-subjects --status pending
+			  uvoo-certctl list-subjects --local-group employees`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {

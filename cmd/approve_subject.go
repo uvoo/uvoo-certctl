@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"uvoocertctl/internal/storage"
+	"uvoo-certctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -17,9 +17,9 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "approve-subject",
 		Short: "Approve a pending JWT subject and optionally assign local roles or groups",
-		Example: `  uvoocertctl approve-subject --issuer https://accounts.google.com --subject user-123
-  uvoocertctl approve-subject --issuer https://accounts.google.com --subject user-123 --local-group viewers
-  uvoocertctl approve-subject --issuer https://accounts.google.com --subject user-123 --local-role admin --json`,
+		Example: `  uvoo-certctl approve-subject --issuer https://accounts.google.com --subject user-123
+  uvoo-certctl approve-subject --issuer https://accounts.google.com --subject user-123 --local-group viewers
+  uvoo-certctl approve-subject --issuer https://accounts.google.com --subject user-123 --local-role admin --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {

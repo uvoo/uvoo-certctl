@@ -1,4 +1,4 @@
-# uvoocertctl v0.3.0
+# uvoo-certctl v0.3.0
 
 Adds JWT/OIDC admin auth management, local subject approval controls, Docker-based integration smoke testing, and safer release/operator tooling.
 
@@ -7,7 +7,7 @@ Adds JWT/OIDC admin auth management, local subject approval controls, Docker-bas
 - JWT/OIDC issuer trust and local authorization bindings for the built-in admin API.
 - Auth operator commands for creating, updating, enabling, disabling, checking, explaining, and deleting trusted issuers and bindings.
 - First-seen JWT subjects are now tracked locally and start in `pending` state until explicitly approved.
-- Docker-based Keycloak plus `uvoocertctl` integration smoke testing for end-to-end bearer auth and CSR approval flows.
+- Docker-based Keycloak plus `uvoo-certctl` integration smoke testing for end-to-end bearer auth and CSR approval flows.
 - Built-in issuer presets for Google and Microsoft to reduce first-time JWT/OIDC setup work.
 - Expanded `doctor` coverage for auth configuration drift, including broken discovery or JWKS checks, unknown issuer references, unused issuers, unreachable issuer dependencies, and overly broad or duplicate authz bindings.
 - New effective-permission reporting for principals or bearer tokens with `list-effective-authz`.

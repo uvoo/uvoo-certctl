@@ -169,10 +169,10 @@ fi
 
 shopt -s nullglob
 assets=(
-  "$DIST_DIR"/uvoocertctl_"$VERSION"_*.tar.gz
-  "$DIST_DIR"/uvoocertctl_"$VERSION"_*.zip
-  "$DIST_DIR"/uvoocertctl_"$VERSION"_*.tar.gz.sha256
-  "$DIST_DIR"/uvoocertctl_"$VERSION"_*.zip.sha256
+  "$DIST_DIR"/uvoo-certctl_"$VERSION"_*.tar.gz
+  "$DIST_DIR"/uvoo-certctl_"$VERSION"_*.zip
+  "$DIST_DIR"/uvoo-certctl_"$VERSION"_*.tar.gz.sha256
+  "$DIST_DIR"/uvoo-certctl_"$VERSION"_*.zip.sha256
 )
 
 if [[ -f "$DIST_DIR/checksums.txt" ]]; then

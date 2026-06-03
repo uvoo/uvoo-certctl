@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"uvoocertctl/internal/storage"
+	"uvoo-certctl/internal/storage"
 
 	jose "github.com/go-jose/go-jose/v4"
 	josejwt "github.com/go-jose/go-jose/v4/jwt"
@@ -34,16 +34,16 @@ func TestVerifierCheckIssuerAndRequiredClaims(t *testing.T) {
 	}
 
 	token := signVerifierTestToken(t, signer, issuerURL, map[string]any{
-		"azp": "uvoocertctl-cli",
-	}, []string{"uvoocertctl"})
+		"azp": "uvoo-certctl-cli",
+	}, []string{"uvoo-certctl"})
 	identity, err := verifier.Verify(context.Background(), token, []storage.AuthIssuer{
 		{
 			ID:             "issuer-1",
 			Name:           "local",
 			Enabled:        true,
 			Issuer:         issuerURL,
-			Audiences:      []string{"uvoocertctl"},
-			RequiredClaims: map[string]string{"azp": "uvoocertctl-cli"},
+			Audiences:      []string{"uvoo-certctl"},
+			RequiredClaims: map[string]string{"azp": "uvoo-certctl-cli"},
 		},
 	})
 	if err != nil {
@@ -59,7 +59,7 @@ func TestVerifierCheckIssuerAndRequiredClaims(t *testing.T) {
 			Name:           "local",
 			Enabled:        true,
 			Issuer:         issuerURL,
-			Audiences:      []string{"uvoocertctl"},
+			Audiences:      []string{"uvoo-certctl"},
 			RequiredClaims: map[string]string{"azp": "other-client"},
 		},
 	})
@@ -70,7 +70,7 @@ func TestVerifierCheckIssuerAndRequiredClaims(t *testing.T) {
 
 func TestInspectTokenReturnsIssuerAndAudience(t *testing.T) {
 	issuerURL, signer, _ := newVerifierTestIssuer(t)
-	token := signVerifierTestToken(t, signer, issuerURL, nil, []string{"uvoocertctl", "metrics"})
+	token := signVerifierTestToken(t, signer, issuerURL, nil, []string{"uvoo-certctl", "metrics"})
 	inspection, err := InspectToken(token)
 	if err != nil {
 		t.Fatal(err)

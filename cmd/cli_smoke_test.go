@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"uvoocertctl/internal/storage"
+	"uvoo-certctl/internal/storage"
 )
 
 func TestBackupRestoreAndDoctorCommands(t *testing.T) {
@@ -105,15 +105,15 @@ func TestVersionCommandJSON(t *testing.T) {
 
 func TestAuthCommandsJSON(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "auth.db")
-	issuerURL := "https://issuer.example.test/realms/uvoocertctl"
+	issuerURL := "https://issuer.example.test/realms/uvoo-certctl"
 
 	out, err := runRootCommandForTest(
 		"--db", dbPath,
 		"create-auth-issuer",
 		"--name", "keycloak-local",
 		"--issuer", issuerURL,
-		"--audience", "uvoocertctl",
-		"--required-claim", "azp=uvoocertctl-cli",
+		"--audience", "uvoo-certctl",
+		"--required-claim", "azp=uvoo-certctl-cli",
 		"--json",
 	)
 	if err != nil {
@@ -126,7 +126,7 @@ func TestAuthCommandsJSON(t *testing.T) {
 	out, err = runRootCommandForTest(
 		"--db", dbPath,
 		"create-authz-binding",
-		"--principal", "role:"+issuerURL+":uvoocertctl_admin",
+		"--principal", "role:"+issuerURL+":uvoo-certctl_admin",
 		"--permission", "doctor.read",
 		"--json",
 	)
@@ -140,7 +140,7 @@ func TestAuthCommandsJSON(t *testing.T) {
 	out, err = runRootCommandForTest(
 		"--db", dbPath,
 		"list-effective-authz",
-		"--principal", "role:"+issuerURL+":uvoocertctl_admin",
+		"--principal", "role:"+issuerURL+":uvoo-certctl_admin",
 		"--json",
 	)
 	if err != nil {
@@ -153,7 +153,7 @@ func TestAuthCommandsJSON(t *testing.T) {
 	out, err = runRootCommandForTest(
 		"--db", dbPath,
 		"update-authz-binding",
-		"--match-principal", "role:"+issuerURL+":uvoocertctl_admin",
+		"--match-principal", "role:"+issuerURL+":uvoo-certctl_admin",
 		"--match-permission", "doctor.read",
 		"--permission", "metrics.read",
 		"--json",

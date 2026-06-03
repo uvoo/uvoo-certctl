@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"uvoocertctl/internal/util"
+	"uvoo-certctl/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -17,12 +17,12 @@ var rootCfg struct {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "uvoocertctl",
+	Use:   "uvoo-certctl",
 	Short: "Manage public and private certificate issuance, storage, and sharing",
-	Example: `  uvoocertctl doctor
-  uvoocertctl version --json
-  uvoocertctl create-root-ca --name corp-root --common-name "Corp Root CA"
-  uvoocertctl backup-db --out uvoocertctl-backup.db`,
+	Example: `  uvoo-certctl doctor
+  uvoo-certctl version --json
+  uvoo-certctl create-root-ca --name corp-root --common-name "Corp Root CA"
+  uvoo-certctl backup-db --out uvoo-certctl-backup.db`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }

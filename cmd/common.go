@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"uvoocertctl/internal/dns"
-	"uvoocertctl/internal/ops"
-	"uvoocertctl/internal/storage"
-	"uvoocertctl/internal/util"
+	"uvoo-certctl/internal/dns"
+	"uvoo-certctl/internal/ops"
+	"uvoo-certctl/internal/storage"
+	"uvoo-certctl/internal/util"
 )
 
 type providerFlags struct {

@@ -14,8 +14,8 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Print version information",
-		Example: `  uvoocertctl version
-  uvoocertctl version --json`,
+		Example: `  uvoo-certctl version
+  uvoo-certctl version --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			payload := map[string]any{
 				"version": version,

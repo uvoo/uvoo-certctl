@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
-	"uvoocertctl/internal/storage"
-	"uvoocertctl/internal/util"
+	"uvoo-certctl/internal/storage"
+	"uvoo-certctl/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -19,8 +19,8 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "create-authz-binding",
 		Short: "Create an authorization binding for a JWT principal",
-		Example: `  uvoocertctl create-authz-binding \
-    --principal 'role:https://sso.example.com/realms/uvoocertctl:uvoocertctl_admin' \
+		Example: `  uvoo-certctl create-authz-binding \
+    --principal 'role:https://sso.example.com/realms/uvoo-certctl:uvoo-certctl_admin' \
     --permission csr.approve \
     --resource-kind csr_request \
     --resource-ref '*'`,

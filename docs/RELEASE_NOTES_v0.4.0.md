@@ -1,4 +1,4 @@
-# uvoocertctl v0.4.0
+# uvoo-certctl v0.4.0
 
 Adds subject auto-approval, richer auth debugging, better metrics access controls, and stronger auth observability without expanding the core model much.
 
@@ -17,10 +17,10 @@ Adds subject auto-approval, richer auth debugging, better metrics access control
 - `explain-authz` and `list-effective-authz --bearer-token ...` now show local subject status, matching auto-approval rules, and the predicted local assignments and effective access state for a token.
 - `/metrics` can now use its own Basic auth credentials with `--metrics-username` and `--metrics-password`, which is helpful when metrics need a fallback path without exposing the full admin password.
 - Metrics now include low-cardinality auth and subject signals such as:
-  - `uvoocertctl_auth_requests_total`
-  - `uvoocertctl_subject_auto_approval_matches_total`
-  - `uvoocertctl_pending_subjects_total`
-  - `uvoocertctl_pending_subjects_older_than_days_total`
+  - `uvoo-certctl_auth_requests_total`
+  - `uvoo-certctl_subject_auto_approval_matches_total`
+  - `uvoo-certctl_pending_subjects_total`
+  - `uvoo-certctl_pending_subjects_older_than_days_total`
 - The Docker Keycloak smoke stack now exercises first-login subject auto-approval by default and supports easier manual debugging with `--skip-cleanup` and `--only-cleanup`.
 
 ## Included artifacts

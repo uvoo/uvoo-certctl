@@ -1,4 +1,4 @@
-# ./uvoocertctl get \
+# ./uvoo-certctl get \
 go run . get \
   --db './tmp/certs.db' \
   --provider namecheap \

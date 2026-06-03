@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"uvoocertctl/internal/auth"
-	"uvoocertctl/internal/storage"
-	"uvoocertctl/internal/util"
+	"uvoo-certctl/internal/auth"
+	"uvoo-certctl/internal/storage"
+	"uvoo-certctl/internal/util"
 )
 
 type permissionResolver func(r *http.Request) (auth.PermissionRequest, bool)
@@ -287,12 +287,12 @@ func mergeStringSets(base []string, extra []string) []string {
 }
 
 func (s *Server) adminWWWAuthenticate() string {
-	return `Basic realm="uvoocertctl", Bearer realm="uvoocertctl"`
+	return `Basic realm="uvoo-certctl", Bearer realm="uvoo-certctl"`
 }
 
 func (s *Server) metricsWWWAuthenticate() string {
 	if strings.TrimSpace(s.cfg.MetricsUsername) != "" && s.cfg.MetricsPassword != "" {
-		return `Basic realm="uvoocertctl-metrics", Bearer realm="uvoocertctl"`
+		return `Basic realm="uvoo-certctl-metrics", Bearer realm="uvoo-certctl"`
 	}
 	return s.adminWWWAuthenticate()
 }

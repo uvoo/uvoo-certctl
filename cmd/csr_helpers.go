@@ -5,8 +5,8 @@ import (
 	"crypto/x509"
 	"strings"
 
-	"uvoocertctl/internal/privateca"
-	"uvoocertctl/internal/storage"
+	"uvoo-certctl/internal/privateca"
+	"uvoo-certctl/internal/storage"
 )
 
 func privateKeyStored(keyPEM []byte) bool {

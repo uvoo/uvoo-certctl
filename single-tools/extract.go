@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"uvoocertctl/internal/cli"
+	"uvoo-certctl/internal/cli"
 	_ "modernc.org/sqlite"
 )
 

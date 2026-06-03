@@ -1,18 +1,18 @@
 # Docker Dev Guide
 
-`uvoocertctl` includes a small Docker-based development stack for exercising JWT bearer auth, the built-in server, private CSR approval, and optional public provider checks.
+`uvoo-certctl` includes a small Docker-based development stack for exercising JWT bearer auth, the built-in server, private CSR approval, and optional public provider checks.
 
 Files:
 
 - `dev/docker/docker-compose.yml`
-- `dev/docker/keycloak/uvoocertctl-realm.json`
+- `dev/docker/keycloak/uvoo-certctl-realm.json`
 - `scripts/smoke-docker-stack.sh`
 - `scripts/smoke-jwt-auth.sh`
 
 The stack runs:
 
 - Keycloak on `http://127.0.0.1:18080` by default
-- `uvoocertctl serve-certs` on `http://127.0.0.1:18081` by default
+- `uvoo-certctl serve-certs` on `http://127.0.0.1:18081` by default
 
 Default built-in auth for the dev stack:
 
@@ -21,11 +21,11 @@ Default built-in auth for the dev stack:
 
 Realm defaults:
 
-- realm: `uvoocertctl`
-- public client: `uvoocertctl`
+- realm: `uvoo-certctl`
+- public client: `uvoo-certctl`
 - test user: `alice`
 - password: `alicepass`
-- realm role: `uvoocertctl_admin`
+- realm role: `uvoo-certctl_admin`
 
 ## Start the stack
 
@@ -47,8 +47,8 @@ docker compose -f dev/docker/docker-compose.yml down -v
 
 This smoke path:
 
-- builds the `uvoocertctl` container image
-- starts Keycloak and `uvoocertctl`
+- builds the `uvoo-certctl` container image
+- starts Keycloak and `uvoo-certctl`
 - configures the trusted issuer and local authz bindings inside the container
 - creates a subject auto-approval rule for `@example.com` Keycloak users
 - fetches a Keycloak access token
@@ -81,13 +81,13 @@ KEEP_STACK=1 ./scripts/smoke-docker-stack.sh
 To keep both the stack and the temporary work directory around for manual inspection:
 
 ```bash
-PROJECT_NAME=uvoocertctl-dev ./scripts/smoke-docker-stack.sh --skip-cleanup
+PROJECT_NAME=uvoo-certctl-dev ./scripts/smoke-docker-stack.sh --skip-cleanup
 ```
 
 To tear down a kept stack later:
 
 ```bash
-PROJECT_NAME=uvoocertctl-dev ./scripts/smoke-docker-stack.sh --only-cleanup
+PROJECT_NAME=uvoo-certctl-dev ./scripts/smoke-docker-stack.sh --only-cleanup
 ```
 
 If those local ports are already in use, override them:
@@ -169,14 +169,14 @@ They reuse `scripts/smoke-docker-stack.sh`. Public runs need the matching reposi
 
 - `KEEP_STACK=1` leaves the containers up for manual debugging
 - `KEYCLOAK_HOST_PORT` overrides the published Keycloak port
-- `CERTCTL_HOST_PORT` overrides the published `uvoocertctl` port
-- `INTERNAL_ISSUER_URL` overrides the OIDC discovery URL used from inside the `uvoocertctl` container
+- `CERTCTL_HOST_PORT` overrides the published `uvoo-certctl` port
+- `INTERNAL_ISSUER_URL` overrides the OIDC discovery URL used from inside the `uvoo-certctl` container
 - `SMOKE_AUTO_APPROVE_JWT_SUBJECT=0` keeps the first JWT subject pending so you can exercise manual approval
 - `SMOKE_PRIVATE_CA=0` skips the private CSR flow
 - `SMOKE_PUBLIC_CERT=1` enables public provider precursor checks
 - `SMOKE_PUBLIC_CERT_ISSUE=1` attempts a real public certificate issuance
 - `PUBLIC_WRITE_TEST=1` enables the provider TXT write/delete precursor check
-- `CERTCTL_BASE_URL` overrides the local `uvoocertctl` server URL
+- `CERTCTL_BASE_URL` overrides the local `uvoo-certctl` server URL
 - `ISSUER_URL` overrides the local Keycloak issuer URL
 - `METRICS_USERNAME` overrides the dedicated `/metrics` Basic auth username used by the smoke
 - `METRICS_PASSWORD` overrides the dedicated `/metrics` Basic auth password used by the smoke
@@ -184,12 +184,12 @@ They reuse `scripts/smoke-docker-stack.sh`. Public runs need the matching reposi
 ## Useful follow-up commands
 
 ```bash
-docker compose -f dev/docker/docker-compose.yml logs -f uvoocertctl
+docker compose -f dev/docker/docker-compose.yml logs -f uvoo-certctl
 docker compose -f dev/docker/docker-compose.yml logs -f keycloak
-docker compose -f dev/docker/docker-compose.yml exec uvoocertctl uvoocertctl --db /data/certs.db list-auth-issuers --all
-docker compose -f dev/docker/docker-compose.yml exec uvoocertctl uvoocertctl --db /data/certs.db list-authz-bindings --all
-docker compose -f dev/docker/docker-compose.yml exec uvoocertctl uvoocertctl --db /data/certs.db list-subject-auto-approvals --all
-docker compose -f dev/docker/docker-compose.yml exec uvoocertctl uvoocertctl --db /data/certs.db list-subjects --all
-docker compose -f dev/docker/docker-compose.yml exec uvoocertctl uvoocertctl --db /data/certs.db doctor --warn-days 0
-docker compose -f dev/docker/docker-compose.yml exec uvoocertctl uvoocertctl --db /data/certs.db list-csr-requests --all
+docker compose -f dev/docker/docker-compose.yml exec uvoo-certctl uvoo-certctl --db /data/certs.db list-auth-issuers --all
+docker compose -f dev/docker/docker-compose.yml exec uvoo-certctl uvoo-certctl --db /data/certs.db list-authz-bindings --all
+docker compose -f dev/docker/docker-compose.yml exec uvoo-certctl uvoo-certctl --db /data/certs.db list-subject-auto-approvals --all
+docker compose -f dev/docker/docker-compose.yml exec uvoo-certctl uvoo-certctl --db /data/certs.db list-subjects --all
+docker compose -f dev/docker/docker-compose.yml exec uvoo-certctl uvoo-certctl --db /data/certs.db doctor --warn-days 0
+docker compose -f dev/docker/docker-compose.yml exec uvoo-certctl uvoo-certctl --db /data/certs.db list-csr-requests --all
 ```

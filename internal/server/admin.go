@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"uvoocertctl/internal/auth"
-	"uvoocertctl/internal/ops"
-	"uvoocertctl/internal/storage"
-	"uvoocertctl/internal/util"
+	"uvoo-certctl/internal/auth"
+	"uvoo-certctl/internal/ops"
+	"uvoo-certctl/internal/storage"
+	"uvoo-certctl/internal/util"
 )
 
 const (
@@ -1421,9 +1421,9 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 	for _, row := range publicRows {
 		publicByStatus[row.Status]++
 	}
-	writeMetricHeader(&b, "uvoocertctl_certificates_total", "Total certificates by kind and status.")
+	writeMetricHeader(&b, "uvoo-certctl_certificates_total", "Total certificates by kind and status.")
 	for status, count := range publicByStatus {
-		writeMetricSample(&b, "uvoocertctl_certificates_total", map[string]string{"kind": "public", "status": status}, float64(count))
+		writeMetricSample(&b, "uvoo-certctl_certificates_total", map[string]string{"kind": "public", "status": status}, float64(count))
 	}
 
 	privateByStatus := map[string]int{}
@@ -1431,10 +1431,10 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 		privateByStatus[row.Status]++
 	}
 	for status, count := range privateByStatus {
-		writeMetricSample(&b, "uvoocertctl_certificates_total", map[string]string{"kind": "private", "status": status}, float64(count))
+		writeMetricSample(&b, "uvoo-certctl_certificates_total", map[string]string{"kind": "private", "status": status}, float64(count))
 	}
 
-	writeMetricHeader(&b, "uvoocertctl_private_ca_total", "Total private CAs by type, status, trust, and issuing state.")
+	writeMetricHeader(&b, "uvoo-certctl_private_ca_total", "Total private CAs by type, status, trust, and issuing state.")
 	rootByState := map[string]int{}
 	for _, row := range rootRows {
 		key := fmt.Sprintf("%s|%t|%t", row.Status, row.IsTrusted, row.IsIssuing)
@@ -1442,7 +1442,7 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 	}
 	for key, count := range rootByState {
 		parts := strings.Split(key, "|")
-		writeMetricSample(&b, "uvoocertctl_private_ca_total", map[string]string{
+		writeMetricSample(&b, "uvoo-certctl_private_ca_total", map[string]string{
 			"type":       "root",
 			"status":     parts[0],
 			"is_trusted": parts[1],
@@ -1456,7 +1456,7 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 	}
 	for key, count := range icaByState {
 		parts := strings.Split(key, "|")
-		writeMetricSample(&b, "uvoocertctl_private_ca_total", map[string]string{
+		writeMetricSample(&b, "uvoo-certctl_private_ca_total", map[string]string{
 			"type":       "intermediate",
 			"status":     parts[0],
 			"is_trusted": parts[1],
@@ -1464,7 +1464,7 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 		}, float64(count))
 	}
 
-	writeMetricHeader(&b, "uvoocertctl_csr_requests_total", "Total CSR requests by kind and status.")
+	writeMetricHeader(&b, "uvoo-certctl_csr_requests_total", "Total CSR requests by kind and status.")
 	csrByState := map[string]int{}
 	for _, row := range csrRows {
 		key := row.Kind + "|" + row.Status
@@ -1472,10 +1472,10 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 	}
 	for key, count := range csrByState {
 		parts := strings.SplitN(key, "|", 2)
-		writeMetricSample(&b, "uvoocertctl_csr_requests_total", map[string]string{"kind": parts[0], "status": parts[1]}, float64(count))
+		writeMetricSample(&b, "uvoo-certctl_csr_requests_total", map[string]string{"kind": parts[0], "status": parts[1]}, float64(count))
 	}
 
-	writeMetricHeader(&b, "uvoocertctl_pending_csr_requests_total", "Pending CSR requests by kind.")
+	writeMetricHeader(&b, "uvoo-certctl_pending_csr_requests_total", "Pending CSR requests by kind.")
 	pendingCSRByKind := map[string]int{}
 	readyCSRByKind := map[string]int{}
 	for _, row := range csrRows {
@@ -1487,36 +1487,36 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 		}
 	}
 	for kind, count := range pendingCSRByKind {
-		writeMetricSample(&b, "uvoocertctl_pending_csr_requests_total", map[string]string{"kind": kind}, float64(count))
+		writeMetricSample(&b, "uvoo-certctl_pending_csr_requests_total", map[string]string{"kind": kind}, float64(count))
 	}
 
-	writeMetricHeader(&b, "uvoocertctl_csr_requests_ready_for_pickup_total", "Issued CSR requests by kind that are ready for pickup.")
+	writeMetricHeader(&b, "uvoo-certctl_csr_requests_ready_for_pickup_total", "Issued CSR requests by kind that are ready for pickup.")
 	for kind, count := range readyCSRByKind {
-		writeMetricSample(&b, "uvoocertctl_csr_requests_ready_for_pickup_total", map[string]string{"kind": kind}, float64(count))
+		writeMetricSample(&b, "uvoo-certctl_csr_requests_ready_for_pickup_total", map[string]string{"kind": kind}, float64(count))
 	}
 
-	writeMetricHeader(&b, "uvoocertctl_auth_issuers_total", "Trusted auth issuers by enabled state.")
+	writeMetricHeader(&b, "uvoo-certctl_auth_issuers_total", "Trusted auth issuers by enabled state.")
 	authIssuerCounts := map[string]int{}
 	for _, issuer := range authIssuers {
 		authIssuerCounts[strconv.FormatBool(issuer.Enabled)]++
 	}
 	for enabled, count := range authIssuerCounts {
-		writeMetricSample(&b, "uvoocertctl_auth_issuers_total", map[string]string{"enabled": enabled}, float64(count))
+		writeMetricSample(&b, "uvoo-certctl_auth_issuers_total", map[string]string{"enabled": enabled}, float64(count))
 	}
 
-	writeMetricHeader(&b, "uvoocertctl_auth_issuers_connectivity_status_total", "Trusted auth issuers by cached connectivity status.")
+	writeMetricHeader(&b, "uvoo-certctl_auth_issuers_connectivity_status_total", "Trusted auth issuers by cached connectivity status.")
 	authIssuerConnectivity := summarizeAuthIssuerConnectivityStatus(authIssuers, issuerProbes)
 	for status, count := range authIssuerConnectivity {
-		writeMetricSample(&b, "uvoocertctl_auth_issuers_connectivity_status_total", map[string]string{"status": status}, float64(count))
+		writeMetricSample(&b, "uvoo-certctl_auth_issuers_connectivity_status_total", map[string]string{"status": status}, float64(count))
 	}
 
-	writeMetricHeader(&b, "uvoocertctl_auth_issuer_binding_coverage_total", "Trusted auth issuer coverage by enabled binding relationships.")
+	writeMetricHeader(&b, "uvoo-certctl_auth_issuer_binding_coverage_total", "Trusted auth issuer coverage by enabled binding relationships.")
 	authIssuerCoverage := summarizeAuthIssuerCoverage(authIssuers, authzBindings)
 	for state, count := range authIssuerCoverage {
-		writeMetricSample(&b, "uvoocertctl_auth_issuer_binding_coverage_total", map[string]string{"state": state}, float64(count))
+		writeMetricSample(&b, "uvoo-certctl_auth_issuer_binding_coverage_total", map[string]string{"state": state}, float64(count))
 	}
 
-	writeMetricHeader(&b, "uvoocertctl_authz_bindings_total", "Authorization bindings by enabled state and scope breadth.")
+	writeMetricHeader(&b, "uvoo-certctl_authz_bindings_total", "Authorization bindings by enabled state and scope breadth.")
 	authzBindingCounts := map[string]int{}
 	for _, binding := range authzBindings {
 		key := strconv.FormatBool(binding.Enabled) + "|" + authzBindingScope(binding)
@@ -1524,13 +1524,13 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 	}
 	for key, count := range authzBindingCounts {
 		parts := strings.SplitN(key, "|", 2)
-		writeMetricSample(&b, "uvoocertctl_authz_bindings_total", map[string]string{
+		writeMetricSample(&b, "uvoo-certctl_authz_bindings_total", map[string]string{
 			"enabled": parts[0],
 			"scope":   parts[1],
 		}, float64(count))
 	}
 
-	writeMetricHeader(&b, "uvoocertctl_authz_bindings_by_permission_total", "Authorization bindings by enabled state and permission.")
+	writeMetricHeader(&b, "uvoo-certctl_authz_bindings_by_permission_total", "Authorization bindings by enabled state and permission.")
 	authzByPermission := summarizeAuthzBindingsByPermission(authzBindings)
 	for key, count := range authzByPermission {
 		parts := strings.SplitN(key, "|", 2)
@@ -1538,10 +1538,10 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 		if len(parts) == 2 {
 			labels["permission"] = parts[1]
 		}
-		writeMetricSample(&b, "uvoocertctl_authz_bindings_by_permission_total", labels, float64(count))
+		writeMetricSample(&b, "uvoo-certctl_authz_bindings_by_permission_total", labels, float64(count))
 	}
 
-	writeMetricHeader(&b, "uvoocertctl_authz_bindings_by_principal_kind_total", "Authorization bindings by enabled state and principal kind.")
+	writeMetricHeader(&b, "uvoo-certctl_authz_bindings_by_principal_kind_total", "Authorization bindings by enabled state and principal kind.")
 	authzByPrincipalKind := summarizeAuthzBindingsByPrincipalKind(authzBindings)
 	for key, count := range authzByPrincipalKind {
 		parts := strings.SplitN(key, "|", 2)
@@ -1549,46 +1549,46 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 		if len(parts) == 2 {
 			labels["principal_kind"] = parts[1]
 		}
-		writeMetricSample(&b, "uvoocertctl_authz_bindings_by_principal_kind_total", labels, float64(count))
+		writeMetricSample(&b, "uvoo-certctl_authz_bindings_by_principal_kind_total", labels, float64(count))
 	}
 
-	writeMetricHeader(&b, "uvoocertctl_authz_bindings_risky_total", "Enabled authorization bindings with risky authz characteristics.")
+	writeMetricHeader(&b, "uvoo-certctl_authz_bindings_risky_total", "Enabled authorization bindings with risky authz characteristics.")
 	authzRiskCounts := summarizeRiskyAuthzBindings(authzBindings)
 	for risk, count := range authzRiskCounts {
-		writeMetricSample(&b, "uvoocertctl_authz_bindings_risky_total", map[string]string{"risk": risk}, float64(count))
+		writeMetricSample(&b, "uvoo-certctl_authz_bindings_risky_total", map[string]string{"risk": risk}, float64(count))
 	}
 
-	writeMetricHeader(&b, "uvoocertctl_subject_auto_approval_rules_total", "Subject auto-approval rules by enabled state.")
+	writeMetricHeader(&b, "uvoo-certctl_subject_auto_approval_rules_total", "Subject auto-approval rules by enabled state.")
 	subjectRuleCounts := map[string]int{}
 	for _, rule := range subjectAutoApprovalRules {
 		subjectRuleCounts[strconv.FormatBool(rule.Enabled)]++
 	}
 	for enabled, count := range subjectRuleCounts {
-		writeMetricSample(&b, "uvoocertctl_subject_auto_approval_rules_total", map[string]string{"enabled": enabled}, float64(count))
+		writeMetricSample(&b, "uvoo-certctl_subject_auto_approval_rules_total", map[string]string{"enabled": enabled}, float64(count))
 	}
 
-	writeMetricHeader(&b, "uvoocertctl_subject_auto_approval_rules_risky_total", "Enabled subject auto-approval rules with risky auth relationships.")
+	writeMetricHeader(&b, "uvoo-certctl_subject_auto_approval_rules_risky_total", "Enabled subject auto-approval rules with risky auth relationships.")
 	subjectRuleRiskCounts := summarizeRiskySubjectAutoApprovalRules(authIssuers, subjectAutoApprovalRules)
 	for risk, count := range subjectRuleRiskCounts {
-		writeMetricSample(&b, "uvoocertctl_subject_auto_approval_rules_risky_total", map[string]string{"risk": risk}, float64(count))
+		writeMetricSample(&b, "uvoo-certctl_subject_auto_approval_rules_risky_total", map[string]string{"risk": risk}, float64(count))
 	}
 
-	writeMetricHeader(&b, "uvoocertctl_auth_requests_total", "Admin and metrics authentication attempts by result and auth method since process start.")
+	writeMetricHeader(&b, "uvoo-certctl_auth_requests_total", "Admin and metrics authentication attempts by result and auth method since process start.")
 	for key, count := range authResults {
 		parts := strings.SplitN(key, "|", 2)
 		labels := map[string]string{"result": parts[0], "auth_method": "unknown"}
 		if len(parts) == 2 && parts[1] != "" {
 			labels["auth_method"] = parts[1]
 		}
-		writeMetricSample(&b, "uvoocertctl_auth_requests_total", labels, float64(count))
+		writeMetricSample(&b, "uvoo-certctl_auth_requests_total", labels, float64(count))
 	}
 
-	writeMetricHeader(&b, "uvoocertctl_subject_auto_approval_matches_total", "Subject auto-approval rule matches since process start.")
+	writeMetricHeader(&b, "uvoo-certctl_subject_auto_approval_matches_total", "Subject auto-approval rule matches since process start.")
 	for ruleName, count := range autoApprovals {
-		writeMetricSample(&b, "uvoocertctl_subject_auto_approval_matches_total", map[string]string{"rule": ruleName}, float64(count))
+		writeMetricSample(&b, "uvoo-certctl_subject_auto_approval_matches_total", map[string]string{"rule": ruleName}, float64(count))
 	}
 
-	writeMetricHeader(&b, "uvoocertctl_subjects_total", "Locally tracked JWT subjects by status.")
+	writeMetricHeader(&b, "uvoo-certctl_subjects_total", "Locally tracked JWT subjects by status.")
 	subjectCounts := map[string]int{}
 	pendingSubjects := 0
 	for _, subject := range subjects {
@@ -1598,48 +1598,48 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 		}
 	}
 	for status, count := range subjectCounts {
-		writeMetricSample(&b, "uvoocertctl_subjects_total", map[string]string{"status": status}, float64(count))
+		writeMetricSample(&b, "uvoo-certctl_subjects_total", map[string]string{"status": status}, float64(count))
 	}
-	writeMetricHeader(&b, "uvoocertctl_pending_subjects_total", "Locally tracked JWT subjects that are still pending approval.")
-	writeMetricSample(&b, "uvoocertctl_pending_subjects_total", nil, float64(pendingSubjects))
+	writeMetricHeader(&b, "uvoo-certctl_pending_subjects_total", "Locally tracked JWT subjects that are still pending approval.")
+	writeMetricSample(&b, "uvoo-certctl_pending_subjects_total", nil, float64(pendingSubjects))
 
-	writeMetricHeader(&b, "uvoocertctl_shares_total", "Total certificate shares by state.")
+	writeMetricHeader(&b, "uvoo-certctl_shares_total", "Total certificate shares by state.")
 	shareCounts := map[string]int{}
 	for _, sh := range shares {
 		shareCounts[shareState(sh, now)]++
 	}
 	for state, count := range shareCounts {
-		writeMetricSample(&b, "uvoocertctl_shares_total", map[string]string{"state": state}, float64(count))
+		writeMetricSample(&b, "uvoo-certctl_shares_total", map[string]string{"state": state}, float64(count))
 	}
 
 	if warnDays > 0 {
-		writeMetricHeader(&b, "uvoocertctl_certificates_expiring_within_days_total", "Active certificates expiring within the configured warning window.")
-		writeMetricSample(&b, "uvoocertctl_certificates_expiring_within_days_total", map[string]string{
+		writeMetricHeader(&b, "uvoo-certctl_certificates_expiring_within_days_total", "Active certificates expiring within the configured warning window.")
+		writeMetricSample(&b, "uvoo-certctl_certificates_expiring_within_days_total", map[string]string{
 			"kind": "public",
 			"days": strconv.Itoa(warnDays),
 		}, float64(countExpiringPublicCerts(publicRows, now, warnWindow)))
-		writeMetricSample(&b, "uvoocertctl_certificates_expiring_within_days_total", map[string]string{
+		writeMetricSample(&b, "uvoo-certctl_certificates_expiring_within_days_total", map[string]string{
 			"kind": "private",
 			"days": strconv.Itoa(warnDays),
 		}, float64(countExpiringPrivateCerts(privateRows, now, warnWindow)))
 
-		writeMetricHeader(&b, "uvoocertctl_private_ca_expiring_within_days_total", "Active private CAs expiring within the configured warning window.")
-		writeMetricSample(&b, "uvoocertctl_private_ca_expiring_within_days_total", map[string]string{
+		writeMetricHeader(&b, "uvoo-certctl_private_ca_expiring_within_days_total", "Active private CAs expiring within the configured warning window.")
+		writeMetricSample(&b, "uvoo-certctl_private_ca_expiring_within_days_total", map[string]string{
 			"type": "root",
 			"days": strconv.Itoa(warnDays),
 		}, float64(countExpiringRootCAs(rootRows, now, warnWindow)))
-		writeMetricSample(&b, "uvoocertctl_private_ca_expiring_within_days_total", map[string]string{
+		writeMetricSample(&b, "uvoo-certctl_private_ca_expiring_within_days_total", map[string]string{
 			"type": "intermediate",
 			"days": strconv.Itoa(warnDays),
 		}, float64(countExpiringIntermediateCAs(icaRows, now, warnWindow)))
 
-		writeMetricHeader(&b, "uvoocertctl_pending_csr_requests_older_than_days_total", "Pending CSR requests older than the configured warning window.")
-		writeMetricSample(&b, "uvoocertctl_pending_csr_requests_older_than_days_total", map[string]string{
+		writeMetricHeader(&b, "uvoo-certctl_pending_csr_requests_older_than_days_total", "Pending CSR requests older than the configured warning window.")
+		writeMetricSample(&b, "uvoo-certctl_pending_csr_requests_older_than_days_total", map[string]string{
 			"days": strconv.Itoa(warnDays),
 		}, float64(countStalePendingCSRs(csrRows, now, warnWindow)))
 
-		writeMetricHeader(&b, "uvoocertctl_pending_subjects_older_than_days_total", "Pending JWT subjects older than the configured warning window.")
-		writeMetricSample(&b, "uvoocertctl_pending_subjects_older_than_days_total", map[string]string{
+		writeMetricHeader(&b, "uvoo-certctl_pending_subjects_older_than_days_total", "Pending JWT subjects older than the configured warning window.")
+		writeMetricSample(&b, "uvoo-certctl_pending_subjects_older_than_days_total", map[string]string{
 			"days": strconv.Itoa(warnDays),
 		}, float64(countStalePendingSubjects(subjects, now, warnWindow)))
 	}
@@ -1665,7 +1665,7 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 	if err != nil {
 		return "", err
 	}
-	writeMetricHeader(&b, "uvoocertctl_doctor_findings_total", "Doctor findings by severity and check.")
+	writeMetricHeader(&b, "uvoo-certctl_doctor_findings_total", "Doctor findings by severity and check.")
 	doctorCounts := summarizeDoctorFindings(doctorFindings)
 	for key, count := range doctorCounts {
 		parts := strings.SplitN(key, "|", 2)
@@ -1673,7 +1673,7 @@ func buildMetrics(store *storage.Store, warnDays int, authResults map[string]int
 		if len(parts) == 2 {
 			labels["check"] = parts[1]
 		}
-		writeMetricSample(&b, "uvoocertctl_doctor_findings_total", labels, float64(count))
+		writeMetricSample(&b, "uvoo-certctl_doctor_findings_total", labels, float64(count))
 	}
 
 	return b.String(), nil
