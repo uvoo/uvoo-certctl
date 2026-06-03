@@ -1,4 +1,4 @@
-/uvoocertctl/uvoocertctl
+/uvoo-certctl/uvoo-certctl
 trash/
 tmp/
 bkp/
@@ -23,11 +23,11 @@ server.key
 promalert-state.json
 dist/
 .gocache/
-uvoocertctl
+uvoo-certctl
 certs.db
 out-privateca/
 trash/
 tls.crt
 tls.key
 /uvoominicert
-/uvoouvoocertctl
+/uvoouvoo-certctl

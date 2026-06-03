@@ -1,8 +1,8 @@
 # CSR Requests
 
-`uvoocertctl` can queue both public and private CSRs for later approval.
+`uvoo-certctl` can queue both public and private CSRs for later approval.
 
-The key stays on the requester host. After approval, the issued certificate is stored in `uvoocertctl`, but the private key is not.
+The key stays on the requester host. After approval, the issued certificate is stored in `uvoo-certctl`, but the private key is not.
 
 ## Generate a CSR with OpenSSL
 
@@ -17,7 +17,7 @@ openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
 ## Submit with the CLI
 
 ```bash
-uvoocertctl submit-csr \
+uvoo-certctl submit-csr \
   --kind private \
   --csr-file server.csr \
   --requester-name "Jane Doe" \
@@ -33,7 +33,7 @@ uvoocertctl submit-csr \
 Start the built-in server with a submission password:
 
 ```bash
-uvoocertctl serve-certs \
+uvoo-certctl serve-certs \
   --listen :8080 \
   --csr-submit-password env:CERTCTL_CSR_SUBMIT_PASSWORD
 ```
@@ -41,7 +41,7 @@ uvoocertctl serve-certs \
 Optional hardening flags:
 
 ```bash
-uvoocertctl serve-certs \
+uvoo-certctl serve-certs \
   --listen :8080 \
   --csr-submit-password env:CERTCTL_CSR_SUBMIT_PASSWORD \
   --csr-max-body-bytes 1048576 \
@@ -58,7 +58,7 @@ openssl req -x509 -newkey rsa:4096 -sha256 -days 365 -nodes \
 ```
 
 ```bash
-uvoocertctl serve-certs \
+uvoo-certctl serve-certs \
   --listen :8443 \
   --tls-cert-file server.crt \
   --tls-key-file server.key \
@@ -68,10 +68,10 @@ uvoocertctl serve-certs \
 Restrict clients with a network ACL. `--nacl` accepts both IPv4 and IPv6 CIDRs. By default, `serve-certs` allows RFC1918 IPv4 space plus IPv6 ULA space (`fc00::/7`). To allow local loopback access for testing, override `--nacl` explicitly:
 
 ```bash
-uvoocertctl serve-certs \
+uvoo-certctl serve-certs \
   --listen :8443 \
-  --tls-cert-file /etc/uvoocertctl/tls/server.crt \
-  --tls-key-file /etc/uvoocertctl/tls/server.key \
+  --tls-cert-file /etc/uvoo-certctl/tls/server.crt \
+  --tls-key-file /etc/uvoo-certctl/tls/server.key \
   --csr-submit-password env:CERTCTL_CSR_SUBMIT_PASSWORD \
   --nacl 127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
 ```
@@ -79,7 +79,7 @@ uvoocertctl serve-certs \
 Submit from another host with `curl`:
 
 ```bash
-curl -sS -X POST https://uvoocertctl.example.com:8443/csr-requests \
+curl -sS -X POST https://uvoo-certctl.example.com:8443/csr-requests \
   -F kind=private \
   -F submit_password="$CERTCTL_CSR_SUBMIT_PASSWORD" \
   -F requester_name="Jane Doe" \
@@ -99,7 +99,7 @@ The response includes:
 Poll for status:
 
 ```bash
-curl -sS "https://uvoocertctl.example.com:8443/csr-requests/<id>?pickup_token=<pickup-token>"
+curl -sS "https://uvoo-certctl.example.com:8443/csr-requests/<id>?pickup_token=<pickup-token>"
 ```
 
 ## Admin review and approval
@@ -107,15 +107,15 @@ curl -sS "https://uvoocertctl.example.com:8443/csr-requests/<id>?pickup_token=<p
 List pending requests:
 
 ```bash
-uvoocertctl list-csr-requests
-uvoocertctl list-csr-requests --all
-uvoocertctl list-csr-requests --id <request-id> --json
+uvoo-certctl list-csr-requests
+uvoo-certctl list-csr-requests --all
+uvoo-certctl list-csr-requests --id <request-id> --json
 ```
 
 Approve a private CSR:
 
 ```bash
-uvoocertctl approve-csr \
+uvoo-certctl approve-csr \
   --id <request-id> \
   --intermediate-name corp-issuing \
   --parent-key-password env:CERTCTL_PARENT_KEY_PASSWORD
@@ -124,7 +124,7 @@ uvoocertctl approve-csr \
 Approve with JSON output for automation:
 
 ```bash
-uvoocertctl approve-csr \
+uvoo-certctl approve-csr \
   --id <request-id> \
   --intermediate-name corp-issuing \
   --parent-key-password env:CERTCTL_PARENT_KEY_PASSWORD \
@@ -134,7 +134,7 @@ uvoocertctl approve-csr \
 Approve a public CSR:
 
 ```bash
-uvoocertctl approve-csr \
+uvoo-certctl approve-csr \
   --id <request-id> \
   --provider godaddy \
   --api-user "$GODADDY_API_KEY" \
@@ -145,14 +145,14 @@ uvoocertctl approve-csr \
 Reject a CSR:
 
 ```bash
-uvoocertctl reject-csr --id <request-id> --reason "unable to verify requester"
+uvoo-certctl reject-csr --id <request-id> --reason "unable to verify requester"
 ```
 
 Review the queue remotely over the built-in admin API:
 
 ```bash
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  https://uvoocertctl.example.com:8443/admin/v1/csr-requests
+  https://uvoo-certctl.example.com:8443/admin/v1/csr-requests
 ```
 
 Approve a private CSR remotely:
@@ -160,7 +160,7 @@ Approve a private CSR remotely:
 ```bash
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -H 'Content-Type: application/json' \
-  -X POST https://uvoocertctl.example.com:8443/admin/v1/csr-requests/<id>/approve \
+  -X POST https://uvoo-certctl.example.com:8443/admin/v1/csr-requests/<id>/approve \
   -d '{
     "intermediate_name": "corp-issuing",
     "parent_key_password": "'"$CERTCTL_PARENT_KEY_PASSWORD"'",

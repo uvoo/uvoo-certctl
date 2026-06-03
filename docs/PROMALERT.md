@@ -1,6 +1,6 @@
 # promalert
 
-`promalert` is a small companion watchdog for `uvoocertctl` and other Prometheus-style metric endpoints.
+`promalert` is a small companion watchdog for `uvoo-certctl` and other Prometheus-style metric endpoints.
 
 It stays intentionally small:
 
@@ -35,16 +35,16 @@ default_timeout: 10s
 default_cooldown: 15m
 
 targets:
-  - name: uvoocertctl-prod
-    url: https://uvoocertctl.example.com:8443/metrics
+  - name: uvoo-certctl-prod
+    url: https://uvoo-certctl.example.com:8443/metrics
     headers:
       X-Org-ID: engineering
     basic_auth:
       username: metrics
       password: env:CERTCTL_METRICS_PASSWORD
 
-  - name: uvoocertctl-staging
-    url: https://uvoocertctl-staging.example.com:8443/metrics
+  - name: uvoo-certctl-staging
+    url: https://uvoo-certctl-staging.example.com:8443/metrics
     enabled: false
 
 notifiers:
@@ -61,9 +61,9 @@ notifiers:
   - name: pagerduty
     type: pagerduty
     routing_key: env:PROMALERT_PAGERDUTY_ROUTING_KEY
-    source: uvoocertctl-prod
+    source: uvoo-certctl-prod
     severity: critical
-    dedup_key_prefix: uvoocertctl
+    dedup_key_prefix: uvoo-certctl
 
   - name: email
     type: smtp
@@ -78,7 +78,7 @@ notifiers:
 
 rules:
   - name: pending-private-csrs
-    metric: uvoocertctl_pending_csr_requests_total
+    metric: uvoo-certctl_pending_csr_requests_total
     labels:
       kind: private
     op: gt
@@ -89,33 +89,33 @@ rules:
       - email
 
   - name: stale-pending-subjects
-    metric: uvoocertctl_pending_subjects_older_than_days_total
+    metric: uvoo-certctl_pending_subjects_older_than_days_total
     labels:
       days: "30"
     op: gt
     value: 0
 
   - name: auth-issuer-connectivity-errors
-    metric: uvoocertctl_auth_issuers_connectivity_status_total
+    metric: uvoo-certctl_auth_issuers_connectivity_status_total
     labels:
       status: error
     op: gt
     value: 0
 
   - name: auth-doctor-errors
-    metric: uvoocertctl_doctor_findings_total
+    metric: uvoo-certctl_doctor_findings_total
     labels:
       severity: error
     op: gt
     value: 0
 
   - name: metrics-body-regex
-    regex: 'uvoocertctl_auth_requests_total\{.*result="invalid".*\} [1-9][0-9]*'
+    regex: 'uvoo-certctl_auth_requests_total\{.*result="invalid".*\} [1-9][0-9]*'
 ```
 
 ## Secret references
 
-Like `uvoocertctl`, string fields support:
+Like `uvoo-certctl`, string fields support:
 
 - raw values
 - `env:VARNAME`
@@ -148,7 +148,7 @@ Rules can optionally target a subset of scrape targets with:
 
 ```yaml
 targets:
-  - uvoocertctl-prod
+  - uvoo-certctl-prod
 ```
 
 Rules can optionally route only to selected notifiers with:

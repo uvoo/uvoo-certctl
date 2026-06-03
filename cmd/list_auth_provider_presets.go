@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"uvoocertctl/internal/auth"
+	"uvoo-certctl/internal/auth"
 	"github.com/spf13/cobra"
 )
 
@@ -13,8 +13,8 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "list-auth-provider-presets",
 		Short: "List built-in JWT/OIDC issuer presets",
-		Example: `  uvoocertctl list-auth-provider-presets
-  uvoocertctl list-auth-provider-presets --json`,
+		Example: `  uvoo-certctl list-auth-provider-presets
+  uvoo-certctl list-auth-provider-presets --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			names := auth.ProviderPresetNames()
 			if jsonOut {

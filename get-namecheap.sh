@@ -1,7 +1,7 @@
 #!/bin/bash
 set -eux
 
-./uvoocertctl get \
+./uvoo-certctl get \
   --common-name "$FQDN" \
   --sans "$FQDN" \
   --provider namecheap \

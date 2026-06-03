@@ -5,13 +5,13 @@ import (
 	"strings"
 	"time"
 
-	"uvoocertctl/internal/acme"
-	"uvoocertctl/internal/cli"
-	"uvoocertctl/internal/csrqueue"
-	"uvoocertctl/internal/dns"
-	"uvoocertctl/internal/privateca"
-	"uvoocertctl/internal/storage"
-	"uvoocertctl/internal/util"
+	"uvoo-certctl/internal/acme"
+	"uvoo-certctl/internal/cli"
+	"uvoo-certctl/internal/csrqueue"
+	"uvoo-certctl/internal/dns"
+	"uvoo-certctl/internal/privateca"
+	"uvoo-certctl/internal/storage"
+	"uvoo-certctl/internal/util"
 )
 
 type SubmitCSRParams struct {

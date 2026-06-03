@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
-	"uvoocertctl/internal/ops"
-	"uvoocertctl/internal/storage"
+	"uvoo-certctl/internal/ops"
+	"uvoo-certctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -19,10 +19,10 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Run read-only validation checks against the certificate database",
-		Example: `  uvoocertctl doctor
-  uvoocertctl doctor --json
-  uvoocertctl doctor --warn-days 14
-  uvoocertctl doctor --auth-only --json`,
+		Example: `  uvoo-certctl doctor
+  uvoo-certctl doctor --json
+  uvoo-certctl doctor --warn-days 14
+  uvoo-certctl doctor --auth-only --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {

@@ -12,8 +12,8 @@ ARG COMMIT=unknown
 ARG BUILD_DATE=unknown
 
 RUN CGO_ENABLED=0 go build -trimpath \
-  -ldflags="-s -w -X uvoocertctl/cmd.version=${VERSION} -X uvoocertctl/cmd.commit=${COMMIT} -X uvoocertctl/cmd.date=${BUILD_DATE}" \
-  -o /out/uvoocertctl .
+  -ldflags="-s -w -X uvoo-certctl/cmd.version=${VERSION} -X uvoo-certctl/cmd.commit=${COMMIT} -X uvoo-certctl/cmd.date=${BUILD_DATE}" \
+  -o /out/uvoo-certctl .
 
 FROM debian:bookworm-slim
 
@@ -21,8 +21,8 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends sqlite3 ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /out/uvoocertctl /usr/local/bin/uvoocertctl
+COPY --from=build /out/uvoo-certctl /usr/local/bin/uvoo-certctl
 
 WORKDIR /work
 
-ENTRYPOINT ["uvoocertctl"]
+ENTRYPOINT ["uvoo-certctl"]

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"os"
 
-	"uvoocertctl/internal/storage"
+	"uvoo-certctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 

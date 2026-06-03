@@ -1,4 +1,4 @@
-module uvoocertctl
+module uvoo-certctl
 
 go 1.25.0
 

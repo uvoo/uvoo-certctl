@@ -1,4 +1,4 @@
-# uvoocertctl
+# uvoo-certctl
 
 A simple but powerful go cli-first app for issuing & managing x509 private or public certificates.
 
@@ -170,61 +170,61 @@ Configure JWT/OIDC auth for the admin API:
 ```bash
 go run . create-auth-issuer \
   --name keycloak-local \
-  --issuer https://sso.example.com/realms/uvoocertctl \
-  --audience uvoocertctl \
-  --required-claim azp=uvoocertctl-cli \
-  --discovery-url https://sso.example.com/realms/uvoocertctl/.well-known/openid-configuration \
+  --issuer https://sso.example.com/realms/uvoo-certctl \
+  --audience uvoo-certctl \
+  --required-claim azp=uvoo-certctl-cli \
+  --discovery-url https://sso.example.com/realms/uvoo-certctl/.well-known/openid-configuration \
   --roles-claim realm_access.roles
 
 go run . create-authz-binding \
-  --principal 'role:https://sso.example.com/realms/uvoocertctl:uvoocertctl_admin' \
+  --principal 'role:https://sso.example.com/realms/uvoo-certctl:uvoo-certctl_admin' \
   --permission doctor.read
 
 go run . list-auth-provider-presets
 go run . create-auth-issuer --preset google --name google-login --audience <client-id>
 go run . create-auth-issuer --preset microsoft-tenant --name entra-login --issuer https://login.microsoftonline.com/<tenant>/v2.0 --audience <app-id>
-go run . create-auth-issuer --preset keycloak --name keycloak-login --issuer https://sso.example.com/realms/uvoocertctl --audience uvoocertctl
+go run . create-auth-issuer --preset keycloak --name keycloak-login --issuer https://sso.example.com/realms/uvoo-certctl --audience uvoo-certctl
 go run . create-auth-issuer --preset aws-cognito --name cognito-login --issuer https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example --audience <app-client-id>
 go run . list-auth-issuers
-go run . check-auth-issuer --issuer https://sso.example.com/realms/uvoocertctl
-go run . update-auth-issuer --issuer https://sso.example.com/realms/uvoocertctl --name keycloak-prod
-go run . delete-auth-issuer --issuer https://sso.example.com/realms/uvoocertctl
-go run . delete-auth-issuer --issuer https://sso.example.com/realms/uvoocertctl --force
+go run . check-auth-issuer --issuer https://sso.example.com/realms/uvoo-certctl
+go run . update-auth-issuer --issuer https://sso.example.com/realms/uvoo-certctl --name keycloak-prod
+go run . delete-auth-issuer --issuer https://sso.example.com/realms/uvoo-certctl
+go run . delete-auth-issuer --issuer https://sso.example.com/realms/uvoo-certctl --force
 go run . doctor --auth-only --json
 go run . create-subject-auto-approval --name google-employees --issuer https://accounts.google.com --email-domain example.com --local-group employees
 go run . list-subject-auto-approvals
-go run . list-effective-authz --principal 'role:https://sso.example.com/realms/uvoocertctl:uvoocertctl_admin'
+go run . list-effective-authz --principal 'role:https://sso.example.com/realms/uvoo-certctl:uvoo-certctl_admin'
 go run . list-authz-bindings
-go run . list-authz-bindings --principal 'role:https://sso.example.com/realms/uvoocertctl:uvoocertctl_admin'
+go run . list-authz-bindings --principal 'role:https://sso.example.com/realms/uvoo-certctl:uvoo-certctl_admin'
 go run . list-subjects --all
 go run . list-subjects --status pending
 go run . list-subjects --local-group employees
 go run . approve-subject --issuer https://accounts.google.com --subject user-123 --local-group viewers
 go run . update-subject --issuer https://accounts.google.com --subject user-123 --status active --local-group employees
-go run . disable-subject --issuer https://sso.example.com/realms/uvoocertctl --subject user-123
-go run . enable-subject --issuer https://sso.example.com/realms/uvoocertctl --subject user-123
+go run . disable-subject --issuer https://sso.example.com/realms/uvoo-certctl --subject user-123
+go run . enable-subject --issuer https://sso.example.com/realms/uvoo-certctl --subject user-123
 go run . update-authz-binding --id <binding-id> --permission csr.approve
-go run . update-authz-binding --match-principal 'role:https://sso.example.com/realms/uvoocertctl:uvoocertctl_admin' --match-permission doctor.read --permission metrics.read
-go run . delete-authz-binding --principal 'role:https://sso.example.com/realms/uvoocertctl:uvoocertctl_admin' --permission doctor.read
+go run . update-authz-binding --match-principal 'role:https://sso.example.com/realms/uvoo-certctl:uvoo-certctl_admin' --match-permission doctor.read --permission metrics.read
+go run . delete-authz-binding --principal 'role:https://sso.example.com/realms/uvoo-certctl:uvoo-certctl_admin' --permission doctor.read
 go run . delete-authz-binding --id <binding-id>
 go run . explain-authz --bearer-token env:CERTCTL_BEARER_TOKEN
-go run . disable-auth-issuer --issuer https://sso.example.com/realms/uvoocertctl
-go run . enable-auth-issuer --issuer https://sso.example.com/realms/uvoocertctl
+go run . disable-auth-issuer --issuer https://sso.example.com/realms/uvoo-certctl
+go run . enable-auth-issuer --issuer https://sso.example.com/realms/uvoo-certctl
 ```
 
 Serve certificate shares and CSR pickup/submission:
 
 ```bash
 go run . serve-certs --listen :8080
-go run . serve-certs --listen :8443 --tls-cert-file /etc/uvoocertctl/tls/server.crt --tls-key-file /etc/uvoocertctl/tls/server.key
-go run . serve-certs --listen :8443 --tls-cert-file /etc/uvoocertctl/tls/server.crt --tls-key-file /etc/uvoocertctl/tls/server.key --nacl 127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
-go run . serve-certs --listen :8443 --tls-cert-file /etc/uvoocertctl/tls/server.crt --tls-key-file /etc/uvoocertctl/tls/server.key --admin-username admin --admin-password env:CERTCTL_ADMIN_PASSWORD --metrics
-go run . serve-certs --listen :8443 --tls-cert-file /etc/uvoocertctl/tls/server.crt --tls-key-file /etc/uvoocertctl/tls/server.key --admin-username admin --admin-password env:CERTCTL_ADMIN_PASSWORD --metrics --metrics-username metrics --metrics-password env:CERTCTL_METRICS_PASSWORD
+go run . serve-certs --listen :8443 --tls-cert-file /etc/uvoo-certctl/tls/server.crt --tls-key-file /etc/uvoo-certctl/tls/server.key
+go run . serve-certs --listen :8443 --tls-cert-file /etc/uvoo-certctl/tls/server.crt --tls-key-file /etc/uvoo-certctl/tls/server.key --nacl 127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
+go run . serve-certs --listen :8443 --tls-cert-file /etc/uvoo-certctl/tls/server.crt --tls-key-file /etc/uvoo-certctl/tls/server.key --admin-username admin --admin-password env:CERTCTL_ADMIN_PASSWORD --metrics
+go run . serve-certs --listen :8443 --tls-cert-file /etc/uvoo-certctl/tls/server.crt --tls-key-file /etc/uvoo-certctl/tls/server.key --admin-username admin --admin-password env:CERTCTL_ADMIN_PASSWORD --metrics --metrics-username metrics --metrics-password env:CERTCTL_METRICS_PASSWORD
 ```
 
 With `--admin-username` and `--admin-password`, the built-in server also exposes a small authenticated JSON admin API under `/admin/v1` for remote `doctor`, CSR queue, subject, subject auto-approval, and auth issuer actions. `--metrics` enables a Prometheus-style `/metrics` endpoint. If `--metrics-username` and `--metrics-password` are set, `/metrics` uses that dedicated Basic auth pair; otherwise it accepts the admin Basic auth or bearer auth. The metrics output includes certificate and CA status totals, CSR queue totals, pending and pickup-ready CSR counters, share totals, auth issuer/binding counts, auth issuer binding coverage, authz binding permission and principal-kind summaries, risky authz and subject-auto-approval counts, auth request outcomes, subject auto-approval rule matches, pending-subject counts, and locally tracked JWT subject counts.
 
-Useful remote auth/admin paths include `/admin/v1/doctor/auth`, `/admin/v1/effective-authz`, `/admin/v1/auth-provider-presets`, `/admin/v1/auth-issuers`, and `/admin/v1/authz-bindings`. The metrics output also includes `uvoocertctl_auth_issuers_connectivity_status_total` from cached issuer probe results and `uvoocertctl_doctor_findings_total` for low-cardinality alerting by severity and check.
+Useful remote auth/admin paths include `/admin/v1/doctor/auth`, `/admin/v1/effective-authz`, `/admin/v1/auth-provider-presets`, `/admin/v1/auth-issuers`, and `/admin/v1/authz-bindings`. The metrics output also includes `uvoo-certctl_auth_issuers_connectivity_status_total` from cached issuer probe results and `uvoo-certctl_doctor_findings_total` for low-cardinality alerting by severity and check.
 
 The admin API can also use bearer tokens from trusted JWT/OIDC issuers configured in the local database. The auth model and claim mapping are documented in [`docs/AUTHZ_DESIGN.md`](docs/AUTHZ_DESIGN.md).
 
@@ -236,79 +236,79 @@ Remote admin examples:
 
 ```bash
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  https://uvoocertctl.example.com:8443/admin/v1/subjects?status=pending
+  https://uvoo-certctl.example.com:8443/admin/v1/subjects?status=pending
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -H 'Content-Type: application/json' \
-  -X POST https://uvoocertctl.example.com:8443/admin/v1/subjects/approve \
+  -X POST https://uvoo-certctl.example.com:8443/admin/v1/subjects/approve \
   -d '{"issuer":"https://accounts.google.com","subject":"user-123","local_groups":["viewers"]}'
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  https://uvoocertctl.example.com:8443/admin/v1/subjects/<subject-id>
+  https://uvoo-certctl.example.com:8443/admin/v1/subjects/<subject-id>
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -H 'Content-Type: application/json' \
-  -X PUT https://uvoocertctl.example.com:8443/admin/v1/subjects/<subject-id> \
+  -X PUT https://uvoo-certctl.example.com:8443/admin/v1/subjects/<subject-id> \
   -d '{"status":"active","local_groups":["employees"]}'
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  -X DELETE https://uvoocertctl.example.com:8443/admin/v1/subjects/<subject-id>
+  -X DELETE https://uvoo-certctl.example.com:8443/admin/v1/subjects/<subject-id>
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -H 'Content-Type: application/json' \
-  -X PUT https://uvoocertctl.example.com:8443/admin/v1/subject-auto-approvals/google-employees \
+  -X PUT https://uvoo-certctl.example.com:8443/admin/v1/subject-auto-approvals/google-employees \
   -d '{"issuer":"https://accounts.google.com","email_domain":"example.com","local_groups":["employees"]}'
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  https://uvoocertctl.example.com:8443/admin/v1/auth-provider-presets
+  https://uvoo-certctl.example.com:8443/admin/v1/auth-provider-presets
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  https://uvoocertctl.example.com:8443/admin/v1/auth-provider-presets/keycloak
-
-curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  -H 'Content-Type: application/json' \
-  -X POST https://uvoocertctl.example.com:8443/admin/v1/auth-issuers \
-  -d '{"preset":"keycloak","name":"keycloak-dev","issuer":"https://sso.example.com/realms/uvoocertctl","audiences":["uvoocertctl"],"required_claims":{"azp":"uvoocertctl"},"discovery_url":"https://sso.example.com/realms/uvoocertctl/.well-known/openid-configuration"}'
+  https://uvoo-certctl.example.com:8443/admin/v1/auth-provider-presets/keycloak
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -H 'Content-Type: application/json' \
-  -X PUT https://uvoocertctl.example.com:8443/admin/v1/auth-issuers/keycloak-dev \
+  -X POST https://uvoo-certctl.example.com:8443/admin/v1/auth-issuers \
+  -d '{"preset":"keycloak","name":"keycloak-dev","issuer":"https://sso.example.com/realms/uvoo-certctl","audiences":["uvoo-certctl"],"required_claims":{"azp":"uvoo-certctl"},"discovery_url":"https://sso.example.com/realms/uvoo-certctl/.well-known/openid-configuration"}'
+
+curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X PUT https://uvoo-certctl.example.com:8443/admin/v1/auth-issuers/keycloak-dev \
   -d '{"name":"keycloak-prod","enabled":true}'
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  -X DELETE 'https://uvoocertctl.example.com:8443/admin/v1/auth-issuers/keycloak-prod?force=true'
+  -X DELETE 'https://uvoo-certctl.example.com:8443/admin/v1/auth-issuers/keycloak-prod?force=true'
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -H 'Content-Type: application/json' \
-  -X POST https://uvoocertctl.example.com:8443/admin/v1/authz-bindings \
-  -d '{"principal":"role:https://sso.example.com/realms/uvoocertctl:uvoocertctl_admin","permission":"subject.read","resource_kind":"subject","resource_ref":"*"}'
+  -X POST https://uvoo-certctl.example.com:8443/admin/v1/authz-bindings \
+  -d '{"principal":"role:https://sso.example.com/realms/uvoo-certctl:uvoo-certctl_admin","permission":"subject.read","resource_kind":"subject","resource_ref":"*"}'
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
   -H 'Content-Type: application/json' \
-  -X PUT https://uvoocertctl.example.com:8443/admin/v1/authz-bindings/<binding-id> \
+  -X PUT https://uvoo-certctl.example.com:8443/admin/v1/authz-bindings/<binding-id> \
   -d '{"permission":"subject.update","enabled":true}'
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  -X DELETE https://uvoocertctl.example.com:8443/admin/v1/authz-bindings/<binding-id>
+  -X DELETE https://uvoo-certctl.example.com:8443/admin/v1/authz-bindings/<binding-id>
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  https://uvoocertctl.example.com:8443/admin/v1/effective-authz
+  https://uvoo-certctl.example.com:8443/admin/v1/effective-authz
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  https://uvoocertctl.example.com:8443/admin/v1/doctor/auth
+  https://uvoo-certctl.example.com:8443/admin/v1/doctor/auth
 
 curl -sS -u admin:"$CERTCTL_ADMIN_PASSWORD" \
-  https://uvoocertctl.example.com:8443/admin/v1/auth-issuers?probe=true
+  https://uvoo-certctl.example.com:8443/admin/v1/auth-issuers?probe=true
 ```
 
-For local Docker-based Keycloak and `uvoocertctl` smoke testing, including private CSR approval and optional public provider checks, see [`docs/DOCKER_DEV.md`](docs/DOCKER_DEV.md).
+For local Docker-based Keycloak and `uvoo-certctl` smoke testing, including private CSR approval and optional public provider checks, see [`docs/DOCKER_DEV.md`](docs/DOCKER_DEV.md).
 
 Export safe metadata or a DB backup:
 
 ```bash
-go run . export-metadata --out uvoocertctl-metadata.json
-go run . backup-db --out uvoocertctl-backup.db
-go run . restore-db --from uvoocertctl-backup.db --force
+go run . export-metadata --out uvoo-certctl-metadata.json
+go run . backup-db --out uvoo-certctl-backup.db
+go run . restore-db --from uvoo-certctl-backup.db --force
 ```
 
 Mutating commands support `--json` for automation, for example:
@@ -343,7 +343,7 @@ go run . renew --common-name '*.example.com' --force --json
 Build a local binary for the current machine:
 
 ```bash
-go build -o uvoocertctl .
+go build -o uvoo-certctl .
 ```
 
 If your Go executable is not the default `go` on `PATH`, set `GO_BIN`, for example:
@@ -355,7 +355,7 @@ GO_BIN=/snap/bin/go ./scripts/build-release.sh
 If you are in a restricted environment, you can also point the Go build cache at a writable directory:
 
 ```bash
-GOCACHE=/tmp/uvoocertctl-gocache ./scripts/build-release.sh
+GOCACHE=/tmp/uvoo-certctl-gocache ./scripts/build-release.sh
 ```
 
 Install it into `/usr/local/bin`:

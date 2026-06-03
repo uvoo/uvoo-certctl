@@ -1,6 +1,6 @@
 package cmd
 
-import "uvoocertctl/internal/storage"
+import "uvoo-certctl/internal/storage"
 
 func subjectAutoApprovalRulePayload(rec storage.SubjectAutoApprovalRule) map[string]any {
 	return map[string]any{

@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"uvoocertctl/internal/util"
+	"uvoo-certctl/internal/util"
 )
 
 type NamecheapProvider struct {

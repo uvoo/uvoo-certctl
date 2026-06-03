@@ -3,8 +3,8 @@ package ops
 import (
 	"strings"
 
-	"uvoocertctl/internal/storage"
-	"uvoocertctl/internal/util"
+	"uvoo-certctl/internal/storage"
+	"uvoo-certctl/internal/util"
 )
 
 type SubjectFilter struct {

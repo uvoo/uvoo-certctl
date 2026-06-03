@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"uvoocertctl/internal/ops"
-	"uvoocertctl/internal/storage"
-	"uvoocertctl/internal/util"
+	"uvoo-certctl/internal/ops"
+	"uvoo-certctl/internal/storage"
+	"uvoo-certctl/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -26,7 +26,7 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "get",
 		Short: "Obtain a Let's Encrypt certificate and store it encrypted in SQLite",
-		Example: `  uvoocertctl get \
+		Example: `  uvoo-certctl get \
     --common-name '*.example.com' \
     --sans '*.example.com,example.com' \
     --provider godaddy \

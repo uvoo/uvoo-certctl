@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"uvoocertctl/internal/auth"
-	"uvoocertctl/internal/storage"
-	"uvoocertctl/internal/util"
+	"uvoo-certctl/internal/auth"
+	"uvoo-certctl/internal/storage"
+	"uvoo-certctl/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -29,15 +29,15 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "create-auth-issuer",
 		Short: "Create or update a trusted JWT/OIDC issuer",
-		Example: `  uvoocertctl create-auth-issuer \
+		Example: `  uvoo-certctl create-auth-issuer \
     --name keycloak-local \
-    --issuer https://sso.example.com/realms/uvoocertctl \
-    --audience uvoocertctl \
-    --discovery-url https://sso.example.com/realms/uvoocertctl/.well-known/openid-configuration \
+    --issuer https://sso.example.com/realms/uvoo-certctl \
+    --audience uvoo-certctl \
+    --discovery-url https://sso.example.com/realms/uvoo-certctl/.well-known/openid-configuration \
     --roles-claim realm_access.roles
-  uvoocertctl create-auth-issuer --preset google --name google-login --audience <client-id>
-  uvoocertctl create-auth-issuer --preset keycloak --name keycloak-local --issuer https://sso.example.com/realms/uvoocertctl --audience uvoocertctl
-  uvoocertctl create-auth-issuer --preset aws-cognito --name cognito-dev --issuer https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example --audience <app-client-id>`,
+  uvoo-certctl create-auth-issuer --preset google --name google-login --audience <client-id>
+  uvoo-certctl create-auth-issuer --preset keycloak --name keycloak-local --issuer https://sso.example.com/realms/uvoo-certctl --audience uvoo-certctl
+  uvoo-certctl create-auth-issuer --preset aws-cognito --name cognito-dev --issuer https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example --audience <app-client-id>`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if preset != "" {
 				rec, ok := auth.ProviderPresetByName(strings.TrimSpace(preset))

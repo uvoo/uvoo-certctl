@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"uvoocertctl/internal/storage"
+	"uvoo-certctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -18,9 +18,9 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "list-csr-requests",
 		Short: "List queued CSR requests",
-		Example: `  uvoocertctl list-csr-requests
-  uvoocertctl list-csr-requests --all
-  uvoocertctl list-csr-requests --id <request-id> --json`,
+		Example: `  uvoo-certctl list-csr-requests
+  uvoo-certctl list-csr-requests --all
+  uvoo-certctl list-csr-requests --id <request-id> --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {

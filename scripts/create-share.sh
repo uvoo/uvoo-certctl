@@ -1,6 +1,6 @@
 
 cert(){
-./uvoocertctl share-cert \
+./uvoo-certctl share-cert \
   --domain test3.uvoo.io \
   --mode cert \
   --share-password 'abc123' \
@@ -9,7 +9,7 @@ cert(){
 }
 
 cert_and_key(){
-./uvoocertctl share-cert \
+./uvoo-certctl share-cert \
   --domain test3.uvoo.io \
   --mode cert_key \
   --share-password 'abc123' \

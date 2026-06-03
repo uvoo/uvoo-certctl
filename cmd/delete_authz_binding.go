@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"uvoocertctl/internal/storage"
+	"uvoo-certctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -18,9 +18,9 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "delete-authz-binding",
 		Short: "Delete an authorization binding for a JWT principal",
-		Example: `  uvoocertctl delete-authz-binding --id binding-id
-  uvoocertctl delete-authz-binding --principal 'role:https://sso.example.com/realms/uvoocertctl:uvoocertctl_admin' --permission doctor.read
-  uvoocertctl delete-authz-binding --id binding-id --json`,
+		Example: `  uvoo-certctl delete-authz-binding --id binding-id
+  uvoo-certctl delete-authz-binding --principal 'role:https://sso.example.com/realms/uvoo-certctl:uvoo-certctl_admin' --permission doctor.read
+  uvoo-certctl delete-authz-binding --id binding-id --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {

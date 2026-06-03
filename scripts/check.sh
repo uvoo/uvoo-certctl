@@ -1,4 +1,4 @@
-./uvoocertctl check-precursors \
+./uvoo-certctl check-precursors \
   --provider namecheap \
   --domain 'jj3test.uvoo.io' \
   --api-user "$NAMECHEAP_API_USER" \

@@ -11,6 +11,6 @@ GOCACHE="${GOCACHE:-$ROOT_DIR/.gocache}"
 cd "$ROOT_DIR"
 mkdir -p "$GOCACHE"
 GOCACHE="$GOCACHE" "$GO_BIN" build -trimpath \
-  -ldflags="-X uvoocertctl/cmd.version=$VERSION -X uvoocertctl/cmd.commit=$COMMIT -X uvoocertctl/cmd.date=$BUILD_DATE" \
-  -o uvoocertctl .
-sudo cp uvoocertctl /usr/local/bin/
+  -ldflags="-X uvoo-certctl/cmd.version=$VERSION -X uvoo-certctl/cmd.commit=$COMMIT -X uvoo-certctl/cmd.date=$BUILD_DATE" \
+  -o uvoo-certctl .
+sudo cp uvoo-certctl /usr/local/bin/

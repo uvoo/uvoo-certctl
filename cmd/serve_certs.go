@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"uvoocertctl/internal/server"
-	"uvoocertctl/internal/util"
+	"uvoo-certctl/internal/server"
+	"uvoo-certctl/internal/util"
 	"github.com/spf13/cobra"
 )
 

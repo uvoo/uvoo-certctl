@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"uvoocertctl/internal/storage"
+	"uvoo-certctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -17,9 +17,9 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "list-subject-auto-approvals",
 		Short: "List subject auto-approval rules",
-		Example: `  uvoocertctl list-subject-auto-approvals
-  uvoocertctl list-subject-auto-approvals --all --json
-  uvoocertctl list-subject-auto-approvals --issuer https://accounts.google.com`,
+		Example: `  uvoo-certctl list-subject-auto-approvals
+  uvoo-certctl list-subject-auto-approvals --all --json
+  uvoo-certctl list-subject-auto-approvals --issuer https://accounts.google.com`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {

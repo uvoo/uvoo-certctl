@@ -3,7 +3,7 @@ package auth
 import (
 	"strings"
 
-	"uvoocertctl/internal/storage"
+	"uvoo-certctl/internal/storage"
 )
 
 type SubjectAutoApprovalMatch struct {

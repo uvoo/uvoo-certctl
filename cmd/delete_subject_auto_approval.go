@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"uvoocertctl/internal/storage"
+	"uvoo-certctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -14,8 +14,8 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "delete-subject-auto-approval",
 		Short: "Delete a subject auto-approval rule",
-		Example: `  uvoocertctl delete-subject-auto-approval --name google-employees
-  uvoocertctl delete-subject-auto-approval --name google-employees --json`,
+		Example: `  uvoo-certctl delete-subject-auto-approval --name google-employees
+  uvoo-certctl delete-subject-auto-approval --name google-employees --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {

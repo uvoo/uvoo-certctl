@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 
-	"uvoocertctl/internal/util"
+	"uvoo-certctl/internal/util"
 )
 
 func Encrypt(data []byte, pass string) ([]byte, error) {

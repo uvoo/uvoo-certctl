@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"uvoocertctl/internal/ops"
-	"uvoocertctl/internal/storage"
+	"uvoo-certctl/internal/ops"
+	"uvoo-certctl/internal/storage"
 )
 
 func TestAdminDoctorRequiresAuth(t *testing.T) {
@@ -107,7 +107,7 @@ func TestAdminAuthIssuerListAndProbe(t *testing.T) {
 		Name:         "google-login",
 		Enabled:      true,
 		Issuer:       "https://accounts.google.com",
-		Audiences:    []string{"uvoocertctl"},
+		Audiences:    []string{"uvoo-certctl"},
 		DiscoveryURL: "http://127.0.0.1:1/.well-known/openid-configuration",
 	}); err != nil {
 		t.Fatal(err)
@@ -180,10 +180,10 @@ func TestAdminAuthProviderPresetsAndCreateIssuerFromPreset(t *testing.T) {
 	createReq := httptest.NewRequest(http.MethodPost, "/admin/v1/auth-issuers", strings.NewReader(`{
 		"preset":"keycloak",
 		"name":"keycloak-dev",
-		"issuer":"http://localhost:18080/realms/uvoocertctl",
-		"audiences":["uvoocertctl"],
-		"required_claims":{"azp":"uvoocertctl"},
-		"discovery_url":"http://keycloak:8080/realms/uvoocertctl/.well-known/openid-configuration"
+		"issuer":"http://localhost:18080/realms/uvoo-certctl",
+		"audiences":["uvoo-certctl"],
+		"required_claims":{"azp":"uvoo-certctl"},
+		"discovery_url":"http://keycloak:8080/realms/uvoo-certctl/.well-known/openid-configuration"
 	}`))
 	createReq.Header.Set("Content-Type", "application/json")
 	createReq.SetBasicAuth("admin", "admin-secret")
@@ -208,10 +208,10 @@ func TestAdminAuthIssuerCreateUpdateAndDelete(t *testing.T) {
 
 	createReq := httptest.NewRequest(http.MethodPost, "/admin/v1/auth-issuers", strings.NewReader(`{
 		"name":"keycloak-dev",
-		"issuer":"http://localhost:18080/realms/uvoocertctl",
-		"audiences":["uvoocertctl"],
-		"required_claims":{"azp":"uvoocertctl"},
-		"discovery_url":"http://keycloak:8080/realms/uvoocertctl/.well-known/openid-configuration",
+		"issuer":"http://localhost:18080/realms/uvoo-certctl",
+		"audiences":["uvoo-certctl"],
+		"required_claims":{"azp":"uvoo-certctl"},
+		"discovery_url":"http://keycloak:8080/realms/uvoo-certctl/.well-known/openid-configuration",
 		"roles_claims":["realm_access.roles"],
 		"groups_claims":["groups"]
 	}`))
@@ -229,7 +229,7 @@ func TestAdminAuthIssuerCreateUpdateAndDelete(t *testing.T) {
 	updateReq := httptest.NewRequest(http.MethodPut, "/admin/v1/auth-issuers/keycloak-dev", strings.NewReader(`{
 		"name":"keycloak-local",
 		"enabled":false,
-		"jwks_url":"http://keycloak:8080/realms/uvoocertctl/protocol/openid-connect/certs"
+		"jwks_url":"http://keycloak:8080/realms/uvoo-certctl/protocol/openid-connect/certs"
 	}`))
 	updateReq.Header.Set("Content-Type", "application/json")
 	updateReq.SetBasicAuth("admin", "admin-secret")
@@ -250,7 +250,7 @@ func TestAdminAuthIssuerCreateUpdateAndDelete(t *testing.T) {
 	if err := store.CreateAuthzBinding(storage.AuthzBinding{
 		ID:         "binding-issuer-1",
 		Enabled:    true,
-		Principal:  "role:http://localhost:18080/realms/uvoocertctl:uvoocertctl_admin",
+		Principal:  "role:http://localhost:18080/realms/uvoo-certctl:uvoo-certctl_admin",
 		Permission: "doctor.read",
 	}); err != nil {
 		t.Fatal(err)
@@ -283,7 +283,7 @@ func TestAdminAuthIssuerCreateUpdateAndDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	if _, err := store.GetAuthIssuerByIssuer("http://localhost:18080/realms/uvoocertctl"); err == nil {
+	if _, err := store.GetAuthIssuerByIssuer("http://localhost:18080/realms/uvoo-certctl"); err == nil {
 		t.Fatalf("expected auth issuer to be deleted")
 	}
 	if _, err := store.GetAuthzBindingByID("binding-issuer-1"); err == nil {
@@ -300,7 +300,7 @@ func TestAdminAuthzBindingListAndGet(t *testing.T) {
 	if err := store.CreateAuthzBinding(storage.AuthzBinding{
 		ID:         "binding-1",
 		Enabled:    true,
-		Principal:  "role:https://sso.example.com/realms/uvoocertctl:uvoocertctl_admin",
+		Principal:  "role:https://sso.example.com/realms/uvoo-certctl:uvoo-certctl_admin",
 		Permission: "doctor.read",
 	}); err != nil {
 		t.Fatal(err)
@@ -315,7 +315,7 @@ func TestAdminAuthzBindingListAndGet(t *testing.T) {
 		AdminPassword: "admin-secret",
 	})
 
-	listReq := httptest.NewRequest(http.MethodGet, "/admin/v1/authz-bindings?principal=role:https://sso.example.com/realms/uvoocertctl:uvoocertctl_admin", nil)
+	listReq := httptest.NewRequest(http.MethodGet, "/admin/v1/authz-bindings?principal=role:https://sso.example.com/realms/uvoo-certctl:uvoo-certctl_admin", nil)
 	listReq.SetBasicAuth("admin", "admin-secret")
 	listRec := httptest.NewRecorder()
 	srv.ServeHTTP(listRec, listReq)
@@ -347,7 +347,7 @@ func TestAdminAuthzBindingCreateUpdateAndDelete(t *testing.T) {
 	})
 
 	createReq := httptest.NewRequest(http.MethodPost, "/admin/v1/authz-bindings", strings.NewReader(`{
-		"principal":"role:https://sso.example.com/realms/uvoocertctl:uvoocertctl_admin",
+		"principal":"role:https://sso.example.com/realms/uvoo-certctl:uvoo-certctl_admin",
 		"permission":"doctor.read",
 		"resource_kind":"subject",
 		"resource_ref":"*"
@@ -772,7 +772,7 @@ func TestMetricsEndpointRequiresAuthWhenAdminEnabled(t *testing.T) {
 		Name:      "google-login",
 		Enabled:   true,
 		Issuer:    "https://accounts.google.com",
-		Audiences: []string{"uvoocertctl"},
+		Audiences: []string{"uvoo-certctl"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -780,8 +780,8 @@ func TestMetricsEndpointRequiresAuthWhenAdminEnabled(t *testing.T) {
 		ID:        "issuer-2",
 		Name:      "keycloak-dev",
 		Enabled:   true,
-		Issuer:    "https://sso.example.com/realms/uvoocertctl",
-		Audiences: []string{"uvoocertctl"},
+		Issuer:    "https://sso.example.com/realms/uvoo-certctl",
+		Audiences: []string{"uvoo-certctl"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -789,15 +789,15 @@ func TestMetricsEndpointRequiresAuthWhenAdminEnabled(t *testing.T) {
 		ID:        "issuer-3",
 		Name:      "disabled-issuer",
 		Enabled:   false,
-		Issuer:    "https://disabled.example.com/realms/uvoocertctl",
-		Audiences: []string{"uvoocertctl"},
+		Issuer:    "https://disabled.example.com/realms/uvoo-certctl",
+		Audiences: []string{"uvoo-certctl"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.CreateAuthzBinding(storage.AuthzBinding{
 		ID:         "binding-1",
 		Enabled:    true,
-		Principal:  "role:https://sso.example.com/realms/uvoocertctl:uvoocertctl_admin",
+		Principal:  "role:https://sso.example.com/realms/uvoo-certctl:uvoo-certctl_admin",
 		Permission: "doctor.read",
 	}); err != nil {
 		t.Fatal(err)
@@ -805,7 +805,7 @@ func TestMetricsEndpointRequiresAuthWhenAdminEnabled(t *testing.T) {
 	if err := store.CreateAuthzBinding(storage.AuthzBinding{
 		ID:         "binding-2",
 		Enabled:    true,
-		Principal:  "role:https://unknown.example.com/realms/uvoocertctl:unknown_admin",
+		Principal:  "role:https://unknown.example.com/realms/uvoo-certctl:unknown_admin",
 		Permission: "metrics.read",
 	}); err != nil {
 		t.Fatal(err)
@@ -813,7 +813,7 @@ func TestMetricsEndpointRequiresAuthWhenAdminEnabled(t *testing.T) {
 	if err := store.CreateAuthzBinding(storage.AuthzBinding{
 		ID:          "binding-3",
 		Enabled:     true,
-		Principal:   "role:https://disabled.example.com/realms/uvoocertctl:legacy_admin",
+		Principal:   "role:https://disabled.example.com/realms/uvoo-certctl:legacy_admin",
 		Permission:  "subject.update",
 		ResourceRef: "*",
 	}); err != nil {
@@ -839,7 +839,7 @@ func TestMetricsEndpointRequiresAuthWhenAdminEnabled(t *testing.T) {
 		ID:      "rule-2",
 		Name:    "unknown-issuer-rule",
 		Enabled: true,
-		Issuer:  "https://missing.example.com/realms/uvoocertctl",
+		Issuer:  "https://missing.example.com/realms/uvoo-certctl",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -855,7 +855,7 @@ func TestMetricsEndpointRequiresAuthWhenAdminEnabled(t *testing.T) {
 		EnableMetrics: true,
 	})
 	srv.recordIssuerProbe("https://accounts.google.com", nil)
-	srv.recordIssuerProbe("https://sso.example.com/realms/uvoocertctl", assertErr("probe failed"))
+	srv.recordIssuerProbe("https://sso.example.com/realms/uvoo-certctl", assertErr("probe failed"))
 
 	unauthReq := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	unauthRec := httptest.NewRecorder()
@@ -872,25 +872,25 @@ func TestMetricsEndpointRequiresAuthWhenAdminEnabled(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", authRec.Code, authRec.Body.String())
 	}
 	body := authRec.Body.String()
-	if !strings.Contains(body, "uvoocertctl_csr_requests_total") ||
-		!strings.Contains(body, "uvoocertctl_pending_csr_requests_older_than_days_total") ||
-		!strings.Contains(body, "uvoocertctl_pending_csr_requests_total") ||
-		!strings.Contains(body, "uvoocertctl_csr_requests_ready_for_pickup_total") ||
-		!strings.Contains(body, "uvoocertctl_auth_issuers_total") ||
-		!strings.Contains(body, "uvoocertctl_auth_issuers_connectivity_status_total") ||
-		!strings.Contains(body, "uvoocertctl_auth_issuer_binding_coverage_total") ||
-		!strings.Contains(body, "uvoocertctl_authz_bindings_total") ||
-		!strings.Contains(body, "uvoocertctl_authz_bindings_by_permission_total") ||
-		!strings.Contains(body, "uvoocertctl_authz_bindings_by_principal_kind_total") ||
-		!strings.Contains(body, "uvoocertctl_authz_bindings_risky_total") ||
-		!strings.Contains(body, "uvoocertctl_doctor_findings_total") ||
-		!strings.Contains(body, "uvoocertctl_auth_requests_total") ||
-		!strings.Contains(body, "uvoocertctl_subject_auto_approval_rules_total") ||
-		!strings.Contains(body, "uvoocertctl_subject_auto_approval_rules_risky_total") ||
-		!strings.Contains(body, "uvoocertctl_subject_auto_approval_matches_total") ||
-		!strings.Contains(body, "uvoocertctl_pending_subjects_total") ||
-		!strings.Contains(body, "uvoocertctl_pending_subjects_older_than_days_total") ||
-		!strings.Contains(body, "uvoocertctl_subjects_total") {
+	if !strings.Contains(body, "uvoo-certctl_csr_requests_total") ||
+		!strings.Contains(body, "uvoo-certctl_pending_csr_requests_older_than_days_total") ||
+		!strings.Contains(body, "uvoo-certctl_pending_csr_requests_total") ||
+		!strings.Contains(body, "uvoo-certctl_csr_requests_ready_for_pickup_total") ||
+		!strings.Contains(body, "uvoo-certctl_auth_issuers_total") ||
+		!strings.Contains(body, "uvoo-certctl_auth_issuers_connectivity_status_total") ||
+		!strings.Contains(body, "uvoo-certctl_auth_issuer_binding_coverage_total") ||
+		!strings.Contains(body, "uvoo-certctl_authz_bindings_total") ||
+		!strings.Contains(body, "uvoo-certctl_authz_bindings_by_permission_total") ||
+		!strings.Contains(body, "uvoo-certctl_authz_bindings_by_principal_kind_total") ||
+		!strings.Contains(body, "uvoo-certctl_authz_bindings_risky_total") ||
+		!strings.Contains(body, "uvoo-certctl_doctor_findings_total") ||
+		!strings.Contains(body, "uvoo-certctl_auth_requests_total") ||
+		!strings.Contains(body, "uvoo-certctl_subject_auto_approval_rules_total") ||
+		!strings.Contains(body, "uvoo-certctl_subject_auto_approval_rules_risky_total") ||
+		!strings.Contains(body, "uvoo-certctl_subject_auto_approval_matches_total") ||
+		!strings.Contains(body, "uvoo-certctl_pending_subjects_total") ||
+		!strings.Contains(body, "uvoo-certctl_pending_subjects_older_than_days_total") ||
+		!strings.Contains(body, "uvoo-certctl_subjects_total") {
 		t.Fatalf("expected metrics output, got %s", body)
 	}
 	if !strings.Contains(body, `state="enabled_without_bindings"`) ||
@@ -927,7 +927,7 @@ func TestMetricsEndpointAllowsDedicatedMetricsBasicAuth(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, `uvoocertctl_auth_requests_total{`) ||
+	if !strings.Contains(body, `uvoo-certctl_auth_requests_total{`) ||
 		!strings.Contains(body, `auth_method="basic_metrics"`) ||
 		!strings.Contains(body, `result="allowed"`) {
 		t.Fatalf("expected metrics auth counter for dedicated metrics basic auth, got %s", body)

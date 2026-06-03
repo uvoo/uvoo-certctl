@@ -8,7 +8,7 @@ fi
 
 ROOT_ID=$1
 
-uvoocertctl create-intermediate-ca \
+uvoo-certctl create-intermediate-ca \
   --root-id $ROOT_ID \
   --name corp-ica-1 \
   --common-name "Corp Intermediate CA 1" \
@@ -19,7 +19,7 @@ uvoocertctl create-intermediate-ca \
 
 # Or with storage-password fallback:
 
-uvoocertctl create-intermediate-ca \
+uvoo-certctl create-intermediate-ca \
   --root-id $ROOT_ID \
   --name corp-ica-1 \
   --common-name "Corp Intermediate CA 1" \

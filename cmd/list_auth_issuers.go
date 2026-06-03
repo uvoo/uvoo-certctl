@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"uvoocertctl/internal/storage"
+	"uvoo-certctl/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -14,8 +14,8 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "list-auth-issuers",
 		Short: "List trusted JWT/OIDC issuers",
-		Example: `  uvoocertctl list-auth-issuers
-  uvoocertctl list-auth-issuers --all --json`,
+		Example: `  uvoo-certctl list-auth-issuers
+  uvoo-certctl list-auth-issuers --all --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := storage.Open(rootCfg.DBPath)
 			if err != nil {

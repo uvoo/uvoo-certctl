@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"uvoocertctl/internal/dns"
-	"uvoocertctl/internal/privateca"
-	"uvoocertctl/internal/storage"
-	"uvoocertctl/internal/util"
+	"uvoo-certctl/internal/dns"
+	"uvoo-certctl/internal/privateca"
+	"uvoo-certctl/internal/storage"
+	"uvoo-certctl/internal/util"
 )
 
 type ProviderConfig struct {

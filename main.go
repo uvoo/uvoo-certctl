@@ -1,6 +1,6 @@
 package main
 
-import "uvoocertctl/cmd"
+import "uvoo-certctl/cmd"
 
 func main() {
 	cmd.Execute()
