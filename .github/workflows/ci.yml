@@ -26,5 +26,8 @@ jobs:
       - name: Run tests
         run: go test ./...
 
+      - name: License check
+        run: make license-check
+
       - name: Build release archives
         run: VERSION=ci ./scripts/build-release.sh

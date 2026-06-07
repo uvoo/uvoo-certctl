@@ -114,6 +114,12 @@ for target in "${TARGETS[@]}"; do
   )
 
   cp "$ROOT_DIR/README.md" "$artifact_dir/README.md"
+  if [[ -f "$ROOT_DIR/LICENSE" ]]; then
+    cp "$ROOT_DIR/LICENSE" "$artifact_dir/LICENSE"
+  fi
+  if [[ -f "$ROOT_DIR/NOTICE" ]]; then
+    cp "$ROOT_DIR/NOTICE" "$artifact_dir/NOTICE"
+  fi
   if [[ -f "$ROOT_DIR/CHANGELOG.md" ]]; then
     cp "$ROOT_DIR/CHANGELOG.md" "$artifact_dir/CHANGELOG.md"
   fi
