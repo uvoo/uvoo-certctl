@@ -13,6 +13,7 @@ A Cobra-based refactor of the original single-file ACME utility.
 - Docker dev guide: [`docs/DOCKER_DEV.md`](docs/DOCKER_DEV.md)
 - Prometheus watchdog guide: [`docs/PROMALERT.md`](docs/PROMALERT.md)
 - Release process: [`docs/RELEASING.md`](docs/RELEASING.md)
+- License audit: [`docs/LICENSE_AUDIT.md`](docs/LICENSE_AUDIT.md)
 
 ## What changed
 
@@ -136,6 +137,12 @@ go run . issue-private-cert \
 - Password-like flags accept raw values, `env:VARNAME`, or `file:/path/to/secret`.
 - `--default-root-ca` and `--default-intermediate-ca` can be set once to avoid repeating issuer names on every command.
 - `serve-certs` defaults its `--nacl` allowlist to private IPv4 and IPv6 client networks. Add loopback or public ranges explicitly when needed.
+
+## License
+
+uvoo-certctl is licensed under the Apache License, Version 2.0. See
+[`LICENSE`](LICENSE), [`NOTICE`](NOTICE), and
+[`docs/LICENSE_AUDIT.md`](docs/LICENSE_AUDIT.md).
 
 ## Operations
 
